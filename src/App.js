@@ -114,58 +114,27 @@ const FantasyAuctionApp = () => {
     return carImages[make] || 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=300&h=200&fit=crop';
   };
 
-  // DEBUG VERSION - Data fetching functions
+  // Data fetching functions
   const fetchAuctions = async () => {
     setLoading(true);
     
-    console.log('=== DEBUG: Fetching auction data ===');
-    
-    // First, let's see what data we actually have
-    const { data: allData, error } = await supabase
+    // Get active auctions only
+    const now = new Date();
+    const { data, error } = await supabase
       .from('auctions')
       .select('*')
       .not('current_bid', 'is', null)
-      .order('inserted_at', { ascending: false })
-      .limit(20);
+      .gte('timestamp_end', now.toISOString()) // Only active auctions
+      .order('timestamp_end', { ascending: true })
+      .limit(50);
     
     if (error) {
       console.error('Error fetching auctions:', error);
       setAuctions(getSampleAuctions());
     } else {
-      console.log('Total auctions found:', allData.length);
-      if (allData.length > 0) {
-        console.log('Sample auction data structure:', allData[0]);
-        console.log('Current time:', new Date().toISOString());
-        
-        // Check dates
-        allData.slice(0, 5).forEach((auction, i) => {
-          const now = new Date();
-          const inserted = new Date(auction.inserted_at);
-          const ends = new Date(auction.timestamp_end);
-          const daysOld = (now - inserted) / (1000 * 60 * 60 * 24);
-          const daysUntilEnd = (ends - now) / (1000 * 60 * 60 * 24);
-          
-          console.log(`Auction ${i + 1}:`, {
-            title: auction.title,
-            inserted_at: auction.inserted_at,
-            timestamp_end: auction.timestamp_end,
-            days_old: daysOld.toFixed(1),
-            days_until_end: daysUntilEnd.toFixed(1),
-            has_ended: ends < now
-          });
-        });
-      }
+      console.log('Active auctions found:', data.length);
       
-      // Show recent auctions that haven't ended
-      const now = new Date();
-      const filteredAuctions = allData.filter(auction => {
-        const endTime = new Date(auction.timestamp_end);
-        return endTime > now; // Only active auctions
-      });
-      
-      console.log('Active auctions (not ended):', filteredAuctions.length);
-      
-      const transformedAuctions = filteredAuctions.map(auction => ({
+      const transformedAuctions = data.map(auction => ({
         id: auction.auction_id || auction.id,
         title: auction.title,
         make: auction.make,
@@ -179,14 +148,10 @@ const FantasyAuctionApp = () => {
         auctionUrl: auction.url,
         imageUrl: getCarImageUrl(auction.make, auction.model),
         trending: Math.random() > 0.7,
-        endTime: auction.timestamp_end,
-        // Debug info
-        insertedAt: auction.inserted_at,
-        timestampEnd: auction.timestamp_end
+        endTime: auction.timestamp_end
       }));
       
       setAuctions(transformedAuctions);
-      console.log('Final auctions to display:', transformedAuctions.length);
     }
     setLoading(false);
   };
@@ -207,6 +172,59 @@ const FantasyAuctionApp = () => {
         playerCount: 0,
         status: 'Open'
       })));
+    }
+  };
+
+  const fetchUserGarage = async (leagueId) => {
+    if (!user) return;
+    
+    // Get user's garage for this league
+    const { data: garageData, error: garageError } = await supabase
+      .from('garages')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('league_id', leagueId)
+      .maybeSingle();
+    
+    if (garageError) {
+      console.error('Error fetching garage:', garageError);
+      return;
+    }
+    
+    if (garageData) {
+      setUserGarageId(garageData.id);
+      setBudget(garageData.remaining_budget);
+      
+      // Fetch garage cars with auction details
+      const { data: carsData, error: carsError } = await supabase
+        .from('garage_cars')
+        .select(`
+          *,
+          auctions(*)
+        `)
+        .eq('garage_id', garageData.id);
+      
+      if (!carsError && carsData) {
+        const garageCars = carsData.map(item => ({
+          garageCarId: item.id,
+          id: item.auctions.auction_id,
+          title: item.auctions.title,
+          make: item.auctions.make,
+          model: item.auctions.model,
+          year: item.auctions.year,
+          currentBid: item.auctions.current_bid || item.purchase_price,
+          purchasePrice: item.purchase_price,
+          auctionUrl: item.auctions.url,
+          imageUrl: getCarImageUrl(item.auctions.make, item.auctions.model),
+          timeLeft: calculateTimeLeft(item.auctions.timestamp_end)
+        }));
+        setGarage(garageCars);
+      }
+    } else {
+      // No garage exists yet
+      setUserGarageId(null);
+      setBudget(100000);
+      setGarage([]);
     }
   };
 
@@ -244,6 +262,7 @@ const FantasyAuctionApp = () => {
       
       if (existingMember) {
         setSelectedLeague(league);
+        await fetchUserGarage(league.id);
         setCurrentScreen('cars');
         return;
       }
@@ -292,6 +311,7 @@ const FantasyAuctionApp = () => {
     }
   };
 
+  // REAL DATABASE INTEGRATION - Add car to garage
   const addToGarage = async (auction) => {
     if (garage.length >= 7) {
       alert("Garage is full! Maximum 7 cars allowed.");
@@ -302,18 +322,105 @@ const FantasyAuctionApp = () => {
       return;
     }
     
-    alert(`Added ${auction.title} to your garage! (Demo mode - database integration coming soon)`);
-    setGarage([...garage, auction]);
-    setBudget(budget - auction.currentBid);
+    if (!user || !selectedLeague || !userGarageId) {
+      alert("Please join a league first!");
+      return;
+    }
+    
+    try {
+      // Add car to garage_cars table
+      const { data: garageCarData, error: garageCarError } = await supabase
+        .from('garage_cars')
+        .insert([{
+          garage_id: userGarageId,
+          auction_id: auction.id,
+          purchase_price: auction.currentBid
+        }])
+        .select()
+        .single();
+      
+      if (garageCarError) {
+        console.error('Error adding car to garage:', garageCarError);
+        alert('Error adding car: ' + garageCarError.message);
+        return;
+      }
+      
+      // Update garage budget
+      const newBudget = budget - auction.currentBid;
+      const { error: budgetError } = await supabase
+        .from('garages')
+        .update({ remaining_budget: newBudget })
+        .eq('id', userGarageId);
+      
+      if (budgetError) {
+        console.error('Error updating budget:', budgetError);
+      }
+      
+      // Update local state
+      const newCar = {
+        ...auction,
+        purchasePrice: auction.currentBid,
+        garageCarId: garageCarData.id
+      };
+      
+      setGarage([...garage, newCar]);
+      setBudget(newBudget);
+      alert(`Successfully added ${auction.title} to your garage!`);
+      
+    } catch (error) {
+      console.error('Error in addToGarage:', error);
+      alert('Error adding car to garage');
+    }
   };
 
-  // Load data when component mounts
+  const removeFromGarage = async (car) => {
+    try {
+      // Remove from garage_cars table
+      const { error: removeError } = await supabase
+        .from('garage_cars')
+        .delete()
+        .eq('id', car.garageCarId);
+      
+      if (removeError) {
+        console.error('Error removing car:', removeError);
+        alert('Error removing car: ' + removeError.message);
+        return;
+      }
+      
+      // Update garage budget
+      const newBudget = budget + car.purchasePrice;
+      const { error: budgetError } = await supabase
+        .from('garages')
+        .update({ remaining_budget: newBudget })
+        .eq('id', userGarageId);
+      
+      if (budgetError) {
+        console.error('Error updating budget:', budgetError);
+      }
+      
+      // Update local state
+      setGarage(garage.filter(c => c.id !== car.id));
+      setBudget(newBudget);
+      
+    } catch (error) {
+      console.error('Error in removeFromGarage:', error);
+      alert('Error removing car from garage');
+    }
+  };
+
+  // Load data when component mounts or user changes
   useEffect(() => {
     if (user) {
       fetchAuctions();
       fetchLeagues();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (selectedLeague && user) {
+      fetchUserGarage(selectedLeague.id);
+    }
+  }, [selectedLeague, user]);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -465,13 +572,10 @@ const FantasyAuctionApp = () => {
   const CarSelectionScreen = () => (
     <div className="min-h-screen bg-gray-900 text-white pb-20">
       <div className="bg-gray-800 p-4 border-b border-gray-700">
-        <h1 className="text-xl font-bold">Available Cars (DEBUG MODE)</h1>
+        <h1 className="text-xl font-bold">Available Cars</h1>
         <div className="flex justify-between text-sm text-gray-300 mt-2">
           <span>Budget: ${budget.toLocaleString()}</span>
           <span>Garage: {garage.length}/7 cars</span>
-        </div>
-        <div className="text-yellow-400 text-sm mt-1">
-          Check browser console (F12) for debug info
         </div>
         {loading && <p className="text-blue-400 mt-2">Loading auctions...</p>}
       </div>
@@ -480,8 +584,8 @@ const FantasyAuctionApp = () => {
         {auctions.length === 0 ? (
           <div className="text-center py-8">
             <Car className="mx-auto text-gray-500 mb-4" size={48} />
-            <p className="text-gray-400">No active auctions found.</p>
-            <p className="text-gray-500 text-sm mt-2">Check console for debug information.</p>
+            <p className="text-gray-400">No active auctions available at the moment.</p>
+            <p className="text-gray-500 text-sm mt-2">Check back soon for new listings!</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
@@ -559,124 +663,144 @@ const FantasyAuctionApp = () => {
     </div>
   );
 
-  const GarageScreen = () => (
-    <div className="min-h-screen bg-gray-900 text-white pb-20">
-      <div className="bg-gray-800 p-4 border-b border-gray-700">
-        <h1 className="text-xl font-bold flex items-center gap-2">
-          <Car className="text-blue-400" size={24} />
-          My Garage
-        </h1>
-        <div className="flex justify-between text-sm text-gray-300 mt-2">
-          <span>Budget: ${budget.toLocaleString()}</span>
-          <span>{garage.length}/7 cars</span>
+  const GarageScreen = () => {
+    const calculateGain = (purchasePrice, currentPrice) => {
+      if (!purchasePrice || purchasePrice === 0) return 0;
+      return ((currentPrice - purchasePrice) / purchasePrice * 100).toFixed(1);
+    };
+
+    return (
+      <div className="min-h-screen bg-gray-900 text-white pb-20">
+        <div className="bg-gray-800 p-4 border-b border-gray-700">
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <Car className="text-blue-400" size={24} />
+            My Garage
+          </h1>
+          <div className="flex justify-between text-sm text-gray-300 mt-2">
+            <span>Budget: ${budget.toLocaleString()}</span>
+            <span>{garage.length}/7 cars</span>
+          </div>
         </div>
-      </div>
-      
-      <div className="p-4">
-        <div className="grid grid-cols-1 gap-4">
-          {Array.from({length: 7}, (_, i) => {
-            const car = garage[i];
-            return (
-              <div key={i} className={`rounded-xl p-4 border-2 border-dashed ${
-                car ? 'bg-gray-800 border-blue-400' : 'bg-gray-800 border-gray-600'
-              }`}>
-                {car ? (
-                  <div className="flex items-start gap-4">
-                    <div className="w-16 h-12 rounded-lg overflow-hidden flex-shrink-0">
-                      <img 
-                        src={car.imageUrl} 
-                        alt={car.title}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <a 
-                        href={car.auctionUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="font-bold text-lg text-blue-400 hover:text-blue-300 transition-colors block mb-2"
-                      >
-                        {car.title}
-                      </a>
-                      <div className="grid grid-cols-2 gap-2 text-sm text-gray-300 mb-3">
-                        <div>Purchase: ${car.currentBid.toLocaleString()}</div>
-                        <div>Current: ${(car.currentBid * 1.08).toLocaleString()}</div>
-                        <div className="text-green-400">Gain: +8.0%</div>
-                        <div>{car.timeLeft} left</div>
+        
+        <div className="p-4">
+          <div className="grid grid-cols-1 gap-4">
+            {Array.from({length: 7}, (_, i) => {
+              const car = garage[i];
+              return (
+                <div key={i} className={`rounded-xl p-4 border-2 border-dashed ${
+                  car ? 'bg-gray-800 border-blue-400' : 'bg-gray-800 border-gray-600'
+                }`}>
+                  {car ? (
+                    <div className="flex items-start gap-4">
+                      <div className="w-16 h-12 rounded-lg overflow-hidden flex-shrink-0">
+                        <img 
+                          src={car.imageUrl} 
+                          alt={car.title}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <a 
+                          href={car.auctionUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="font-bold text-lg text-blue-400 hover:text-blue-300 transition-colors block mb-2"
+                        >
+                          {car.title}
+                        </a>
+                        <div className="grid grid-cols-2 gap-2 text-sm text-gray-300 mb-3">
+                          <div>Purchase: ${car.purchasePrice.toLocaleString()}</div>
+                          <div>Current: ${car.currentBid.toLocaleString()}</div>
+                          <div className={`${
+                            calculateGain(car.purchasePrice, car.currentBid) >= 0 ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            Gain: {calculateGain(car.purchasePrice, car.currentBid) >= 0 ? '+' : ''}
+                            {calculateGain(car.purchasePrice, car.currentBid)}%
+                          </div>
+                          <div>{car.timeLeft} left</div>
+                        </div>
+                        <button 
+                          onClick={() => removeFromGarage(car)}
+                          className="bg-red-600 hover:bg-red-500 text-white px-4 py-1 rounded text-sm transition-colors"
+                        >
+                          Remove
+                        </button>
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <Car size={32} className="mx-auto mb-2 opacity-50" />
-                    <p>Empty Slot</p>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <Car size={32} className="mx-auto mb-2 opacity-50" />
+                      <p>Empty Slot</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
+        
+        <BottomNav />
       </div>
-      
-      <BottomNav />
-    </div>
-  );
+    );
+  };
 
   const LeaderboardScreen = () => (
     <div className="min-h-screen bg-gray-900 text-white pb-20">
       <div className="bg-gray-800 p-4 border-b border-gray-700">
-        <h1 className="text-xl font-bold flex items-center gap-2">
-          <Trophy className="text-yellow-400" size={24} />
-          Leaderboard
-        </h1>
-        <p className="text-sm text-gray-300 mt-1">Coming Soon!</p>
-      </div>
-      
-      <div className="p-4">
-        <div className="text-center py-8">
-          <Trophy className="mx-auto text-gray-500 mb-4" size={48} />
-          <p className="text-gray-400">Rankings will appear here once you join a league!</p>
-        </div>
-      </div>
-      
-      <BottomNav />
-    </div>
-  );
+<h1 className="text-xl font-bold flex items-center gap-2">
+         <Trophy className="text-yellow-400" size={24} />
+         Leaderboard
+       </h1>
+       <p className="text-sm text-gray-300 mt-1">
+         {selectedLeague?.name || 'Select a League'}
+       </p>
+     </div>
+     
+     <div className="p-4">
+       <div className="text-center py-8">
+         <Trophy className="mx-auto text-gray-500 mb-4" size={48} />
+         <p className="text-gray-400">Rankings will appear here once leagues have active members!</p>
+       </div>
+     </div>
+     
+     <BottomNav />
+   </div>
+ );
 
-  const BottomNav = () => (
-    <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700">
-      <div className="flex justify-around py-2">
-        {[
-          { screen: 'leagues', icon: Trophy, label: 'Leagues' },
-          { screen: 'cars', icon: Car, label: 'Cars' },
-          { screen: 'garage', icon: Users, label: 'Garage' },
-          { screen: 'leaderboard', icon: TrendingUp, label: 'Rankings' }
-        ].map(({ screen, icon: Icon, label }) => (
-          <button
-            key={screen}
-            onClick={() => setCurrentScreen(screen)}
-            className={`flex flex-col items-center py-2 px-4 ${
-              currentScreen === screen ? 'text-blue-400' : 'text-gray-400'
-            }`}
-          >
-            <Icon size={20} />
-            <span className="text-xs mt-1">{label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+ const BottomNav = () => (
+   <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700">
+     <div className="flex justify-around py-2">
+       {[
+         { screen: 'leagues', icon: Trophy, label: 'Leagues' },
+         { screen: 'cars', icon: Car, label: 'Cars' },
+         { screen: 'garage', icon: Users, label: 'Garage' },
+         { screen: 'leaderboard', icon: TrendingUp, label: 'Rankings' }
+       ].map(({ screen, icon: Icon, label }) => (
+         <button
+           key={screen}
+           onClick={() => setCurrentScreen(screen)}
+           className={`flex flex-col items-center py-2 px-4 ${
+             currentScreen === screen ? 'text-blue-400' : 'text-gray-400'
+           }`}
+         >
+           <Icon size={20} />
+           <span className="text-xs mt-1">{label}</span>
+         </button>
+       ))}
+     </div>
+   </div>
+ );
 
-  if (!user) return <LoginScreen />;
+ if (!user) return <LoginScreen />;
 
-  return (
-    <div className="bg-gray-900 min-h-screen">
-      {currentScreen === 'leagues' && <LeaguesScreen />}
-      {currentScreen === 'cars' && <CarSelectionScreen />}
-      {currentScreen === 'garage' && <GarageScreen />}
-      {currentScreen === 'leaderboard' && <LeaderboardScreen />}
-    </div>
-  );
+ return (
+   <div className="bg-gray-900 min-h-screen">
+     {currentScreen === 'leagues' && <LeaguesScreen />}
+     {currentScreen === 'cars' && <CarSelectionScreen />}
+     {currentScreen === 'garage' && <GarageScreen />}
+     {currentScreen === 'leaderboard' && <LeaderboardScreen />}
+   </div>
+ );
 };
 
 export default FantasyAuctionApp;
