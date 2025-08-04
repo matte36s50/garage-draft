@@ -114,30 +114,58 @@ const FantasyAuctionApp = () => {
     return carImages[make] || 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=300&h=200&fit=crop';
   };
 
-  // Data fetching functions
+  // DEBUG VERSION - Data fetching functions
   const fetchAuctions = async () => {
     setLoading(true);
     
-    // Calculate date filters for day 2-3 auctions
-    const now = new Date();
-    const twoDaysAgo = new Date(now - (2 * 24 * 60 * 60 * 1000));
-    const threeDaysAgo = new Date(now - (3 * 24 * 60 * 60 * 1000));
+    console.log('=== DEBUG: Fetching auction data ===');
     
-    const { data, error } = await supabase
+    // First, let's see what data we actually have
+    const { data: allData, error } = await supabase
       .from('auctions')
       .select('*')
       .not('current_bid', 'is', null)
-      .gte('inserted_at', threeDaysAgo.toISOString()) // Started at least 2 days ago
-      .lte('inserted_at', twoDaysAgo.toISOString())   // But no more than 3 days ago
-      .gte('timestamp_end', now.toISOString())        // Auction hasn't ended yet
-      .order('timestamp_end', { ascending: true })
-      .limit(50);
+      .order('inserted_at', { ascending: false })
+      .limit(20);
     
     if (error) {
       console.error('Error fetching auctions:', error);
       setAuctions(getSampleAuctions());
     } else {
-      const transformedAuctions = data.map(auction => ({
+      console.log('Total auctions found:', allData.length);
+      if (allData.length > 0) {
+        console.log('Sample auction data structure:', allData[0]);
+        console.log('Current time:', new Date().toISOString());
+        
+        // Check dates
+        allData.slice(0, 5).forEach((auction, i) => {
+          const now = new Date();
+          const inserted = new Date(auction.inserted_at);
+          const ends = new Date(auction.timestamp_end);
+          const daysOld = (now - inserted) / (1000 * 60 * 60 * 24);
+          const daysUntilEnd = (ends - now) / (1000 * 60 * 60 * 24);
+          
+          console.log(`Auction ${i + 1}:`, {
+            title: auction.title,
+            inserted_at: auction.inserted_at,
+            timestamp_end: auction.timestamp_end,
+            days_old: daysOld.toFixed(1),
+            days_until_end: daysUntilEnd.toFixed(1),
+            has_ended: ends < now
+          });
+        });
+      }
+      
+      // Show recent auctions that haven't ended
+      const now = new Date();
+      const filteredAuctions = allData.filter(auction => {
+        const endTime = new Date(auction.timestamp_end);
+        return endTime > now; // Only active auctions
+      });
+      
+      console.log('Active auctions (not ended):', filteredAuctions.length);
+      
+      const transformedAuctions = filteredAuctions.map(auction => ({
         id: auction.auction_id || auction.id,
         title: auction.title,
         make: auction.make,
@@ -151,9 +179,14 @@ const FantasyAuctionApp = () => {
         auctionUrl: auction.url,
         imageUrl: getCarImageUrl(auction.make, auction.model),
         trending: Math.random() > 0.7,
-        endTime: auction.timestamp_end
+        endTime: auction.timestamp_end,
+        // Debug info
+        insertedAt: auction.inserted_at,
+        timestampEnd: auction.timestamp_end
       }));
+      
       setAuctions(transformedAuctions);
+      console.log('Final auctions to display:', transformedAuctions.length);
     }
     setLoading(false);
   };
@@ -432,10 +465,13 @@ const FantasyAuctionApp = () => {
   const CarSelectionScreen = () => (
     <div className="min-h-screen bg-gray-900 text-white pb-20">
       <div className="bg-gray-800 p-4 border-b border-gray-700">
-        <h1 className="text-xl font-bold">Available Cars</h1>
+        <h1 className="text-xl font-bold">Available Cars (DEBUG MODE)</h1>
         <div className="flex justify-between text-sm text-gray-300 mt-2">
           <span>Budget: ${budget.toLocaleString()}</span>
           <span>Garage: {garage.length}/7 cars</span>
+        </div>
+        <div className="text-yellow-400 text-sm mt-1">
+          Check browser console (F12) for debug info
         </div>
         {loading && <p className="text-blue-400 mt-2">Loading auctions...</p>}
       </div>
@@ -444,8 +480,8 @@ const FantasyAuctionApp = () => {
         {auctions.length === 0 ? (
           <div className="text-center py-8">
             <Car className="mx-auto text-gray-500 mb-4" size={48} />
-            <p className="text-gray-400">No auctions available at the moment.</p>
-            <p className="text-gray-500 text-sm mt-2">Check back soon for new listings!</p>
+            <p className="text-gray-400">No active auctions found.</p>
+            <p className="text-gray-500 text-sm mt-2">Check console for debug information.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
