@@ -1,25 +1,628 @@
-import logo from './logo.svg';
-import './App.css';
+import React, { useState, useEffect } from 'react';
+import { Car, Trophy, Users, DollarSign, Clock, Eye, TrendingUp, Plus, Star, LogOut } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 
-function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+// Supabase configuration
+const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const FantasyAuctionApp = () => {
+  const [currentScreen, setCurrentScreen] = useState('login');
+  const [user, setUser] = useState(null);
+  const [selectedLeague, setSelectedLeague] = useState(null);
+  const [garage, setGarage] = useState([]);
+  const [budget, setBudget] = useState(100000);
+  const [auctions, setAuctions] = useState([]);
+  const [leagues, setLeagues] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [userGarageId, setUserGarageId] = useState(null);
+
+  // Authentication functions
+  const signUp = async (email, password, username) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { username }
+      }
+    });
+    
+    if (error) {
+      alert('Error signing up: ' + error.message);
+      return false;
+    }
+    
+    // Create user profile
+    if (data.user) {
+      const { error: profileError } = await supabase
+        .from('users')
+        .insert([{ 
+          id: data.user.id, 
+          username, 
+          email 
+        }]);
+      
+      if (profileError) console.error('Profile creation error:', profileError);
+    }
+    
+    return true;
+  };
+
+  const signIn = async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+    
+    if (error) {
+      alert('Error signing in: ' + error.message);
+      return false;
+    }
+    
+    setUser(data.user);
+    setCurrentScreen('leagues');
+    return true;
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setCurrentScreen('login');
+    setGarage([]);
+    setBudget(100000);
+    setSelectedLeague(null);
+    setUserGarageId(null);
+  };
+
+  // Utility functions
+  const calculateTimeLeft = (endTime) => {
+    if (!endTime) return 'N/A';
+    
+    const now = new Date();
+    const end = new Date(endTime);
+    const diff = end - now;
+    
+    if (diff <= 0) return 'Ended';
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    
+    if (days > 0) {
+      return `${days}d ${hours}h`;
+    } else {
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      return `${hours}h ${minutes}m`;
+    }
+  };
+
+  const getCarImageUrl = (make, model) => {
+    const carImages = {
+      'BMW': 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=300&h=200&fit=crop',
+      'Porsche': 'https://images.unsplash.com/photo-1544829099-b9a0c5303bea?w=300&h=200&fit=crop',
+      'Toyota': 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=300&h=200&fit=crop',
+      'Honda': 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=300&h=200&fit=crop',
+      'Mercedes': 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=300&h=200&fit=crop',
+      'Nissan': 'https://images.unsplash.com/photo-1605559424843-9e4c228bf1c2?w=300&h=200&fit=crop',
+      'Ford': 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=300&h=200&fit=crop',
+      'Chevrolet': 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=300&h=200&fit=crop',
+      'Jaguar': 'https://images.unsplash.com/photo-1544829099-b9a0c5303bea?w=300&h=200&fit=crop',
+      'Ferrari': 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=300&h=200&fit=crop',
+      'Lamborghini': 'https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=300&h=200&fit=crop'
+    };
+    return carImages[make] || 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=300&h=200&fit=crop';
+  };
+
+  // Data fetching functions
+  const fetchAuctions = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('auctions')
+      .select('*')
+      .not('current_bid', 'is', null)
+      .order('timestamp_end', { ascending: true })
+      .limit(50);
+    
+    if (error) {
+      console.error('Error fetching auctions:', error);
+      setAuctions(getSampleAuctions());
+    } else {
+      const transformedAuctions = data.map(auction => ({
+        id: auction.auction_id || auction.id,
+        title: auction.title,
+        make: auction.make,
+        model: auction.model,
+        year: auction.year,
+        currentBid: auction.current_bid || auction.price_at_48h || 0,
+        day2Price: auction.price_at_48h,
+        finalPrice: auction.final_price,
+        timeLeft: calculateTimeLeft(auction.timestamp_end),
+        bids: Math.floor(Math.random() * 50) + 1,
+        auctionUrl: auction.url,
+        imageUrl: getCarImageUrl(auction.make, auction.model),
+        trending: Math.random() > 0.7,
+        endTime: auction.timestamp_end
+      }));
+      setAuctions(transformedAuctions);
+    }
+    setLoading(false);
+  };
+
+  const fetchLeagues = async () => {
+    const { data, error } = await supabase
+      .from('leagues')
+      .select('*')
+      .eq('is_public', true)
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching leagues:', error);
+      setLeagues(getSampleLeagues());
+    } else {
+      setLeagues(data.map(league => ({
+        ...league,
+        playerCount: 0,
+        status: 'Open'
+      })));
+    }
+  };
+
+  // Fallback sample data
+  const getSampleAuctions = () => [
+    {
+      id: 'sample-1',
+      title: "1995 BMW E36 M3",
+      make: "BMW",
+      currentBid: 28500,
+      timeLeft: "2d 14h",
+      bids: 23,
+      auctionUrl: "https://bringatrailer.com/listing/1995-bmw-m3-coupe/",
+      imageUrl: getCarImageUrl('BMW'),
+      trending: true
+    }
+  ];
+
+  const getSampleLeagues = () => [
+    { id: 'sample-1', name: "Test League", playerCount: 5, status: "Open" }
+  ];
+
+  // League and garage management
+  const joinLeague = async (league) => {
+    if (!user) return;
+    
+    try {
+      // Check if already a member
+      const { data: existingMember } = await supabase
+        .from('league_members')
+        .select('*')
+        .eq('league_id', league.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (existingMember) {
+        setSelectedLeague(league);
+        setCurrentScreen('cars');
+        return;
+      }
+      
+      // Create garage for user in this league
+      const { data: garageData, error: garageError } = await supabase
+        .from('garages')
+        .insert([{
+          user_id: user.id,
+          league_id: league.id,
+          remaining_budget: 100000
+        }])
+        .select()
+        .single();
+      
+      if (garageError) {
+        console.error('Error creating garage:', garageError);
+        alert('Error creating garage: ' + garageError.message);
+        return;
+      }
+      
+      // Add user to league members
+      const { error: memberError } = await supabase
+        .from('league_members')
+        .insert([{
+          league_id: league.id,
+          user_id: user.id,
+          total_score: 0
+        }]);
+      
+      if (memberError) {
+        console.error('Error joining league:', memberError);
+        alert('Error joining league: ' + memberError.message);
+        return;
+      }
+      
+      setSelectedLeague(league);
+      setUserGarageId(garageData.id);
+      setBudget(100000);
+      setGarage([]);
+      setCurrentScreen('cars');
+      
+    } catch (error) {
+      console.error('Error in joinLeague:', error);
+      alert('Error joining league');
+    }
+  };
+
+  const addToGarage = async (auction) => {
+    alert(`Added ${auction.title} to your garage! (Demo mode - database integration coming soon)`);
+    setGarage([...garage, auction]);
+    setBudget(budget - auction.currentBid);
+  };
+
+  // Load data when component mounts
+  useEffect(() => {
+    if (user) {
+      fetchAuctions();
+      fetchLeagues();
+    }
+  }, [user]);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setUser(session.user);
+        setCurrentScreen('leagues');
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setUser(session.user);
+      } else {
+        setUser(null);
+        setCurrentScreen('login');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const LoginScreen = () => {
+    const [isSignUp, setIsSignUp] = useState(false);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [username, setUsername] = useState('');
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      if (isSignUp) {
+        const success = await signUp(email, password, username);
+        if (success) {
+          alert('Check your email for verification link!');
+        }
+      } else {
+        await signIn(email, password);
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 flex items-center justify-center p-4">
+        <div className="bg-gray-800 rounded-xl p-8 w-full max-w-md border border-gray-700">
+          <div className="text-center mb-8">
+            <Car className="mx-auto text-blue-400 mb-4" size={48} />
+            <h1 className="text-3xl font-bold text-white mb-2">Garage Draft</h1>
+            <p className="text-gray-300">Fantasy Auto Auctions</p>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {isSignUp && (
+              <input 
+                type="text" 
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full p-3 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none"
+                required
+              />
+            )}
+            <input 
+              type="email" 
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-3 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none"
+              required
+            />
+            <input 
+              type="password" 
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-3 bg-gray-700 text-white rounded-lg border border-gray-600 focus:border-blue-400 focus:outline-none"
+              required
+            />
+            <button 
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition-colors"
+            >
+              {isSignUp ? 'Sign Up' : 'Login'}
+            </button>
+          </form>
+          
+          <p className="text-center text-gray-400 mt-6">
+            {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+            <span 
+              className="text-blue-400 cursor-pointer"
+              onClick={() => setIsSignUp(!isSignUp)}
+            >
+              {isSignUp ? 'Login' : 'Sign up'}
+            </span>
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  const LeaguesScreen = () => (
+    <div className="min-h-screen bg-gray-900 text-white">
+      <div className="bg-gray-800 p-4 border-b border-gray-700 flex justify-between items-center">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Trophy className="text-yellow-400" size={28} />
+          My Leagues
+        </h1>
+        <button onClick={signOut} className="text-gray-400 hover:text-white">
+          <LogOut size={20} />
+        </button>
+      </div>
+      
+      <div className="p-4 space-y-4">
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+          <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+            <Users className="text-green-400" size={20} />
+            Available Leagues
+          </h2>
+          
+          {leagues.length === 0 ? (
+            <p className="text-gray-400 text-center py-4">No leagues available. Check back soon!</p>
+          ) : (
+            leagues.map(league => (
+              <div key={league.id} className="bg-gray-700 rounded-lg p-4 mb-3">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-bold text-lg">{league.name}</h3>
+                  <span className="px-2 py-1 rounded text-sm bg-green-600">
+                    Open
+                  </span>
+                </div>
+                <div className="flex justify-between text-gray-300 text-sm mb-3">
+                  <span>{league.playerCount} players</span>
+                  <span>Ends: {new Date(league.end_date).toLocaleDateString()}</span>
+                </div>
+                <button 
+                  onClick={() => joinLeague(league)}
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg transition-colors"
+                >
+                  Join League
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+      
+      <BottomNav />
     </div>
   );
-}
 
-export default App;
+  const CarSelectionScreen = () => (
+    <div className="min-h-screen bg-gray-900 text-white pb-20">
+      <div className="bg-gray-800 p-4 border-b border-gray-700">
+        <h1 className="text-xl font-bold">Available Cars</h1>
+        <div className="flex justify-between text-sm text-gray-300 mt-2">
+          <span>Budget: ${budget.toLocaleString()}</span>
+          <span>Garage: {garage.length}/7 cars</span>
+        </div>
+        {loading && <p className="text-blue-400 mt-2">Loading auctions...</p>}
+      </div>
+      
+      <div className="p-4">
+        {auctions.length === 0 ? (
+          <div className="text-center py-8">
+            <Car className="mx-auto text-gray-500 mb-4" size={48} />
+            <p className="text-gray-400">No auctions available at the moment.</p>
+            <p className="text-gray-500 text-sm mt-2">Check back soon for new listings!</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {auctions.map(auction => (
+              <div key={auction.id} className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                <div className="flex items-start gap-4">
+                  <div className="w-20 h-16 rounded-lg overflow-hidden flex-shrink-0">
+                    <img 
+                      src={auction.imageUrl} 
+                      alt={auction.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between mb-2">
+                      <a 
+                        href={auction.auctionUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="font-bold text-lg text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        {auction.title}
+                      </a>
+                      {auction.trending && <Star className="text-yellow-400" size={16} />}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 text-sm text-gray-300 mb-3">
+                      <div className="flex items-center gap-1">
+                        <DollarSign size={14} />
+                        ${auction.currentBid.toLocaleString()}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Clock size={14} />
+                        {auction.timeLeft}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <TrendingUp size={14} />
+                        {auction.bids} bids
+                      </div>
+                      {auction.trending && (
+                        <div className="flex items-center gap-1 text-yellow-400">
+                          <Star size={14} />
+                          Trending
+                        </div>
+                      )}
+                    </div>
+                    
+                    <button 
+                      onClick={() => addToGarage(auction)}
+                      disabled={garage.some(car => car.id === auction.id) || budget < auction.currentBid}
+                      className={`w-full py-2 rounded-lg font-bold transition-colors ${
+                        garage.some(car => car.id === auction.id)
+                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                          : budget < auction.currentBid
+                          ? 'bg-red-600 text-white cursor-not-allowed'
+                          : 'bg-blue-600 hover:bg-blue-500 text-white'
+                      }`}
+                    >
+                      {garage.some(car => car.id === auction.id) 
+                        ? 'In Garage' 
+                        : budget < auction.currentBid
+                        ? 'Insufficient Budget'
+                        : 'Add to Garage'
+                      }
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      <BottomNav />
+    </div>
+  );
+
+  const GarageScreen = () => (
+    <div className="min-h-screen bg-gray-900 text-white pb-20">
+      <div className="bg-gray-800 p-4 border-b border-gray-700">
+        <h1 className="text-xl font-bold flex items-center gap-2">
+          <Car className="text-blue-400" size={24} />
+          My Garage
+        </h1>
+        <div className="flex justify-between text-sm text-gray-300 mt-2">
+          <span>Budget: ${budget.toLocaleString()}</span>
+          <span>{garage.length}/7 cars</span>
+        </div>
+      </div>
+      
+      <div className="p-4">
+        <div className="grid grid-cols-1 gap-4">
+          {Array.from({length: 7}, (_, i) => {
+            const car = garage[i];
+            return (
+              <div key={i} className={`rounded-xl p-4 border-2 border-dashed ${
+                car ? 'bg-gray-800 border-blue-400' : 'bg-gray-800 border-gray-600'
+              }`}>
+                {car ? (
+                  <div className="flex items-start gap-4">
+                    <div className="w-16 h-12 rounded-lg overflow-hidden flex-shrink-0">
+                      <img 
+                        src={car.imageUrl} 
+                        alt={car.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <a 
+                        href={car.auctionUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="font-bold text-lg text-blue-400 hover:text-blue-300 transition-colors block mb-2"
+                      >
+                        {car.title}
+                      </a>
+                      <div className="grid grid-cols-2 gap-2 text-sm text-gray-300 mb-3">
+                        <div>Purchase: ${car.currentBid.toLocaleString()}</div>
+                        <div>Current: ${(car.currentBid * 1.08).toLocaleString()}</div>
+                        <div className="text-green-400">Gain: +8.0%</div>
+                        <div>{car.timeLeft} left</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Car size={32} className="mx-auto mb-2 opacity-50" />
+                    <p>Empty Slot</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      
+      <BottomNav />
+    </div>
+  );
+
+  const LeaderboardScreen = () => (
+    <div className="min-h-screen bg-gray-900 text-white pb-20">
+      <div className="bg-gray-800 p-4 border-b border-gray-700">
+        <h1 className="text-xl font-bold flex items-center gap-2">
+          <Trophy className="text-yellow-400" size={24} />
+          Leaderboard
+        </h1>
+        <p className="text-sm text-gray-300 mt-1">Coming Soon!</p>
+      </div>
+      
+      <div className="p-4">
+        <div className="text-center py-8">
+          <Trophy className="mx-auto text-gray-500 mb-4" size={48} />
+          <p className="text-gray-400">Rankings will appear here once you join a league!</p>
+        </div>
+      </div>
+      
+      <BottomNav />
+    </div>
+  );
+
+  const BottomNav = () => (
+    <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700">
+      <div className="flex justify-around py-2">
+        {[
+          { screen: 'leagues', icon: Trophy, label: 'Leagues' },
+          { screen: 'cars', icon: Car, label: 'Cars' },
+          { screen: 'garage', icon: Users, label: 'Garage' },
+          { screen: 'leaderboard', icon: TrendingUp, label: 'Rankings' }
+        ].map(({ screen, icon: Icon, label }) => (
+          <button
+            key={screen}
+            onClick={() => setCurrentScreen(screen)}
+            className={`flex flex-col items-center py-2 px-4 ${
+              currentScreen === screen ? 'text-blue-400' : 'text-gray-400'
+            }`}
+          >
+            <Icon size={20} />
+            <span className="text-xs mt-1">{label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (!user) return <LoginScreen />;
+
+  return (
+    <div className="bg-gray-900 min-h-screen">
+      {currentScreen === 'leagues' && <LeaguesScreen />}
+      {currentScreen === 'cars' && <CarSelectionScreen />}
+      {currentScreen === 'garage' && <GarageScreen />}
+      {currentScreen === 'leaderboard' && <LeaderboardScreen />}
+    </div>
+  );
+};
+
+export default FantasyAuctionApp;
