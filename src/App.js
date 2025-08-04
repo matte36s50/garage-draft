@@ -117,10 +117,19 @@ const FantasyAuctionApp = () => {
   // Data fetching functions
   const fetchAuctions = async () => {
     setLoading(true);
+    
+    // Calculate date filters for day 2-3 auctions
+    const now = new Date();
+    const twoDaysAgo = new Date(now - (2 * 24 * 60 * 60 * 1000));
+    const threeDaysAgo = new Date(now - (3 * 24 * 60 * 60 * 1000));
+    
     const { data, error } = await supabase
       .from('auctions')
       .select('*')
       .not('current_bid', 'is', null)
+      .gte('inserted_at', threeDaysAgo.toISOString()) // Started at least 2 days ago
+      .lte('inserted_at', twoDaysAgo.toISOString())   // But no more than 3 days ago
+      .gte('timestamp_end', now.toISOString())        // Auction hasn't ended yet
       .order('timestamp_end', { ascending: true })
       .limit(50);
     
@@ -251,6 +260,15 @@ const FantasyAuctionApp = () => {
   };
 
   const addToGarage = async (auction) => {
+    if (garage.length >= 7) {
+      alert("Garage is full! Maximum 7 cars allowed.");
+      return;
+    }
+    if (budget < auction.currentBid) {
+      alert("Not enough budget remaining!");
+      return;
+    }
+    
     alert(`Added ${auction.title} to your garage! (Demo mode - database integration coming soon)`);
     setGarage([...garage, auction]);
     setBudget(budget - auction.currentBid);
