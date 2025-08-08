@@ -132,8 +132,6 @@ const FantasyAuctionApp = () => {
       console.error('Error fetching auctions:', error);
       setAuctions(getSampleAuctions());
     } else {
-      console.log('Active auctions found:', data.length);
-      
       const transformedAuctions = data.map(auction => ({
         id: auction.auction_id || auction.id,
         title: auction.title,
@@ -200,23 +198,23 @@ const FantasyAuctionApp = () => {
         .from('garage_cars')
         .select(`
           *,
-          auctions(*)
+          auctions!garage_cars_auction_id_fkey(*)
         `)
         .eq('garage_id', garageData.id);
       
       if (!carsError && carsData) {
         const garageCars = carsData.map(item => ({
           garageCarId: item.id,
-          id: item.auctions.auction_id,
-          title: item.auctions.title,
-          make: item.auctions.make,
-          model: item.auctions.model,
-          year: item.auctions.year,
-          currentBid: item.auctions.current_bid || item.purchase_price,
+          id: item.auctions?.auction_id || item.auction_id,
+          title: item.auctions?.title || 'Unknown Car',
+          make: item.auctions?.make || '',
+          model: item.auctions?.model || '',
+          year: item.auctions?.year || '',
+          currentBid: item.auctions?.current_bid || item.purchase_price,
           purchasePrice: item.purchase_price,
-          auctionUrl: item.auctions.url,
-          imageUrl: getCarImageUrl(item.auctions.make, item.auctions.model),
-          timeLeft: calculateTimeLeft(item.auctions.timestamp_end)
+          auctionUrl: item.auctions?.url || '#',
+          imageUrl: getCarImageUrl(item.auctions?.make, item.auctions?.model),
+          timeLeft: calculateTimeLeft(item.auctions?.timestamp_end)
         }));
         setGarage(garageCars);
       }
@@ -328,12 +326,12 @@ const FantasyAuctionApp = () => {
     }
     
     try {
-      // Add car to garage_cars table
+      // Add car to garage_cars table using auction_id (ensure consistency)
       const { data: garageCarData, error: garageCarError } = await supabase
         .from('garage_cars')
         .insert([{
           garage_id: userGarageId,
-          auction_id: auction.id,
+          auction_id: auction.id, // This should match what's in your auctions table
           purchase_price: auction.currentBid
         }])
         .select()
@@ -388,7 +386,7 @@ const FantasyAuctionApp = () => {
       }
       
       // Update garage budget
-      const newBudget = budget + car.purchasePrice;
+      const newBudget = budget + (car.purchasePrice || car.currentBid);
       const { error: budgetError } = await supabase
         .from('garages')
         .update({ remaining_budget: newBudget })
@@ -709,45 +707,44 @@ const FantasyAuctionApp = () => {
                           {car.title}
                         </a>
                         <div className="grid grid-cols-2 gap-2 text-sm text-gray-300 mb-3">
-                          <div>Purchase: ${car.purchasePrice.toLocaleString()}</div>
+                          <div>Purchase: ${(car.purchasePrice || car.currentBid).toLocaleString()}</div>
                           <div>Current: ${car.currentBid.toLocaleString()}</div>
                           <div className={`${
-                            calculateGain(car.purchasePrice, car.currentBid) >= 0 ? 'text-green-400' : 'text-red-400'
+                            calculateGain(car.purchasePrice || car.currentBid, car.currentBid) >= 0 ? 'text-green-400' : 'text-red-400'
                           }`}>
-                            Gain: {calculateGain(car.purchasePrice, car.currentBid) >= 0 ? '+' : ''}
-                            {calculateGain(car.purchasePrice, car.currentBid)}%
+                            Gain: {calculateGain(car.purchasePrice || car.currentBid, car.currentBid) >= 0 ? '+' : ''}
+                            {calculateGain(car.purchasePrice || car.currentBid, car.currentBid)}%
                           </div>
                           <div>{car.timeLeft} left</div>
                         </div>
                         <button 
                           onClick={() => removeFromGarage(car)}
                           className="bg-red-600 hover:bg-red-500 text-white px-4 py-1 rounded text-sm transition-colors"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <Car size={32} className="mx-auto mb-2 opacity-50" />
-                      <p>Empty Slot</p>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        
-        <BottomNav />
-      </div>
-    );
-  };
+                        >Remove
+                       </button>
+                     </div>
+                   </div>
+                 ) : (
+                   <div className="text-center py-8 text-gray-500">
+                     <Car size={32} className="mx-auto mb-2 opacity-50" />
+                     <p>Empty Slot</p>
+                   </div>
+                 )}
+               </div>
+             );
+           })}
+         </div>
+       </div>
+       
+       <BottomNav />
+     </div>
+   );
+ };
 
-  const LeaderboardScreen = () => (
-    <div className="min-h-screen bg-gray-900 text-white pb-20">
-      <div className="bg-gray-800 p-4 border-b border-gray-700">
-<h1 className="text-xl font-bold flex items-center gap-2">
+ const LeaderboardScreen = () => (
+   <div className="min-h-screen bg-gray-900 text-white pb-20">
+     <div className="bg-gray-800 p-4 border-b border-gray-700">
+       <h1 className="text-xl font-bold flex items-center gap-2">
          <Trophy className="text-yellow-400" size={24} />
          Leaderboard
        </h1>
