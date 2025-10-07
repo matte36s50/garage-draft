@@ -88,12 +88,14 @@ const FantasyAuctionApp = () => {
     
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     
     if (days > 0) {
       return `${days}d ${hours}h`;
-    } else {
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    } else if (hours > 0) {
       return `${hours}h ${minutes}m`;
+    } else {
+      return `${minutes}m`;
     }
   };
 
@@ -118,40 +120,58 @@ const FantasyAuctionApp = () => {
   const fetchAuctions = async () => {
     setLoading(true);
     
-    // Get active auctions only
-    const now = new Date();
-    const { data, error } = await supabase
-      .from('auctions')
-      .select('*')
-      .not('current_bid', 'is', null)
-      .gte('timestamp_end', now.toISOString()) // Only active auctions
-      .order('timestamp_end', { ascending: true })
-      .limit(50);
-    
-    if (error) {
-      console.error('Error fetching auctions:', error);
-      setAuctions(getSampleAuctions());
-    } else {
-      const transformedAuctions = data.map(auction => ({
-        id: auction.auction_id || auction.id,
-        title: auction.title,
-        make: auction.make,
-        model: auction.model,
-        year: auction.year,
-        currentBid: auction.current_bid || auction.price_at_48h || 0,
-        day2Price: auction.price_at_48h,
-        finalPrice: auction.final_price,
-        timeLeft: calculateTimeLeft(auction.timestamp_end),
-        bids: Math.floor(Math.random() * 50) + 1,
-        auctionUrl: auction.url,
-        imageUrl: getCarImageUrl(auction.make, auction.model),
-        trending: Math.random() > 0.7,
-        endTime: auction.timestamp_end
-      }));
+    try {
+      // Get current Unix timestamp
+      const now = Math.floor(Date.now() / 1000);
+      
+      // Query for active auctions (end time is in the future)
+      const { data, error } = await supabase
+        .from('auctions')
+        .select('*')
+        .not('current_bid', 'is', null)
+        .gt('timestamp_end', now) // Greater than current time (still active)
+        .is('final_price', null) // Only auctions that haven't ended
+        .order('timestamp_end', { ascending: true })
+        .limit(50);
+      
+      if (error) {
+        console.error('Error fetching auctions:', error);
+        setAuctions([]);
+        return;
+      }
+      
+      console.log(`Fetched ${data.length} active auctions`);
+      
+      const transformedAuctions = data.map(auction => {
+        // Convert Unix timestamp to Date for calculateTimeLeft
+        const endDate = new Date(auction.timestamp_end * 1000);
+        
+        return {
+          id: auction.auction_id || auction.id,
+          title: auction.title,
+          make: auction.make,
+          model: auction.model,
+          year: auction.year,
+          currentBid: parseFloat(auction.current_bid) || parseFloat(auction.price_at_48h) || 0,
+          day2Price: auction.price_at_48h,
+          finalPrice: auction.final_price,
+          timeLeft: calculateTimeLeft(endDate),
+          bids: Math.floor(Math.random() * 50) + 1,
+          auctionUrl: auction.url,
+          imageUrl: getCarImageUrl(auction.make, auction.model),
+          trending: Math.random() > 0.7,
+          endTime: endDate
+        };
+      });
       
       setAuctions(transformedAuctions);
+      
+    } catch (error) {
+      console.error('Error in fetchAuctions:', error);
+      setAuctions([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const fetchLeagues = async () => {
@@ -214,7 +234,7 @@ const FantasyAuctionApp = () => {
           purchasePrice: item.purchase_price,
           auctionUrl: item.auctions?.url || '#',
           imageUrl: getCarImageUrl(item.auctions?.make, item.auctions?.model),
-          timeLeft: calculateTimeLeft(item.auctions?.timestamp_end)
+          timeLeft: calculateTimeLeft(item.auctions?.timestamp_end ? new Date(item.auctions.timestamp_end * 1000) : null)
         }));
         setGarage(garageCars);
       }
@@ -719,85 +739,87 @@ const FantasyAuctionApp = () => {
                         </div>
                         <button 
                           onClick={() => removeFromGarage(car)}
-                          className="bg-red-600 hover:bg-red-500 text-white px-4 py-1 rounded text-sm transition-colors"
-                        >Remove
-                       </button>
-                     </div>
-                   </div>
-                 ) : (
-                   <div className="text-center py-8 text-gray-500">
-                     <Car size={32} className="mx-auto mb-2 opacity-50" />
-                     <p>Empty Slot</p>
-                   </div>
-                 )}
-               </div>
-             );
-           })}
-         </div>
-       </div>
-       
-       <BottomNav />
-     </div>
-   );
- };
+                          className="bg-red-600 hover:bg-red-500 text-white px-4 py-1
+                            rounded text-sm transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <Car size={32} className="mx-auto mb-2 opacity-50" />
+                      <p>Empty Slot</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        
+        <BottomNav />
+      </div>
+    );
+  };
 
- const LeaderboardScreen = () => (
-   <div className="min-h-screen bg-gray-900 text-white pb-20">
-     <div className="bg-gray-800 p-4 border-b border-gray-700">
-       <h1 className="text-xl font-bold flex items-center gap-2">
-         <Trophy className="text-yellow-400" size={24} />
-         Leaderboard
-       </h1>
-       <p className="text-sm text-gray-300 mt-1">
-         {selectedLeague?.name || 'Select a League'}
-       </p>
-     </div>
-     
-     <div className="p-4">
-       <div className="text-center py-8">
-         <Trophy className="mx-auto text-gray-500 mb-4" size={48} />
-         <p className="text-gray-400">Rankings will appear here once leagues have active members!</p>
-       </div>
-     </div>
-     
-     <BottomNav />
-   </div>
- );
+  const LeaderboardScreen = () => (
+    <div className="min-h-screen bg-gray-900 text-white pb-20">
+      <div className="bg-gray-800 p-4 border-b border-gray-700">
+        <h1 className="text-xl font-bold flex items-center gap-2">
+          <Trophy className="text-yellow-400" size={24} />
+          Leaderboard
+        </h1>
+        <p className="text-sm text-gray-300 mt-1">
+          {selectedLeague?.name || 'Select a League'}
+        </p>
+      </div>
+      
+      <div className="p-4">
+        <div className="text-center py-8">
+          <Trophy className="mx-auto text-gray-500 mb-4" size={48} />
+          <p className="text-gray-400">Rankings will appear here once leagues have active members!</p>
+        </div>
+      </div>
+      
+      <BottomNav />
+    </div>
+  );
 
- const BottomNav = () => (
-   <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700">
-     <div className="flex justify-around py-2">
-       {[
-         { screen: 'leagues', icon: Trophy, label: 'Leagues' },
-         { screen: 'cars', icon: Car, label: 'Cars' },
-         { screen: 'garage', icon: Users, label: 'Garage' },
-         { screen: 'leaderboard', icon: TrendingUp, label: 'Rankings' }
-       ].map(({ screen, icon: Icon, label }) => (
-         <button
-           key={screen}
-           onClick={() => setCurrentScreen(screen)}
-           className={`flex flex-col items-center py-2 px-4 ${
-             currentScreen === screen ? 'text-blue-400' : 'text-gray-400'
-           }`}
-         >
-           <Icon size={20} />
-           <span className="text-xs mt-1">{label}</span>
-         </button>
-       ))}
-     </div>
-   </div>
- );
+  const BottomNav = () => (
+    <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700">
+      <div className="flex justify-around py-2">
+        {[
+          { screen: 'leagues', icon: Trophy, label: 'Leagues' },
+          { screen: 'cars', icon: Car, label: 'Cars' },
+          { screen: 'garage', icon: Users, label: 'Garage' },
+          { screen: 'leaderboard', icon: TrendingUp, label: 'Rankings' }
+        ].map(({ screen, icon: Icon, label }) => (
+          <button
+            key={screen}
+            onClick={() => setCurrentScreen(screen)}
+            className={`flex flex-col items-center py-2 px-4 ${
+              currentScreen === screen ? 'text-blue-400' : 'text-gray-400'
+            }`}
+          >
+            <Icon size={20} />
+            <span className="text-xs mt-1">{label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
- if (!user) return <LoginScreen />;
+  if (!user) return <LoginScreen />;
 
- return (
-   <div className="bg-gray-900 min-h-screen">
-     {currentScreen === 'leagues' && <LeaguesScreen />}
-     {currentScreen === 'cars' && <CarSelectionScreen />}
-     {currentScreen === 'garage' && <GarageScreen />}
-     {currentScreen === 'leaderboard' && <LeaderboardScreen />}
-   </div>
- );
+  return (
+    <div className="bg-gray-900 min-h-screen">
+      {currentScreen === 'leagues' && <LeaguesScreen />}
+      {currentScreen === 'cars' && <CarSelectionScreen />}
+      {currentScreen === 'garage' && <GarageScreen />}
+      {currentScreen === 'leaderboard' && <LeaderboardScreen />}
+    </div>
+  );
 };
 
 export default FantasyAuctionApp;
