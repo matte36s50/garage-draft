@@ -1,3 +1,25 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* BixPrix Brand Tokens */
+:root {
+  --bp-navy: #1B263B;
+  --bp-cream: #F9F7F3;
+  --bp-red: #D64541;
+  --bp-gold: #C2A14D;
+  --bp-gray: #B0B3B8;
+  --bp-ink: #111111;
+}
+
+/* Utility helpers (used by the app) */
+.text-bpCream { color: var(--bp-cream); }
+.text-bpGray { color: var(--bp-gray); }
+.text-bpInk { color: var(--bp-ink); }
+
+.bg-bpNavy { background-color: var(--bp-navy); }
+.bg-bpCream { background-color: var(--bp-cream); }
+.bg-bpRed { background-color: var(--bp-red); }
+.bg-bpGold { background-color: var(--bp-gold); }
+
+.border-bpNavy\/20 { border-color: rgba(27, 38, 59, 0.2); }
