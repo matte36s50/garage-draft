@@ -18,40 +18,17 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 function BrandLogo({ compact }) {
   return (
     <div className="flex items-center gap-3 select-none">
-      {/* Crest with bold gold rim and navy field */}
-      <svg
-        width="36"
-        height="36"
-        viewBox="0 0 36 36"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden="true"
-      >
-        {/* Outer gold rim */}
-        <path
-          d="M18 33c8.4 0 15.2-6.8 15.2-15.2V8.2c0-1.7-1.3-3-3-3H5.8c-1.7 0-3 1.3-3 3v9.6C2.8 26.2 9.6 33 18 33Z"
-          fill="none"
-          stroke="#C2A14D"
-          strokeWidth="2.4"
-        />
-        {/* Inner shield field (navy with thin cream pinline) */}
-        <path
-          d="M5.2 8.4c0-1.1.9-2 2-2h21.6c1.1 0 2 .9 2 2v9.1C30.8 25.7 24.9 31 18 31S5.2 25.7 5.2 17.5V8.4Z"
-          fill="#0F1A2B"
-          stroke="#FAF6EE"
-          strokeWidth="1.2"
-        />
-        {/* Diagonal stripes: cream spacer, racing red, metallic gold */}
-        <path d="M31 12 L10 30.2 L7.9 30.2 L31 9.8 Z" fill="#FAF6EE"/>
-        <path d="M31 10.6 L11 27.8 L9.0 27.8 L31 8.4 Z" fill="#D64541"/>
-        <path d="M31 15 L14 29.2 L11.8 29.2 L31 12.8 Z" fill="#C2A14D"/>
-      </svg>
-
-      {/* Wordmark */}
+      {/* Use your preferred crest image from /public */}
+      <img
+        src="/bixprix-logo.png"
+        alt="BixPrix crest"
+        className="h-10 w-auto drop-shadow-sm"
+      />
       <div className="leading-tight">
         <div className="font-extrabold tracking-wide text-[22px] text-bpCream">BIXPRIX</div>
         {!compact && (
           <div className="text-[10px] tracking-[0.18em] text-bpGray/95 uppercase">
-            Build Your Dream Garage
+            Race the Market
           </div>
         )}
       </div>
@@ -62,7 +39,7 @@ function BrandLogo({ compact }) {
 function Shell({ children, onSignOut }) {
   return (
     <div className="min-h-screen bg-bpNavy text-bpCream">
-      {/* Solid header (no translucency) */}
+      {/* Solid header */}
       <header className="sticky top-0 z-40 bg-bpNavy border-b border-white/10">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
           <BrandLogo />
@@ -88,7 +65,7 @@ function Shell({ children, onSignOut }) {
 
       <footer className="border-t border-white/10 mt-10">
         <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-bpGray">
-          © {new Date().getFullYear()} BixPrix — Built for enthusiasts.
+          © {new Date().getFullYear()} BixPrix — Race the Market.
         </div>
       </footer>
     </div>
@@ -350,7 +327,7 @@ export default function BixPrixApp() {
         <Card className="w-full max-w-md p-8">
           <div className="flex items-center justify-center mb-6"><BrandLogo /></div>
           <h1 className="text-xl font-semibold text-bpInk/80 mb-1 text-center">Welcome</h1>
-          <p className="text-sm text-bpInk/70 text-center mb-6">Sign in to draft cars and build your dream garage.</p>
+          <p className="text-sm text-bpInk/70 text-center mb-6">Sign in to draft cars and race the market.</p>
           <div className="space-y-3">
             {isSignUp && (
               <input className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} />
