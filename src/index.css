@@ -2,24 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
-/* BixPrix Brand Tokens */
-:root {
-  --bp-navy: #1B263B;
-  --bp-cream: #F9F7F3;
-  --bp-red: #D64541;
-  --bp-gold: #C2A14D;
-  --bp-gray: #B0B3B8;
-  --bp-ink: #111111;
+/* Font (Inter) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* BixPrix Brand Tokens (tuned to mockup) */
+:root{
+  --bp-navy:#0F1A2B;   /* deeper navy */
+  --bp-cream:#FAF6EE;  /* warm off-white */
+  --bp-red:#D64541;    /* racing red */
+  --bp-gold:#C2A14D;   /* metallic gold */
+  --bp-gray:#B0B3B8;   /* UI gray */
+  --bp-ink:#111111;    /* text on light */
 }
 
-/* Utility helpers (used by the app) */
-.text-bpCream { color: var(--bp-cream); }
-.text-bpGray { color: var(--bp-gray); }
-.text-bpInk { color: var(--bp-ink); }
+/* Base type + background for consistent feel */
+@layer base {
+  html { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+  body { background-color: var(--bp-navy); color: var(--bp-cream); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+}
 
-.bg-bpNavy { background-color: var(--bp-navy); }
-.bg-bpCream { background-color: var(--bp-cream); }
-.bg-bpRed { background-color: var(--bp-red); }
-.bg-bpGold { background-color: var(--bp-gold); }
-
-.border-bpNavy\/20 { border-color: rgba(27, 38, 59, 0.2); }
+/* Tiny helpers used by the components */
+.text-bpCream{color:var(--bp-cream)}
+.text-bpGray{color:var(--bp-gray)}
+.text-bpInk{color:var(--bp-ink)}
+.bg-bpNavy{background-color:var(--bp-navy)}
+.bg-bpCream{background-color:var(--bp-cream)}
+.bg-bpRed{background-color:var(--bp-red)}
+.bg-bpGold{background-color:var(--bp-gold)}
+.border-bpNavy\/20{border-color:rgba(15,26,43,0.2)}
