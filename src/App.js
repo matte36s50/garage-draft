@@ -3,18 +3,11 @@ import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search } from 'luc
 import { createClient } from '@supabase/supabase-js'
 
 /*
-  BixPrix Design System (Tailwind-friendly) — JS version (no TypeScript)
-  ---------------------------------------------------------------------
-  Palette
-    --bp-navy: #1B263B
-    --bp-cream: #F9F7F3
-    --bp-red: #D64541
-    --bp-gold: #C2A14D
-    --bp-gray: #B0B3B8
-    --bp-ink: #111111
+  BixPrix App — JavaScript version (no TypeScript)
+  Uses Tailwind classes + brand tokens defined in src/index.css
 */
 
-// Supabase configuration (demo values — move to .env for production)
+// --- Supabase configuration (demo values; move to .env for production) ---
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
 const supabase = createClient(supabaseUrl, supabaseKey)
@@ -25,20 +18,28 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 function BrandLogo({ compact }) {
   return (
     <div className="flex items-center gap-2 select-none">
-      {/* Crest */}
+      {/* Crest with gold outline for contrast on navy */}
       <svg width="28" height="32" viewBox="0 0 28 32" fill="none" xmlns="http://www.w3.org/2000/svg"
            className="drop-shadow-sm">
-        <path d="M14 30c6.9 0 12.5-5.6 12.5-12.5V6.8c0-1.5-1.2-2.8-2.8-2.8H4.3C2.8 4 1.5 5.2 1.5 6.8v10.7C1.5 24.4 7.1 30 14 30Z" stroke="#1B263B" strokeWidth="2" fill="#F9F7F3"/>
-        {/* diagonal stripes */}
-        <path d="M26 17 L10 29 L6.5 29 L26 14.5 Z" fill="#C2A14D" opacity="0.95"/>
-        <path d="M26 13.5 L7.5 28.5 L4.5 28.5 L26 11.5 Z" fill="#F9F7F3"/>
-        <path d="M26 11 L6 27.5 L4 27.5 L26 9 Z" fill="#D64541"/>
+        {/* outer gold rim */}
+        <path d="M14 30c6.9 0 12.5-5.6 12.5-12.5V6.8c0-1.5-1.2-2.8-2.8-2.8H4.3C2.8 4 1.5 5.2 1.5 6.8v10.7C1.5 24.4 7.1 30 14 30Z"
+              stroke="#C2A14D" strokeWidth="2" fill="transparent"/>
+        {/* shield field */}
+        <path d="M3.5 7.2c0-.9.7-1.7 1.7-1.7h17.6c.9 0 1.7.7 1.7 1.7v10.3C24.5 23.7 19.8 28 14 28S3.5 23.7 3.5 17.5V7.2Z"
+              fill="#0F1A2B" stroke="#FAF6EE" strokeWidth="1.2"/>
+        {/* diagonal stripes (cream spacer, red, gold) */}
+        <path d="M26 12 L6 28.2 L4.5 28.2 L26 10 Z" fill="#FAF6EE"/>
+        <path d="M26 11 L7 27.2 L5.2 27.2 L26 9 Z" fill="#D64541"/>
+        <path d="M26 14.5 L10 28.8 L7.8 28.8 L26 12.8 Z" fill="#C2A14D"/>
       </svg>
+
       {/* Wordmark */}
       <div className="leading-tight">
         <div className="font-extrabold tracking-wide text-[20px] text-bpCream">BIXPRIX</div>
         {!compact && (
-          <div className="text-[11px] tracking-[0.12em] text-bpGray/90 uppercase">Build Your Dream Garage</div>
+          <div className="text-[10px] tracking-[0.16em] text-bpGray/95 uppercase">
+            Build Your Dream Garage
+          </div>
         )}
       </div>
     </div>
@@ -51,11 +52,11 @@ function Shell({ children, onSignOut }) {
       <header className="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-bpNavy/80 bg-bpNavy border-b border-white/10">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
           <BrandLogo />
-          <div className="hidden sm:flex items-center gap-6 text-sm text-bpGray">
-            <a className="hover:text-bpCream/90" href="#">Garage</a>
-            <a className="hover:text-bpCream/90" href="#">Auctions</a>
-            <a className="hover:text-bpCream/90" href="#">Leaderboard</a>
-          </div>
+          <nav className="hidden sm:flex items-center gap-6 text-sm text-bpGray">
+            <a className="hover:text-bpCream/90" href="#garage">Garage</a>
+            <a className="hover:text-bpCream/90" href="#auctions">Auctions</a>
+            <a className="hover:text-bpCream/90" href="#leaderboard">Leaderboard</a>
+          </nav>
           {onSignOut && (
             <button onClick={onSignOut} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-bpCream text-sm">
               <LogOut size={16} />
@@ -78,7 +79,9 @@ function Shell({ children, onSignOut }) {
 // Reusable UI
 function Card({ children, className = '' }) {
   return (
-    <div className={`bg-bpCream text-bpInk border border-bpNavy/20 rounded-xl shadow-[0_6px_20px_rgba(0,0,0,0.18)] ${className}`}>{children}</div>
+    <div className={`bg-bpCream text-bpInk border border-white/50 rounded-2xl shadow-[0_8px_28px_rgba(0,0,0,0.22)] ${className}`}>
+      {children}
+    </div>
   )
 }
 
@@ -86,7 +89,7 @@ function PrimaryButton({ className = '', children, ...props }) {
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center rounded-md px-4 py-2 font-semibold bg-bpNavy text-bpCream border border-bpNavy/40 hover:bg-bpRed focus:outline-none focus:ring-2 focus:ring-bpGold/60 active:translate-y-[0.5px] transition ${className}`}
+      className={`inline-flex items-center justify-center rounded-md px-4 py-2 font-semibold bg-bpNavy text-bpCream border border-bpNavy/40 hover:bg-bpRed focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition ${className}`}
     >
       {children}
     </button>
@@ -108,7 +111,7 @@ function OutlineButton({ className = '', children, ...props }) {
 // App
 // -------------------------
 export default function BixPrixApp() {
-  const [currentScreen, setCurrentScreen] = useState('login') // 'login'|'leagues'|'cars'|'garage'|'leaderboard'
+  const [currentScreen, setCurrentScreen] = useState('leagues') // 'login'|'leagues'|'cars'|'garage'|'leaderboard'
   const [user, setUser] = useState(null)
   const [selectedLeague, setSelectedLeague] = useState(null)
   const [garage, setGarage] = useState([])
@@ -305,9 +308,7 @@ export default function BixPrixApp() {
   useEffect(() => { if (user) { fetchAuctions(); fetchLeagues() } }, [user])
   useEffect(() => { if (selectedLeague && user) fetchUserGarage(selectedLeague.id) }, [selectedLeague, user])
 
-  // -------------------------
-  // Screens (styled)
-  // -------------------------
+  // Screens
   function LoginScreen() {
     const [isSignUp, setIsSignUp] = useState(false)
     const [email, setEmail] = useState('')
@@ -326,7 +327,7 @@ export default function BixPrixApp() {
     }
 
     return (
-      <div className="min-h-screen bg-gradient-to-b from-bpNavy to-[#0E1420] flex items-center justify-center px-4">
+      <div className="min-h-screen bg-gradient-to-b from-bpNavy to-[#0B1220] flex items-center justify-center px-4">
         <Card className="w-full max-w-md p-8">
           <div className="flex items-center justify-center mb-6"><BrandLogo /></div>
           <h1 className="text-xl font-semibold text-bpInk/80 mb-1 text-center">Welcome</h1>
@@ -497,5 +498,3 @@ export default function BixPrixApp() {
   if (currentScreen === 'leaderboard') return <LeaderboardScreen />
   return null
 }
-
-// Tailwind helper classes via CSS variables live in src/index.css
