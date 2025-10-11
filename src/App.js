@@ -12,32 +12,45 @@ const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-// -------------------------
-// Brand primitives
-// -------------------------
+/* -------------------------
+   Brand primitives
+------------------------- */
 function BrandLogo({ compact }) {
   return (
-    <div className="flex items-center gap-2 select-none">
-      {/* Crest with gold outline for contrast on navy */}
-      <svg width="28" height="32" viewBox="0 0 28 32" fill="none" xmlns="http://www.w3.org/2000/svg"
-           className="drop-shadow-sm">
-        {/* outer gold rim */}
-        <path d="M14 30c6.9 0 12.5-5.6 12.5-12.5V6.8c0-1.5-1.2-2.8-2.8-2.8H4.3C2.8 4 1.5 5.2 1.5 6.8v10.7C1.5 24.4 7.1 30 14 30Z"
-              stroke="#C2A14D" strokeWidth="2" fill="transparent"/>
-        {/* shield field */}
-        <path d="M3.5 7.2c0-.9.7-1.7 1.7-1.7h17.6c.9 0 1.7.7 1.7 1.7v10.3C24.5 23.7 19.8 28 14 28S3.5 23.7 3.5 17.5V7.2Z"
-              fill="#0F1A2B" stroke="#FAF6EE" strokeWidth="1.2"/>
-        {/* diagonal stripes (cream spacer, red, gold) */}
-        <path d="M26 12 L6 28.2 L4.5 28.2 L26 10 Z" fill="#FAF6EE"/>
-        <path d="M26 11 L7 27.2 L5.2 27.2 L26 9 Z" fill="#D64541"/>
-        <path d="M26 14.5 L10 28.8 L7.8 28.8 L26 12.8 Z" fill="#C2A14D"/>
+    <div className="flex items-center gap-3 select-none">
+      {/* Crest with bold gold rim and navy field */}
+      <svg
+        width="36"
+        height="36"
+        viewBox="0 0 36 36"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        {/* Outer gold rim */}
+        <path
+          d="M18 33c8.4 0 15.2-6.8 15.2-15.2V8.2c0-1.7-1.3-3-3-3H5.8c-1.7 0-3 1.3-3 3v9.6C2.8 26.2 9.6 33 18 33Z"
+          fill="none"
+          stroke="#C2A14D"
+          strokeWidth="2.4"
+        />
+        {/* Inner shield field (navy with thin cream pinline) */}
+        <path
+          d="M5.2 8.4c0-1.1.9-2 2-2h21.6c1.1 0 2 .9 2 2v9.1C30.8 25.7 24.9 31 18 31S5.2 25.7 5.2 17.5V8.4Z"
+          fill="#0F1A2B"
+          stroke="#FAF6EE"
+          strokeWidth="1.2"
+        />
+        {/* Diagonal stripes: cream spacer, racing red, metallic gold */}
+        <path d="M31 12 L10 30.2 L7.9 30.2 L31 9.8 Z" fill="#FAF6EE"/>
+        <path d="M31 10.6 L11 27.8 L9.0 27.8 L31 8.4 Z" fill="#D64541"/>
+        <path d="M31 15 L14 29.2 L11.8 29.2 L31 12.8 Z" fill="#C2A14D"/>
       </svg>
 
       {/* Wordmark */}
       <div className="leading-tight">
-        <div className="font-extrabold tracking-wide text-[20px] text-bpCream">BIXPRIX</div>
+        <div className="font-extrabold tracking-wide text-[22px] text-bpCream">BIXPRIX</div>
         {!compact && (
-          <div className="text-[10px] tracking-[0.16em] text-bpGray/95 uppercase">
+          <div className="text-[10px] tracking-[0.18em] text-bpGray/95 uppercase">
             Build Your Dream Garage
           </div>
         )}
@@ -49,7 +62,8 @@ function BrandLogo({ compact }) {
 function Shell({ children, onSignOut }) {
   return (
     <div className="min-h-screen bg-bpNavy text-bpCream">
-      <header className="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-bpNavy/80 bg-bpNavy border-b border-white/10">
+      {/* Solid header (no translucency) */}
+      <header className="sticky top-0 z-40 bg-bpNavy border-b border-white/10">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
           <BrandLogo />
           <nav className="hidden sm:flex items-center gap-6 text-sm text-bpGray">
@@ -58,15 +72,20 @@ function Shell({ children, onSignOut }) {
             <a className="hover:text-bpCream/90" href="#leaderboard">Leaderboard</a>
           </nav>
           {onSignOut && (
-            <button onClick={onSignOut} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-bpCream text-sm">
+            <button
+              onClick={onSignOut}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-bpCream text-sm"
+            >
               <LogOut size={16} />
               <span className="hidden sm:inline">Sign out</span>
             </button>
           )}
         </div>
-        <div className="h-0.5 bg-bpRed/80"/>
+        <div className="h-0.5 bg-bpRed/80" />
       </header>
+
       <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+
       <footer className="border-t border-white/10 mt-10">
         <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-bpGray">
           © {new Date().getFullYear()} BixPrix — Built for enthusiasts.
@@ -76,7 +95,7 @@ function Shell({ children, onSignOut }) {
   )
 }
 
-// Reusable UI
+/* Reusable UI */
 function Card({ children, className = '' }) {
   return (
     <div className={`bg-bpCream text-bpInk border border-white/50 rounded-2xl shadow-[0_8px_28px_rgba(0,0,0,0.22)] ${className}`}>
@@ -107,9 +126,9 @@ function OutlineButton({ className = '', children, ...props }) {
   )
 }
 
-// -------------------------
-// App
-// -------------------------
+/* -------------------------
+   App
+------------------------- */
 export default function BixPrixApp() {
   const [currentScreen, setCurrentScreen] = useState('leagues') // 'login'|'leagues'|'cars'|'garage'|'leaderboard'
   const [user, setUser] = useState(null)
@@ -308,7 +327,7 @@ export default function BixPrixApp() {
   useEffect(() => { if (user) { fetchAuctions(); fetchLeagues() } }, [user])
   useEffect(() => { if (selectedLeague && user) fetchUserGarage(selectedLeague.id) }, [selectedLeague, user])
 
-  // Screens
+  /* Screens */
   function LoginScreen() {
     const [isSignUp, setIsSignUp] = useState(false)
     const [email, setEmail] = useState('')
