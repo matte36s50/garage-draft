@@ -2,23 +2,13 @@ import React, { useState, useEffect } from 'react'
 import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 
-/*
-  BixPrix App — JavaScript version (no TypeScript)
-  Uses Tailwind classes + brand tokens defined in src/index.css
-*/
-
-// --- Supabase configuration (demo values; move to .env for production) ---
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-/* -------------------------
-   Brand primitives
-------------------------- */
 function BrandLogo({ compact }) {
   return (
     <div className="flex items-center gap-3 select-none">
-      {/* Use your preferred crest image from /public */}
       <img
         src="/bixprix-logo.png"
         alt="BixPrix crest"
@@ -39,7 +29,6 @@ function BrandLogo({ compact }) {
 function Shell({ children, onSignOut }) {
   return (
     <div className="min-h-screen bg-bpNavy text-bpCream">
-      {/* Solid header */}
       <header className="sticky top-0 z-40 bg-bpNavy border-b border-white/10">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
           <BrandLogo />
@@ -72,7 +61,6 @@ function Shell({ children, onSignOut }) {
   )
 }
 
-/* Reusable UI */
 function Card({ children, className = '' }) {
   return (
     <div className={`bg-bpCream text-bpInk border border-white/50 rounded-2xl shadow-[0_8px_28px_rgba(0,0,0,0.22)] ${className}`}>
@@ -103,11 +91,8 @@ function OutlineButton({ className = '', children, ...props }) {
   )
 }
 
-/* -------------------------
-   App
-------------------------- */
 export default function BixPrixApp() {
-  const [currentScreen, setCurrentScreen] = useState('leagues') // 'login'|'leagues'|'cars'|'garage'|'leaderboard'
+  const [currentScreen, setCurrentScreen] = useState('leagues')
   const [user, setUser] = useState(null)
   const [selectedLeague, setSelectedLeague] = useState(null)
   const [garage, setGarage] = useState([])
@@ -130,7 +115,7 @@ export default function BixPrixApp() {
     return `${minutes}m`
   }
 
-  const getCarImageUrl = (make) => {
+  const getDefaultCarImage = (make) => {
     const map = {
       BMW: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=640&h=420&fit=crop',
       Porsche: 'https://images.unsplash.com/photo-1544829099-b9a0c5303bea?w=640&h=420&fit=crop',
@@ -159,10 +144,16 @@ export default function BixPrixApp() {
         .is('final_price', null)
         .order('timestamp_end', { ascending: true })
         .limit(50)
+      
       if (error) throw error
+      
       const transformed = (data||[]).map((a) => {
         const endDate = new Date(a.timestamp_end * 1000)
         const baseline = parseFloat(a.price_at_48h)
+        
+        // Use the image_url from database, fallback to default if not available
+        const imageUrl = a.image_url || getDefaultCarImage(a.make)
+        
         return {
           id: a.auction_id || a.id,
           title: a.title,
@@ -175,7 +166,7 @@ export default function BixPrixApp() {
           finalPrice: a.final_price,
           timeLeft: calculateTimeLeft(endDate),
           auctionUrl: a.url,
-          imageUrl: getCarImageUrl(a.make),
+          imageUrl: imageUrl,
           trending: Math.random() > 0.7,
           endTime: endDate,
         }
@@ -184,7 +175,9 @@ export default function BixPrixApp() {
     } catch (e) {
       console.error(e)
       setAuctions([])
-    } finally { setLoading(false) }
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   const fetchLeagues = async () => {
@@ -205,7 +198,9 @@ export default function BixPrixApp() {
       .eq('user_id', user.id)
       .eq('league_id', leagueId)
       .maybeSingle()
+    
     if (ge) { console.error(ge); return }
+    
     if (g) {
       setUserGarageId(g.id)
       setBudget(g.remaining_budget)
@@ -213,24 +208,33 @@ export default function BixPrixApp() {
         .from('garage_cars')
         .select(`*, auctions!garage_cars_auction_id_fkey(*)`)
         .eq('garage_id', g.id)
+      
       if (!ce && cars) {
-        const garageCars = cars.map((it) => ({
-          garageCarId: it.id,
-          id: it.auctions?.auction_id || it.auction_id,
-          title: it.auctions?.title || 'Unknown Car',
-          make: it.auctions?.make || '',
-          model: it.auctions?.model || '',
-          year: it.auctions?.year || '',
-          currentBid: parseFloat(it.auctions?.current_bid) || it.purchase_price,
-          purchasePrice: it.purchase_price,
-          auctionUrl: it.auctions?.url || '#',
-          imageUrl: getCarImageUrl(it.auctions?.make),
-          timeLeft: calculateTimeLeft(it.auctions?.timestamp_end ? new Date(it.auctions.timestamp_end * 1000) : null),
-        }))
+        const garageCars = cars.map((it) => {
+          const auction = it.auctions
+          // Use image_url from auction data
+          const imageUrl = auction?.image_url || getDefaultCarImage(auction?.make)
+          
+          return {
+            garageCarId: it.id,
+            id: auction?.auction_id || it.auction_id,
+            title: auction?.title || 'Unknown Car',
+            make: auction?.make || '',
+            model: auction?.model || '',
+            year: auction?.year || '',
+            currentBid: parseFloat(auction?.current_bid) || it.purchase_price,
+            purchasePrice: it.purchase_price,
+            auctionUrl: auction?.url || '#',
+            imageUrl: imageUrl,
+            timeLeft: calculateTimeLeft(auction?.timestamp_end ? new Date(auction.timestamp_end * 1000) : null),
+          }
+        })
         setGarage(garageCars)
       }
     } else {
-      setUserGarageId(null); setBudget(100000); setGarage([])
+      setUserGarageId(null)
+      setBudget(100000)
+      setGarage([])
     }
   }
 
@@ -243,20 +247,33 @@ export default function BixPrixApp() {
         .eq('league_id', league.id)
         .eq('user_id', user.id)
         .maybeSingle()
+      
       if (existing) {
-        setSelectedLeague(league); await fetchUserGarage(league.id); setCurrentScreen('cars'); return
+        setSelectedLeague(league)
+        await fetchUserGarage(league.id)
+        setCurrentScreen('cars')
+        return
       }
+      
       const { data: g, error: ge } = await supabase
         .from('garages')
         .insert([{ user_id: user.id, league_id: league.id, remaining_budget: 100000 }])
         .select()
         .single()
+      
       if (ge) { alert('Error creating garage: '+ge.message); return }
+      
       const { error: me } = await supabase
         .from('league_members')
         .insert([{ league_id: league.id, user_id: user.id, total_score: 0 }])
+      
       if (me) { alert('Error joining league: '+me.message); return }
-      setSelectedLeague(league); setUserGarageId(g.id); setBudget(100000); setGarage([]); setCurrentScreen('cars')
+      
+      setSelectedLeague(league)
+      setUserGarageId(g.id)
+      setBudget(100000)
+      setGarage([])
+      setCurrentScreen('cars')
     } catch {
       alert('Error joining league')
     }
@@ -267,14 +284,18 @@ export default function BixPrixApp() {
     const draftPrice = auction.baselinePrice || auction.currentBid
     if (budget < draftPrice) { alert('Not enough budget remaining!'); return }
     if (!user || !selectedLeague || !userGarageId) { alert('Please join a league first!'); return }
+    
     const { data: gc, error: ce } = await supabase
       .from('garage_cars')
       .insert([{ garage_id: userGarageId, auction_id: auction.id, purchase_price: draftPrice }])
       .select().single()
+    
     if (ce) { alert('Error adding car: '+ce.message); return }
+    
     const newBudget = budget - draftPrice
     const { error: be } = await supabase.from('garages').update({ remaining_budget: newBudget }).eq('id', userGarageId)
     if (be) console.error(be)
+    
     setGarage([...garage, { ...auction, purchasePrice: draftPrice, garageCarId: gc.id }])
     setBudget(newBudget)
   }
@@ -282,14 +303,15 @@ export default function BixPrixApp() {
   const removeFromGarage = async (car) => {
     const { error: re } = await supabase.from('garage_cars').delete().eq('id', car.garageCarId)
     if (re) { alert('Error removing car: '+re.message); return }
+    
     const newBudget = budget + (car.purchasePrice || car.currentBid)
     const { error: be } = await supabase.from('garages').update({ remaining_budget: newBudget }).eq('id', userGarageId)
     if (be) console.error(be)
+    
     setGarage(garage.filter(c => c.id !== car.id))
     setBudget(newBudget)
   }
 
-  // auth/session simplification for demo
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session }}) => {
       if (session) { setUser(session.user); setCurrentScreen('leagues') }
@@ -301,10 +323,17 @@ export default function BixPrixApp() {
     return () => subscription.unsubscribe()
   }, [])
 
-  useEffect(() => { if (user) { fetchAuctions(); fetchLeagues() } }, [user])
-  useEffect(() => { if (selectedLeague && user) fetchUserGarage(selectedLeague.id) }, [selectedLeague, user])
+  useEffect(() => { 
+    if (user) { 
+      fetchAuctions()
+      fetchLeagues() 
+    } 
+  }, [user])
+  
+  useEffect(() => { 
+    if (selectedLeague && user) fetchUserGarage(selectedLeague.id) 
+  }, [selectedLeague, user])
 
-  /* Screens */
   function LoginScreen() {
     const [isSignUp, setIsSignUp] = useState(false)
     const [email, setEmail] = useState('')
@@ -312,14 +341,20 @@ export default function BixPrixApp() {
     const [username, setUsername] = useState('')
 
     const signUp = async () => {
-      const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { username }}})
+      const { data, error } = await supabase.auth.signUp({ 
+        email, 
+        password, 
+        options: { data: { username }}
+      })
       if (error) return alert('Error signing up: '+error.message)
       if (data.user) alert('Check your email for verification link!')
     }
+    
     const signIn = async () => {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) return alert('Error signing in: '+error.message)
-      setUser(data.user); setCurrentScreen('leagues')
+      setUser(data.user)
+      setCurrentScreen('leagues')
     }
 
     return (
@@ -330,12 +365,33 @@ export default function BixPrixApp() {
           <p className="text-sm text-bpInk/70 text-center mb-6">Sign in to draft cars and race the market.</p>
           <div className="space-y-3">
             {isSignUp && (
-              <input className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} />
+              <input 
+                className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" 
+                placeholder="Username" 
+                value={username} 
+                onChange={e=>setUsername(e.target.value)} 
+              />
             )}
-            <input className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" placeholder="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)} />
-            <input className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" placeholder="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
-            <PrimaryButton className="w-full" onClick={isSignUp ? signUp : signIn}>{isSignUp ? 'Create Account' : 'Sign In'}</PrimaryButton>
-            <OutlineButton className="w-full" onClick={()=>setIsSignUp(!isSignUp)}>{isSignUp ? 'Have an account? Sign in' : 'New here? Create an account'}</OutlineButton>
+            <input 
+              className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" 
+              placeholder="Email" 
+              type="email" 
+              value={email} 
+              onChange={e=>setEmail(e.target.value)} 
+            />
+            <input 
+              className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" 
+              placeholder="Password" 
+              type="password" 
+              value={password} 
+              onChange={e=>setPassword(e.target.value)} 
+            />
+            <PrimaryButton className="w-full" onClick={isSignUp ? signUp : signIn}>
+              {isSignUp ? 'Create Account' : 'Sign In'}
+            </PrimaryButton>
+            <OutlineButton className="w-full" onClick={()=>setIsSignUp(!isSignUp)}>
+              {isSignUp ? 'Have an account? Sign in' : 'New here? Create an account'}
+            </OutlineButton>
           </div>
         </Card>
       </div>
@@ -348,7 +404,9 @@ export default function BixPrixApp() {
         <h2 className="text-2xl font-extrabold tracking-tight mb-4">Join a League</h2>
         <div className="grid sm:grid-cols-2 gap-4">
           {leagues.length === 0 && (
-            <Card className="p-6 text-bpInk/80"><p>No public leagues yet. Check back soon.</p></Card>
+            <Card className="p-6 text-bpInk/80">
+              <p>No public leagues yet. Check back soon.</p>
+            </Card>
           )}
           {leagues.map(l => (
             <Card key={l.id} className="p-5">
@@ -384,7 +442,10 @@ export default function BixPrixApp() {
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-bpGray"/>
-              <input className="pl-9 pr-3 py-2 rounded-md bg-white/5 border border-white/10 text-bpCream placeholder:text-bpGray/70" placeholder="Search make or model"/>
+              <input 
+                className="pl-9 pr-3 py-2 rounded-md bg-white/5 border border-white/10 text-bpCream placeholder:text-bpGray/70" 
+                placeholder="Search make or model"
+              />
             </div>
           </div>
         </div>
@@ -397,26 +458,55 @@ export default function BixPrixApp() {
             const disabled = garage.some((c)=>c.id===a.id) || budget < draftPrice
             return (
               <Card key={a.id} className="overflow-hidden">
-                <div className="aspect-[16/9] w-full bg-bpInk/10">
-                  <img src={a.imageUrl} alt={a.title} className="w-full h-full object-cover"/>
-                </div>
+                <a 
+                  href={a.auctionUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block aspect-[16/9] w-full bg-bpInk/10 overflow-hidden hover:opacity-90 transition-opacity"
+                >
+                  <img 
+                    src={a.imageUrl} 
+                    alt={a.title} 
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.src = getDefaultCarImage(a.make)
+                    }}
+                  />
+                </a>
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <a href={a.auctionUrl} target="_blank" rel="noreferrer" className="font-bold text-bpInk hover:underline">
+                    <a 
+                      href={a.auctionUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="font-bold text-bpInk hover:underline"
+                    >
                       {a.title}
                     </a>
-                    {a.trending && <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-bpRed/15 text-bpInk"><Star size={12}/> Trending</span>}
+                    {a.trending && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-bpRed/15 text-bpInk">
+                        <Star size={12}/> Trending
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-y-1 text-sm text-bpInk/80 mt-2">
-                    <div className="flex items-center gap-1"><DollarSign size={14}/> Draft: ${draftPrice.toLocaleString()}</div>
-                    <div className="flex items-center gap-1"><Clock size={14}/> {a.timeLeft}</div>
+                    <div className="flex items-center gap-1">
+                      <DollarSign size={14}/> Draft: ${draftPrice.toLocaleString()}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock size={14}/> {a.timeLeft}
+                    </div>
                     <div className="text-bpInk/60">Current: ${a.currentBid.toLocaleString()}</div>
                   </div>
                   <PrimaryButton
                     className={`w-full mt-3 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
                     onClick={() => addToGarage(a)}
                   >
-                    {garage.some(c=>c.id===a.id) ? 'In Garage' : budget < draftPrice ? 'Insufficient Budget' : 'Add to Garage'}
+                    {garage.some(c=>c.id===a.id) 
+                      ? 'In Garage' 
+                      : budget < draftPrice 
+                        ? 'Insufficient Budget' 
+                        : 'Add to Garage'}
                   </PrimaryButton>
                 </div>
               </Card>
@@ -432,6 +522,7 @@ export default function BixPrixApp() {
       if (!purchase) return 0
       return +(((current - purchase) / purchase) * 100).toFixed(1)
     }
+    
     return (
       <Shell>
         <h2 className="text-2xl font-extrabold tracking-tight mb-3">My Garage</h2>
@@ -443,9 +534,30 @@ export default function BixPrixApp() {
               <Card key={i} className={`p-4 ${car ? '' : 'border-dashed bg-bpCream/70 text-bpInk/60'}`}>
                 {car ? (
                   <div className="flex gap-4">
-                    <img src={car.imageUrl} alt={car.title} className="w-28 h-20 rounded-lg object-cover"/>
+                    <a 
+                      href={car.auctionUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex-shrink-0 hover:opacity-90 transition-opacity"
+                    >
+                      <img 
+                        src={car.imageUrl} 
+                        alt={car.title} 
+                        className="w-28 h-20 rounded-lg object-cover"
+                        onError={(e) => {
+                          e.target.src = getDefaultCarImage(car.make)
+                        }}
+                      />
+                    </a>
                     <div className="flex-1">
-                      <a href={car.auctionUrl} target="_blank" rel="noreferrer" className="font-bold text-bpInk hover:underline">{car.title}</a>
+                      <a 
+                        href={car.auctionUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="font-bold text-bpInk hover:underline"
+                      >
+                        {car.title}
+                      </a>
                       <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
                         <div>Draft: ${(car.purchasePrice || car.currentBid).toLocaleString()}</div>
                         <div>Current: ${car.currentBid.toLocaleString()}</div>
@@ -459,7 +571,10 @@ export default function BixPrixApp() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-24">
-                    <div className="flex items-center gap-2 text-sm"><Car size={18}/><span>Empty Slot</span></div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Car size={18}/>
+                      <span>Empty Slot</span>
+                    </div>
                   </div>
                 )}
               </Card>
