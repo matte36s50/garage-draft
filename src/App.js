@@ -125,6 +125,38 @@ export default function BixPrixApp() {
     return `${minutes}m`
   }
 
+  // NEW: Check if draft window is open
+  const isDraftOpen = (league) => {
+    if (!league.draft_starts_at || !league.draft_ends_at) return true
+    const now = new Date()
+    const start = new Date(league.draft_starts_at)
+    const end = new Date(league.draft_ends_at)
+    return now >= start && now <= end
+  }
+
+  // NEW: Get draft status message
+  const getDraftStatus = (league) => {
+    if (!league.draft_starts_at || !league.draft_ends_at) {
+      return { status: 'open', message: 'Draft Open' }
+    }
+    
+    const now = new Date()
+    const start = new Date(league.draft_starts_at)
+    const end = new Date(league.draft_ends_at)
+    
+    if (now < start) {
+      const timeUntil = calculateTimeLeft(start)
+      return { status: 'upcoming', message: `Draft opens in ${timeUntil}` }
+    }
+    
+    if (now >= start && now <= end) {
+      const timeLeft = calculateTimeLeft(end)
+      return { status: 'open', message: `Draft closes in ${timeLeft}` }
+    }
+    
+    return { status: 'closed', message: 'Draft closed' }
+  }
+
   const getDefaultCarImage = (make) => {
     const map = {
       BMW: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=640&h=420&fit=crop',
@@ -248,6 +280,14 @@ export default function BixPrixApp() {
 
   const joinLeague = async (league) => {
     if (!user) return
+    
+    // Check if draft is open
+    const draftStatus = getDraftStatus(league)
+    if (draftStatus.status !== 'open') {
+      alert(`Cannot join league: ${draftStatus.message}`)
+      return
+    }
+    
     try {
       const { data: existing } = await supabase
         .from('league_members')
@@ -288,6 +328,15 @@ export default function BixPrixApp() {
   }
 
   const addToGarage = async (auction) => {
+    // Check if draft is still open
+    if (selectedLeague) {
+      const draftStatus = getDraftStatus(selectedLeague)
+      if (draftStatus.status !== 'open') {
+        alert(`Cannot add cars: ${draftStatus.message}`)
+        return
+      }
+    }
+    
     if (garage.length >= 7) { alert('Garage is full!'); return }
     const draftPrice = auction.baselinePrice || auction.currentBid
     if (budget < draftPrice) { alert('Not enough budget remaining!'); return }
@@ -309,6 +358,15 @@ export default function BixPrixApp() {
   }
 
   const removeFromGarage = async (car) => {
+    // Check if draft is still open
+    if (selectedLeague) {
+      const draftStatus = getDraftStatus(selectedLeague)
+      if (draftStatus.status !== 'open') {
+        alert(`Cannot remove cars: ${draftStatus.message}`)
+        return
+      }
+    }
+    
     const { error: re } = await supabase.from('garage_cars').delete().eq('id', car.garageCarId)
     if (re) { alert('Error removing car: '+re.message); return }
     
@@ -416,36 +474,77 @@ export default function BixPrixApp() {
               <p>No public leagues yet. Check back soon.</p>
             </Card>
           )}
-          {leagues.map(l => (
-            <Card key={l.id} className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-bold text-lg text-bpInk">{l.name}</h3>
-                  <p className="text-sm text-bpInk/70">Ends {new Date(l.end_date).toLocaleDateString()}</p>
+          {leagues.map(l => {
+            const draftStatus = getDraftStatus(l)
+            const canJoin = draftStatus.status === 'open'
+            
+            return (
+              <Card key={l.id} className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-bold text-lg text-bpInk">{l.name}</h3>
+                    <p className="text-sm text-bpInk/70">Ends {new Date(l.end_date).toLocaleDateString()}</p>
+                  </div>
+                  <span className={`text-[11px] px-2 py-1 rounded font-semibold ${
+                    draftStatus.status === 'open' ? 'bg-green-100 text-green-700' :
+                    draftStatus.status === 'upcoming' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>
+                    {draftStatus.status === 'open' ? '🟢 Open' : 
+                     draftStatus.status === 'upcoming' ? '🟡 Soon' : 
+                     '🔴 Closed'}
+                  </span>
                 </div>
-                <span className="text-[11px] px-2 py-1 rounded bg-bpGold/20 text-bpInk font-semibold">Open</span>
-              </div>
-              <div className="mt-4 flex items-center justify-between text-sm text-bpInk/75">
-                <span className="flex items-center gap-2"><Users size={16}/> {l.playerCount} players</span>
-                <span className="flex items-center gap-2"><Trophy size={16}/> {l.status}</span>
-              </div>
-              <div className="mt-5">
-                <PrimaryButton className="w-full" onClick={() => joinLeague(l)}>Join League</PrimaryButton>
-              </div>
-            </Card>
-          ))}
+                
+                <div className="mt-3 p-2 rounded bg-bpInk/5 text-sm text-bpInk/80">
+                  ⏰ {draftStatus.message}
+                </div>
+                
+                <div className="mt-4 flex items-center justify-between text-sm text-bpInk/75">
+                  <span className="flex items-center gap-2"><Users size={16}/> {l.playerCount} players</span>
+                  <span className="flex items-center gap-2"><Trophy size={16}/> {l.status || 'Open'}</span>
+                </div>
+                
+                <div className="mt-5">
+                  {canJoin ? (
+                    <PrimaryButton className="w-full" onClick={() => joinLeague(l)}>
+                      Join League
+                    </PrimaryButton>
+                  ) : (
+                    <PrimaryButton className="w-full opacity-50 cursor-not-allowed" disabled>
+                      {draftStatus.status === 'upcoming' ? 'Draft Not Started' : 'Draft Closed'}
+                    </PrimaryButton>
+                  )}
+                </div>
+              </Card>
+            )
+          })}
         </div>
       </Shell>
     )
   }
 
   function CarsScreen({ onNavigate, currentScreen }) {
+    const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
+    const canPick = draftStatus.status === 'open'
+    
     return (
       <Shell onNavigate={onNavigate} currentScreen={currentScreen}>
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
           <div>
             <h2 className="text-2xl font-extrabold tracking-tight">Available Cars</h2>
             <p className="text-sm text-bpCream/70">Budget: ${budget.toLocaleString()} · Garage: {garage.length}/7</p>
+            
+            {!canPick && (
+              <div className="mt-2 p-2 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
+                ⚠️ {draftStatus.message} - You cannot modify your garage
+              </div>
+            )}
+            {canPick && (
+              <div className="mt-2 p-2 rounded bg-green-500/20 text-sm text-bpCream border border-green-500/40">
+                ✓ {draftStatus.message}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
@@ -463,7 +562,8 @@ export default function BixPrixApp() {
         <div className="grid md:grid-cols-2 gap-4">
           {auctions.map(a => {
             const draftPrice = a.baselinePrice || a.currentBid
-            const disabled = garage.some((c)=>c.id===a.id) || budget < draftPrice
+            const disabled = garage.some((c)=>c.id===a.id) || budget < draftPrice || !canPick
+            
             return (
               <Card key={a.id} className="overflow-hidden">
                 <a 
@@ -510,11 +610,10 @@ export default function BixPrixApp() {
                     className={`w-full mt-3 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
                     onClick={() => addToGarage(a)}
                   >
-                    {garage.some(c=>c.id===a.id) 
-                      ? 'In Garage' 
-                      : budget < draftPrice 
-                        ? 'Insufficient Budget' 
-                        : 'Add to Garage'}
+                    {!canPick ? 'Draft Closed' :
+                     garage.some(c=>c.id===a.id) ? 'In Garage' : 
+                     budget < draftPrice ? 'Insufficient Budget' : 
+                     'Add to Garage'}
                   </PrimaryButton>
                 </div>
               </Card>
@@ -531,10 +630,20 @@ export default function BixPrixApp() {
       return +(((current - purchase) / purchase) * 100).toFixed(1)
     }
     
+    const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
+    const canModify = draftStatus.status === 'open'
+    
     return (
       <Shell onNavigate={onNavigate} currentScreen={currentScreen}>
         <h2 className="text-2xl font-extrabold tracking-tight mb-3">My Garage</h2>
         <p className="text-sm text-bpCream/70 mb-5">Budget: ${budget.toLocaleString()} · {garage.length}/7 cars</p>
+        
+        {!canModify && (
+          <div className="mb-4 p-3 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
+            🔒 {draftStatus.message} - Your garage is locked
+          </div>
+        )}
+        
         <div className="grid md:grid-cols-2 gap-4">
           {Array.from({ length: 7 }).map((_, i) => {
             const car = garage[i]
@@ -574,7 +683,14 @@ export default function BixPrixApp() {
                         </div>
                         <div>{car.timeLeft} left</div>
                       </div>
-                      <OutlineButton className="mt-3" onClick={()=> removeFromGarage(car)}>Remove</OutlineButton>
+                      {canModify && (
+                        <OutlineButton className="mt-3" onClick={()=> removeFromGarage(car)}>
+                          Remove
+                        </OutlineButton>
+                      )}
+                      {!canModify && (
+                        <div className="mt-3 text-xs text-bpInk/60">🔒 Locked</div>
+                      )}
                     </div>
                   </div>
                 ) : (
