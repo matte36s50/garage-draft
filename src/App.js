@@ -9,11 +9,6 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 function BrandLogo({ compact }) {
   return (
     <div className="flex items-center gap-3 select-none">
-      <img
-        src="/bixprix-logo.png"
-        alt="BixPrix crest"
-        className="h-10 w-auto drop-shadow-sm"
-      />
       <div className="leading-tight">
         <div className="font-extrabold tracking-wide text-[22px] text-bpCream">BIXPRIX</div>
         {!compact && (
@@ -26,16 +21,31 @@ function BrandLogo({ compact }) {
   )
 }
 
-function Shell({ children, onSignOut }) {
+function Shell({ children, onSignOut, onNavigate, currentScreen }) {
   return (
     <div className="min-h-screen bg-bpNavy text-bpCream">
       <header className="sticky top-0 z-40 bg-bpNavy border-b border-white/10">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
           <BrandLogo />
-          <nav className="hidden sm:flex items-center gap-6 text-sm text-bpGray">
-            <a className="hover:text-bpCream/90" href="#garage">Garage</a>
-            <a className="hover:text-bpCream/90" href="#auctions">Auctions</a>
-            <a className="hover:text-bpCream/90" href="#leaderboard">Leaderboard</a>
+          <nav className="hidden sm:flex items-center gap-6 text-sm">
+            <button 
+              className={`hover:text-bpCream/90 transition ${currentScreen === 'garage' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
+              onClick={() => onNavigate && onNavigate('garage')}
+            >
+              Garage
+            </button>
+            <button 
+              className={`hover:text-bpCream/90 transition ${currentScreen === 'cars' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
+              onClick={() => onNavigate && onNavigate('cars')}
+            >
+              Auctions
+            </button>
+            <button 
+              className={`hover:text-bpCream/90 transition ${currentScreen === 'leaderboard' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
+              onClick={() => onNavigate && onNavigate('leaderboard')}
+            >
+              Leaderboard
+            </button>
           </nav>
           {onSignOut && (
             <button
@@ -151,7 +161,6 @@ export default function BixPrixApp() {
         const endDate = new Date(a.timestamp_end * 1000)
         const baseline = parseFloat(a.price_at_48h)
         
-        // Use the image_url from database, fallback to default if not available
         const imageUrl = a.image_url || getDefaultCarImage(a.make)
         
         return {
@@ -212,7 +221,6 @@ export default function BixPrixApp() {
       if (!ce && cars) {
         const garageCars = cars.map((it) => {
           const auction = it.auctions
-          // Use image_url from auction data
           const imageUrl = auction?.image_url || getDefaultCarImage(auction?.make)
           
           return {
@@ -398,9 +406,9 @@ export default function BixPrixApp() {
     )
   }
 
-  function LeaguesScreen() {
+  function LeaguesScreen({ onNavigate, currentScreen }) {
     return (
-      <Shell onSignOut={()=> supabase.auth.signOut() }>
+      <Shell onSignOut={() => supabase.auth.signOut()} onNavigate={onNavigate} currentScreen={currentScreen}>
         <h2 className="text-2xl font-extrabold tracking-tight mb-4">Join a League</h2>
         <div className="grid sm:grid-cols-2 gap-4">
           {leagues.length === 0 && (
@@ -431,9 +439,9 @@ export default function BixPrixApp() {
     )
   }
 
-  function CarsScreen() {
+  function CarsScreen({ onNavigate, currentScreen }) {
     return (
-      <Shell>
+      <Shell onNavigate={onNavigate} currentScreen={currentScreen}>
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
           <div>
             <h2 className="text-2xl font-extrabold tracking-tight">Available Cars</h2>
@@ -517,14 +525,14 @@ export default function BixPrixApp() {
     )
   }
 
-  function GarageScreen() {
+  function GarageScreen({ onNavigate, currentScreen }) {
     const gain = (purchase, current) => {
       if (!purchase) return 0
       return +(((current - purchase) / purchase) * 100).toFixed(1)
     }
     
     return (
-      <Shell>
+      <Shell onNavigate={onNavigate} currentScreen={currentScreen}>
         <h2 className="text-2xl font-extrabold tracking-tight mb-3">My Garage</h2>
         <p className="text-sm text-bpCream/70 mb-5">Budget: ${budget.toLocaleString()} · {garage.length}/7 cars</p>
         <div className="grid md:grid-cols-2 gap-4">
@@ -561,7 +569,7 @@ export default function BixPrixApp() {
                       <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
                         <div>Draft: ${(car.purchasePrice || car.currentBid).toLocaleString()}</div>
                         <div>Current: ${car.currentBid.toLocaleString()}</div>
-                        <div className={`${(((car.purchasePrice || car.currentBid) && ((car.currentBid - (car.purchasePrice || car.currentBid)) / (car.purchasePrice || car.currentBid) * 100)) >= 0) ? 'text-green-700' : 'text-bpRed'}`}>
+                        <div className={`${gain(car.purchasePrice || car.currentBid, car.currentBid) >= 0 ? 'text-green-700' : 'text-bpRed'}`}>
                           Gain: {gain(car.purchasePrice || car.currentBid, car.currentBid) >= 0 ? '+' : ''}{gain(car.purchasePrice || car.currentBid, car.currentBid)}%
                         </div>
                         <div>{car.timeLeft} left</div>
@@ -585,9 +593,9 @@ export default function BixPrixApp() {
     )
   }
 
-  function LeaderboardScreen() {
+  function LeaderboardScreen({ onNavigate, currentScreen }) {
     return (
-      <Shell>
+      <Shell onNavigate={onNavigate} currentScreen={currentScreen}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-extrabold tracking-tight">Leaderboard</h2>
           <span className="text-sm text-bpCream/70">{selectedLeague?.name || 'Select a League'}</span>
@@ -603,9 +611,9 @@ export default function BixPrixApp() {
   }
 
   if (!user) return <LoginScreen />
-  if (currentScreen === 'leagues') return <LeaguesScreen />
-  if (currentScreen === 'cars') return <CarsScreen />
-  if (currentScreen === 'garage') return <GarageScreen />
-  if (currentScreen === 'leaderboard') return <LeaderboardScreen />
+  if (currentScreen === 'leagues') return <LeaguesScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
+  if (currentScreen === 'cars') return <CarsScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
+  if (currentScreen === 'garage') return <GarageScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
+  if (currentScreen === 'leaderboard') return <LeaderboardScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
   return null
 }
