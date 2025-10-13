@@ -125,7 +125,6 @@ export default function BixPrixApp() {
     return `${minutes}m`
   }
 
-  // NEW: Check if draft window is open
   const isDraftOpen = (league) => {
     if (!league.draft_starts_at || !league.draft_ends_at) return true
     const now = new Date()
@@ -134,7 +133,6 @@ export default function BixPrixApp() {
     return now >= start && now <= end
   }
 
-  // NEW: Get draft status message
   const getDraftStatus = (league) => {
     if (!league.draft_starts_at || !league.draft_ends_at) {
       return { status: 'open', message: 'Draft Open' }
@@ -174,47 +172,140 @@ export default function BixPrixApp() {
     return (make && map[make]) || map['Ford']
   }
 
-  const fetchAuctions = async () => {
-    setLoading(true)
+  // NEW: Create league snapshot - captures current available auctions
+  const createLeagueSnapshot = async (leagueId) => {
+    console.log(`Creating snapshot for league ${leagueId}...`)
+    
     try {
+      // Get current auctions that are eligible (have day 2 price, not ended)
       const now = Math.floor(Date.now() / 1000)
-      const { data, error } = await supabase
+      const { data: availableAuctions, error: auctionError } = await supabase
         .from('auctions')
-        .select('*')
+        .select('auction_id, price_at_48h')
         .not('price_at_48h', 'is', null)
         .gt('timestamp_end', now)
         .is('final_price', null)
-        .order('timestamp_end', { ascending: true })
-        .limit(50)
+        .limit(100) // Capture up to 100 cars
       
-      if (error) throw error
+      if (auctionError) {
+        console.error('Error fetching auctions for snapshot:', auctionError)
+        return false
+      }
       
-      const transformed = (data||[]).map((a) => {
-        const endDate = new Date(a.timestamp_end * 1000)
-        const baseline = parseFloat(a.price_at_48h)
-        
-        const imageUrl = a.image_url || getDefaultCarImage(a.make)
-        
-        return {
-          id: a.auction_id || a.id,
-          title: a.title,
-          make: a.make,
-          model: a.model,
-          year: a.year,
-          currentBid: parseFloat(a.current_bid) || baseline || 0,
-          baselinePrice: baseline,
-          day2Price: a.price_at_48h,
-          finalPrice: a.final_price,
-          timeLeft: calculateTimeLeft(endDate),
-          auctionUrl: a.url,
-          imageUrl: imageUrl,
-          trending: Math.random() > 0.7,
-          endTime: endDate,
+      if (!availableAuctions || availableAuctions.length === 0) {
+        console.log('No available auctions to snapshot')
+        return false
+      }
+      
+      // Create league_cars entries for each auction
+      const leagueCars = availableAuctions.map(a => ({
+        league_id: leagueId,
+        auction_id: a.auction_id,
+        baseline_price: parseFloat(a.price_at_48h)
+      }))
+      
+      const { error: insertError } = await supabase
+        .from('league_cars')
+        .insert(leagueCars)
+      
+      if (insertError) {
+        console.error('Error creating league snapshot:', insertError)
+        return false
+      }
+      
+      // Mark league as having snapshot
+      const { error: updateError } = await supabase
+        .from('leagues')
+        .update({ snapshot_created: true })
+        .eq('id', leagueId)
+      
+      if (updateError) {
+        console.error('Error updating league:', updateError)
+      }
+      
+      console.log(`Successfully created snapshot with ${leagueCars.length} cars`)
+      return true
+      
+    } catch (error) {
+      console.error('Exception creating snapshot:', error)
+      return false
+    }
+  }
+
+  // UPDATED: Fetch auctions from league snapshot instead of all auctions
+  const fetchAuctions = async () => {
+    if (!selectedLeague) {
+      console.log('No league selected, cannot fetch auctions')
+      return
+    }
+    
+    setLoading(true)
+    try {
+      // First check if league has a snapshot
+      const { data: leagueData, error: leagueError } = await supabase
+        .from('leagues')
+        .select('snapshot_created')
+        .eq('id', selectedLeague.id)
+        .single()
+      
+      if (leagueError) throw leagueError
+      
+      // If no snapshot exists, create one now
+      if (!leagueData.snapshot_created) {
+        console.log('League has no snapshot yet, creating one...')
+        const created = await createLeagueSnapshot(selectedLeague.id)
+        if (!created) {
+          console.error('Failed to create snapshot')
+          setAuctions([])
+          setLoading(false)
+          return
         }
-      })
+      }
+      
+      // Fetch league's car snapshot with full auction details
+      const { data: leagueCars, error: leagueCarsError } = await supabase
+        .from('league_cars')
+        .select(`
+          auction_id,
+          baseline_price,
+          auctions (*)
+        `)
+        .eq('league_id', selectedLeague.id)
+      
+      if (leagueCarsError) throw leagueCarsError
+      
+      // Transform the data
+      const transformed = (leagueCars || [])
+        .filter(lc => lc.auctions) // Only include if auction data exists
+        .map((lc) => {
+          const a = lc.auctions
+          const endDate = new Date(a.timestamp_end * 1000)
+          const baseline = lc.baseline_price || parseFloat(a.price_at_48h)
+          const imageUrl = a.image_url || getDefaultCarImage(a.make)
+          
+          return {
+            id: a.auction_id,
+            title: a.title,
+            make: a.make,
+            model: a.model,
+            year: a.year,
+            currentBid: parseFloat(a.current_bid) || baseline || 0,
+            baselinePrice: baseline,
+            day2Price: baseline,
+            finalPrice: a.final_price,
+            timeLeft: calculateTimeLeft(endDate),
+            auctionUrl: a.url,
+            imageUrl: imageUrl,
+            trending: Math.random() > 0.7,
+            endTime: endDate,
+          }
+        })
+      
+      console.log(`Loaded ${transformed.length} cars from league snapshot`)
       setAuctions(transformed)
+      
     } catch (e) {
-      console.error(e)
+      console.error('Error fetching league auctions:', e)
       setAuctions([])
     } finally { 
       setLoading(false) 
@@ -281,7 +372,6 @@ export default function BixPrixApp() {
   const joinLeague = async (league) => {
     if (!user) return
     
-    // Check if draft is open
     const draftStatus = getDraftStatus(league)
     if (draftStatus.status !== 'open') {
       alert(`Cannot join league: ${draftStatus.message}`)
@@ -299,6 +389,7 @@ export default function BixPrixApp() {
       if (existing) {
         setSelectedLeague(league)
         await fetchUserGarage(league.id)
+        await fetchAuctions() // Fetch league's snapshot
         setCurrentScreen('cars')
         return
       }
@@ -321,14 +412,18 @@ export default function BixPrixApp() {
       setUserGarageId(g.id)
       setBudget(100000)
       setGarage([])
+      
+      // Fetch auctions after joining
+      await fetchAuctions()
       setCurrentScreen('cars')
-    } catch {
+      
+    } catch (error) {
+      console.error('Error joining league:', error)
       alert('Error joining league')
     }
   }
 
   const addToGarage = async (auction) => {
-    // Check if draft is still open
     if (selectedLeague) {
       const draftStatus = getDraftStatus(selectedLeague)
       if (draftStatus.status !== 'open') {
@@ -358,7 +453,6 @@ export default function BixPrixApp() {
   }
 
   const removeFromGarage = async (car) => {
-    // Check if draft is still open
     if (selectedLeague) {
       const draftStatus = getDraftStatus(selectedLeague)
       if (draftStatus.status !== 'open') {
@@ -391,13 +485,16 @@ export default function BixPrixApp() {
 
   useEffect(() => { 
     if (user) { 
-      fetchAuctions()
       fetchLeagues() 
     } 
   }, [user])
   
+  // UPDATED: Fetch auctions when league changes
   useEffect(() => { 
-    if (selectedLeague && user) fetchUserGarage(selectedLeague.id) 
+    if (selectedLeague && user) {
+      fetchUserGarage(selectedLeague.id)
+      fetchAuctions() // Fetch league's specific cars
+    }
   }, [selectedLeague, user])
 
   function LoginScreen() {
@@ -558,6 +655,12 @@ export default function BixPrixApp() {
         </div>
 
         {loading && <p className="text-bpGray mb-4">Loading auctions…</p>}
+
+        {!loading && auctions.length === 0 && (
+          <Card className="p-8 text-center text-bpInk/70">
+            <p>No cars available in this league yet. The snapshot may still be loading.</p>
+          </Card>
+        )}
 
         <div className="grid md:grid-cols-2 gap-4">
           {auctions.map(a => {
