@@ -659,7 +659,6 @@ export default function BixPrixApp() {
             </div>
             
             <h1 className="text-4xl sm:text-5xl font-bold text-bpCream mb-6 leading-tight mt-8">
-              Race the Market with <br/>
               <span className="bg-gradient-to-r from-bpGold to-bpRed bg-clip-text text-transparent">Fantasy Auto Auctions</span>
             </h1>
             
