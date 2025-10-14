@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
@@ -1357,22 +1357,502 @@ export default function BixPrixApp() {
     )
   }
 
-  function LeaderboardScreen({ onNavigate, currentScreen }) {
-    return (
-      <Shell onNavigate={onNavigate} currentScreen={currentScreen}>
-        <div className="flex items-center justify-between mb-4">
+function LeaderboardScreen({ onNavigate, currentScreen }) {
+  const [standings, setStandings] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [sortBy, setSortBy] = useState('total_percent')
+  const [bonusWinner, setBonusWinner] = useState(null)
+
+  useEffect(() => {
+    if (selectedLeague && user) {
+      fetchLeaderboard()
+    }
+  }, [selectedLeague, user])
+
+  const fetchLeaderboard = async () => {
+    if (!selectedLeague) return
+    
+    setLoading(true)
+    try {
+      const { data: members, error: membersError } = await supabase
+        .from('league_members')
+        .select(`
+          user_id,
+          total_score,
+          users (username, email)
+        `)
+        .eq('league_id', selectedLeague.id)
+      
+      if (membersError) throw membersError
+      
+      if (!members || members.length === 0) {
+        setStandings([])
+        setLoading(false)
+        return
+      }
+      
+      const standingsPromises = members.map(async (member) => {
+        const score = await calculateUserScore(member.user_id, selectedLeague.id)
+        return {
+          userId: member.user_id,
+          username: member.users?.username || member.users?.email?.split('@')[0] || 'Unknown',
+          ...score
+        }
+      })
+      
+      const calculatedStandings = await Promise.all(standingsPromises)
+      await findBonusCarWinner(selectedLeague.id, calculatedStandings)
+      
+      const sorted = sortStandings(calculatedStandings, sortBy)
+      setStandings(sorted)
+      
+    } catch (error) {
+      console.error('Error fetching leaderboard:', error)
+      setStandings([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const calculateUserScore = async (userId, leagueId) => {
+    try {
+      const { data: garage } = await supabase
+        .from('garages')
+        .select('id, remaining_budget')
+        .eq('user_id', userId)
+        .eq('league_id', leagueId)
+        .maybeSingle()
+      
+      if (!garage) {
+        return {
+          totalPercentGain: 0,
+          totalDollarGain: 0,
+          bonusCarScore: null,
+          carsCount: 0,
+          totalSpent: 0,
+          avgPercentPerCar: 0
+        }
+      }
+      
+      const { data: cars } = await supabase
+        .from('garage_cars')
+        .select(`
+          purchase_price,
+          auctions!garage_cars_auction_id_fkey (
+            auction_id,
+            title,
+            current_bid,
+            final_price,
+            price_at_48h,
+            timestamp_end
+          )
+        `)
+        .eq('garage_id', garage.id)
+      
+      let totalPercentGain = 0
+      let totalDollarGain = 0
+      let carsCount = 0
+      let totalSpent = 0
+      
+      if (cars && cars.length > 0) {
+        cars.forEach(car => {
+          const auction = car.auctions
+          if (!auction) return
+          
+          const purchasePrice = parseFloat(car.purchase_price)
+          const currentPrice = auction.final_price 
+            ? parseFloat(auction.final_price) 
+            : parseFloat(auction.current_bid || purchasePrice)
+          
+          const now = Math.floor(Date.now() / 1000)
+          const auctionEnded = auction.timestamp_end < now
+          const reserveNotMet = auctionEnded && !auction.final_price
+          
+          let effectivePrice = currentPrice
+          
+          if (reserveNotMet) {
+            effectivePrice = currentPrice * 0.25
+          }
+          
+          const percentGain = ((effectivePrice - purchasePrice) / purchasePrice) * 100
+          totalPercentGain += percentGain
+          
+          const dollarGain = effectivePrice - purchasePrice
+          totalDollarGain += dollarGain
+          
+          totalSpent += purchasePrice
+          carsCount++
+        })
+      }
+      
+      const bonusScore = await calculateBonusCarScore(userId, leagueId)
+      if (bonusScore) {
+        totalPercentGain += bonusScore.percentGain
+      }
+      
+      const avgPercentPerCar = carsCount > 0 ? totalPercentGain / (carsCount + (bonusScore ? 1 : 0)) : 0
+      
+      return {
+        totalPercentGain: parseFloat(totalPercentGain.toFixed(2)),
+        totalDollarGain: parseFloat(totalDollarGain.toFixed(2)),
+        bonusCarScore: bonusScore,
+        carsCount,
+        totalSpent: parseFloat(totalSpent.toFixed(2)),
+        avgPercentPerCar: parseFloat(avgPercentPerCar.toFixed(2))
+      }
+      
+    } catch (error) {
+      console.error(`Error calculating score for user ${userId}:`, error)
+      return {
+        totalPercentGain: 0,
+        totalDollarGain: 0,
+        bonusCarScore: null,
+        carsCount: 0,
+        totalSpent: 0,
+        avgPercentPerCar: 0
+      }
+    }
+  }
+
+  const calculateBonusCarScore = async (userId, leagueId) => {
+    try {
+      const { data: league } = await supabase
+        .from('leagues')
+        .select('bonus_auction_id')
+        .eq('id', leagueId)
+        .single()
+      
+      if (!league?.bonus_auction_id) return null
+      
+      const { data: prediction } = await supabase
+        .from('bonus_predictions')
+        .select('predicted_price')
+        .eq('league_id', leagueId)
+        .eq('user_id', userId)
+        .maybeSingle()
+      
+      if (!prediction) return null
+      
+      const { data: bonusAuction } = await supabase
+        .from('auctions')
+        .select('current_bid, final_price, price_at_48h')
+        .eq('auction_id', league.bonus_auction_id)
+        .single()
+      
+      if (!bonusAuction) return null
+      
+      const baseline = parseFloat(bonusAuction.price_at_48h)
+      const finalPrice = bonusAuction.final_price 
+        ? parseFloat(bonusAuction.final_price)
+        : parseFloat(bonusAuction.current_bid)
+      
+      const basePercentGain = ((finalPrice - baseline) / baseline) * 100
+      
+      const predictedPrice = parseFloat(prediction.predicted_price)
+      const predictionError = Math.abs(predictedPrice - finalPrice)
+      const percentError = (predictionError / finalPrice) * 100
+      
+      return {
+        predicted: predictedPrice,
+        actual: finalPrice,
+        error: predictionError,
+        percentError: parseFloat(percentError.toFixed(2)),
+        percentGain: parseFloat(basePercentGain.toFixed(2)),
+        hasPrediction: true
+      }
+      
+    } catch (error) {
+      console.error('Error calculating bonus car score:', error)
+      return null
+    }
+  }
+
+  const findBonusCarWinner = async (leagueId, standings) => {
+    try {
+      const { data: league } = await supabase
+        .from('leagues')
+        .select('bonus_auction_id')
+        .eq('id', leagueId)
+        .single()
+      
+      if (!league?.bonus_auction_id) {
+        setBonusWinner(null)
+        return
+      }
+      
+      const { data: bonusAuction } = await supabase
+        .from('auctions')
+        .select('final_price, current_bid')
+        .eq('auction_id', league.bonus_auction_id)
+        .single()
+      
+      if (!bonusAuction) {
+        setBonusWinner(null)
+        return
+      }
+      
+      const actualPrice = bonusAuction.final_price 
+        ? parseFloat(bonusAuction.final_price)
+        : parseFloat(bonusAuction.current_bid)
+      
+      const playersWithPredictions = standings.filter(s => s.bonusCarScore?.hasPrediction)
+      
+      if (playersWithPredictions.length === 0) {
+        setBonusWinner(null)
+        return
+      }
+      
+      const winner = playersWithPredictions.reduce((closest, current) => {
+        if (!closest) return current
+        return current.bonusCarScore.error < closest.bonusCarScore.error ? current : closest
+      }, null)
+      
+      setBonusWinner({
+        username: winner.username,
+        predicted: winner.bonusCarScore.predicted,
+        actual: actualPrice,
+        error: winner.bonusCarScore.error
+      })
+      
+    } catch (error) {
+      console.error('Error finding bonus winner:', error)
+      setBonusWinner(null)
+    }
+  }
+
+  const sortStandings = (standings, sortBy) => {
+    const sorted = [...standings]
+    switch (sortBy) {
+      case 'total_percent':
+        return sorted.sort((a, b) => b.totalPercentGain - a.totalPercentGain)
+      case 'total_dollar':
+        return sorted.sort((a, b) => b.totalDollarGain - a.totalDollarGain)
+      case 'avg_percent':
+        return sorted.sort((a, b) => b.avgPercentPerCar - a.avgPercentPerCar)
+      default:
+        return sorted
+    }
+  }
+
+  const handleSortChange = (newSort) => {
+    setSortBy(newSort)
+    setStandings(sortStandings(standings, newSort))
+  }
+
+  return (
+    <Shell onSignOut={() => supabase.auth.signOut()} onNavigate={onNavigate} currentScreen={currentScreen}>
+      <div className="flex items-center justify-between mb-6">
+        <div>
           <h2 className="text-2xl font-extrabold tracking-tight">Leaderboard</h2>
-          <span className="text-sm text-bpCream/70">{selectedLeague?.name || 'Select a League'}</span>
+          <p className="text-sm text-bpCream/70">{selectedLeague?.name || 'Select a League'}</p>
         </div>
+        
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleSortChange('total_percent')}
+            className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
+              sortBy === 'total_percent' 
+                ? 'bg-bpGold text-bpInk' 
+                : 'bg-white/5 text-bpCream hover:bg-white/10'
+            }`}
+          >
+            % Gain
+          </button>
+          <button
+            onClick={() => handleSortChange('total_dollar')}
+            className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
+              sortBy === 'total_dollar' 
+                ? 'bg-bpGold text-bpInk' 
+                  : 'bg-white/5 text-bpCream hover:bg-white/10'
+            }`}
+          >
+            $ Gain
+          </button>
+          <button
+            onClick={() => handleSortChange('avg_percent')}
+            className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
+              sortBy === 'avg_percent' 
+                ? 'bg-bpGold text-bpInk' 
+                : 'bg-white/5 text-bpCream hover:bg-white/10'
+            }`}
+          >
+            Avg %
+          </button>
+          <button
+            onClick={fetchLeaderboard}
+            className="p-1.5 rounded bg-white/5 hover:bg-white/10 transition"
+            title="Refresh"
+          >
+            <RefreshCw size={16} />
+          </button>
+        </div>
+      </div>
+
+      {loading && (
+        <Card className="p-12 text-center text-bpInk/70">
+          <p>Loading standings...</p>
+        </Card>
+      )}
+
+      {!loading && standings.length === 0 && (
         <Card className="p-8 text-bpInk/80 flex items-center justify-center">
           <div className="text-center">
-            <Trophy className="mx-auto mb-2 text-bpInk/60"/>
-            Rankings will appear here once leagues have active members.
+            <Trophy className="mx-auto mb-2 text-bpInk/60" size={48} />
+            <p>No standings yet. Join the league and draft your garage!</p>
           </div>
         </Card>
-      </Shell>
-    )
-  }
+      )}
+
+      {!loading && standings.length > 0 && (
+        <>
+          <div className="grid md:grid-cols-4 gap-4 mb-6">
+            <Card className="p-4 border-2 border-bpGold/50 bg-gradient-to-br from-bpGold/10 to-bpGold/5">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp className="text-bpGold" size={20} />
+                <span className="text-xs font-bold text-bpInk uppercase">% Gain Leader</span>
+              </div>
+              <div className="font-bold text-xl text-bpInk mb-1">
+                {sortStandings(standings, 'total_percent')[0]?.username}
+              </div>
+              <div className="text-2xl font-bold text-green-700">
+                +{sortStandings(standings, 'total_percent')[0]?.totalPercentGain}%
+              </div>
+            </Card>
+
+            <Card className="p-4 border-2 border-green-500/50 bg-gradient-to-br from-green-500/10 to-green-500/5">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="text-green-700" size={20} />
+                <span className="text-xs font-bold text-bpInk uppercase">$ Gain Leader</span>
+              </div>
+              <div className="font-bold text-xl text-bpInk mb-1">
+                {sortStandings(standings, 'total_dollar')[0]?.username}
+              </div>
+              <div className="text-2xl font-bold text-green-700">
+                +${sortStandings(standings, 'total_dollar')[0]?.totalDollarGain.toLocaleString()}
+              </div>
+            </Card>
+
+            <Card className="p-4 border-2 border-bpRed/50 bg-gradient-to-br from-bpRed/10 to-bpRed/5">
+              <div className="flex items-center gap-2 mb-2">
+                <Target className="text-bpRed" size={20} />
+                <span className="text-xs font-bold text-bpInk uppercase">Best Avg</span>
+              </div>
+              <div className="font-bold text-xl text-bpInk mb-1">
+                {sortStandings(standings, 'avg_percent')[0]?.username}
+              </div>
+              <div className="text-2xl font-bold text-green-700">
+                +{sortStandings(standings, 'avg_percent')[0]?.avgPercentPerCar}%
+              </div>
+            </Card>
+
+            {bonusWinner && (
+              <Card className="p-4 border-2 border-purple-500/50 bg-gradient-to-br from-purple-500/10 to-purple-500/5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Zap className="text-purple-600" size={20} />
+                  <span className="text-xs font-bold text-bpInk uppercase">Bonus Winner</span>
+                </div>
+                <div className="font-bold text-xl text-bpInk mb-1">
+                  {bonusWinner.username}
+                </div>
+                <div className="text-sm text-bpInk/70">
+                  ${bonusWinner.error.toLocaleString()} off
+                </div>
+              </Card>
+            )}
+          </div>
+
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-bpInk/5 border-b border-bpInk/10">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-bpInk">Rank</th>
+                    <th className="px-4 py-3 text-left text-sm font-bold text-bpInk">Player</th>
+                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">% Gain</th>
+                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">$ Gain</th>
+                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Avg %</th>
+                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Cars</th>
+                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Spent</th>
+                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Bonus</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {standings.map((player, index) => {
+                    const isCurrentUser = player.userId === user?.id
+                    const rank = index + 1
+                    
+                    return (
+                      <tr 
+                        key={player.userId} 
+                        className={`border-b border-bpInk/10 ${
+                          isCurrentUser ? 'bg-bpGold/10' : 'hover:bg-bpInk/5'
+                        }`}
+                      >
+                        <td className="px-4 py-3 text-sm font-semibold text-bpInk">
+                          {rank === 1 && '🥇'}
+                          {rank === 2 && '🥈'}
+                          {rank === 3 && '🥉'}
+                          {rank > 3 && rank}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-bpInk">
+                          {player.username}
+                          {isCurrentUser && (
+                            <span className="ml-2 text-xs bg-bpGold/20 text-bpInk px-2 py-0.5 rounded">
+                              You
+                            </span>
+                          )}
+                        </td>
+                        <td className={`px-4 py-3 text-sm font-semibold text-right ${
+                          player.totalPercentGain >= 0 ? 'text-green-700' : 'text-red-700'
+                        }`}>
+                          {player.totalPercentGain >= 0 ? '+' : ''}{player.totalPercentGain}%
+                        </td>
+                        <td className={`px-4 py-3 text-sm font-semibold text-right ${
+                          player.totalDollarGain >= 0 ? 'text-green-700' : 'text-red-700'
+                        }`}>
+                          {player.totalDollarGain >= 0 ? '+' : ''}${player.totalDollarGain.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
+                          {player.avgPercentPerCar >= 0 ? '+' : ''}{player.avgPercentPerCar}%
+                        </td>
+                        <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
+                          {player.carsCount}/7
+                        </td>
+                        <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
+                          ${player.totalSpent.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right">
+                          {player.bonusCarScore?.hasPrediction ? (
+                            <span className="text-purple-600" title={`Predicted: $${player.bonusCarScore.predicted.toLocaleString()}`}>
+                              ✓
+                            </span>
+                          ) : (
+                            <span className="text-bpInk/40">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <Card className="mt-6 p-4 bg-bpInk/5">
+            <h3 className="text-sm font-bold text-bpInk mb-2">Scoring Info</h3>
+            <ul className="text-xs text-bpInk/70 space-y-1">
+              <li>• <strong>% Gain:</strong> Total percentage increase across all cars (including bonus car base gain)</li>
+              <li>• <strong>$ Gain:</strong> Total dollar profit across all cars</li>
+              <li>• <strong>Avg %:</strong> Average percentage gain per car</li>
+              <li>• <strong>Bonus:</strong> Closest prediction gets DOUBLE the bonus car's percentage gain</li>
+              <li>• <strong>Reserve Not Met:</strong> Cars that don't sell count as 25% of high bid (penalty)</li>
+            </ul>
+          </Card>
+        </>
+      )}
+    </Shell>
+  )
+}
 
   if (currentScreen === 'landing') return <LandingScreen onGetStarted={() => setCurrentScreen('login')} />
   if (!user) return <LoginScreen />
