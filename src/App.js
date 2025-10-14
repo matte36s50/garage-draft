@@ -446,35 +446,49 @@ export default function BixPrixApp() {
         .eq('league_id', selectedLeague.id)
       
       if (leagueCarsError) throw leagueCarsError
-      
-      const transformed = (leagueCars || [])
-        .filter(lc => lc.auctions)
-        .map((lc) => {
-          const a = lc.auctions
-          const endDate = new Date(a.timestamp_end * 1000)
-          const baseline = lc.baseline_price || parseFloat(a.price_at_48h)
-          const imageUrl = a.image_url || getDefaultCarImage(a.make)
-          
-          return {
-            id: a.auction_id,
-            title: a.title,
-            make: a.make,
-            model: a.model,
-            year: a.year,
-            currentBid: parseFloat(a.current_bid) || baseline || 0,
-            baselinePrice: baseline,
-            day2Price: baseline,
-            finalPrice: a.final_price,
-            timeLeft: calculateTimeLeft(endDate),
-            auctionUrl: a.url,
-            imageUrl: imageUrl,
-            trending: Math.random() > 0.7,
-            endTime: endDate,
-          }
-        })
-      
-      console.log(`Loaded ${transformed.length} cars from league snapshot`)
-      setAuctions(transformed)
+      const now = Math.floor(Date.now() / 1000)
+const auctionDuration = 7 * 24 * 60 * 60 // 7 days in seconds
+const hours48 = 48 * 60 * 60
+const hours72 = 72 * 60 * 60
+
+const transformed = (leagueCars || [])
+  .filter(lc => lc.auctions)
+  .map((lc) => {
+    const a = lc.auctions
+    const endDate = new Date(a.timestamp_end * 1000)
+    const baseline = lc.baseline_price || parseFloat(a.price_at_48h)
+    const imageUrl = a.image_url || getDefaultCarImage(a.make)
+    
+    return {
+      id: a.auction_id,
+      title: a.title,
+      make: a.make,
+      model: a.model,
+      year: a.year,
+      currentBid: parseFloat(a.current_bid) || baseline || 0,
+      baselinePrice: baseline,
+      day2Price: baseline,
+      finalPrice: a.final_price,
+      timeLeft: calculateTimeLeft(endDate),
+      auctionUrl: a.url,
+      imageUrl: imageUrl,
+      trending: Math.random() > 0.7,
+      endTime: endDate,
+      timestamp_end: a.timestamp_end,
+    }
+  })
+  .filter(car => {
+    // Real-time check: ensure car is still in 48-72 hour window
+    const auctionEnd = car.timestamp_end
+    const auctionStart = auctionEnd - auctionDuration
+    const currentAge = now - auctionStart
+    
+    // Only show cars between 48-72 hours old right now
+    return currentAge >= hours48 && currentAge <= hours72 && auctionEnd > now
+  })
+
+console.log(`Loaded ${transformed.length} cars from league snapshot (after real-time filtering)`)
+setAuctions(transformed)
       
     } catch (e) {
       console.error('Error fetching league auctions:', e)
