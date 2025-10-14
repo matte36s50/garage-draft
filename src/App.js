@@ -101,19 +101,31 @@ function OutlineButton({ className = '', children, ...props }) {
   )
 }
 
+// NEW: Button for light backgrounds (like cards)
+function LightButton({ className = '', children, ...props }) {
+  return (
+    <button
+      {...props}
+      className={`inline-flex items-center justify-center rounded-md px-4 py-2 font-semibold border-2 border-bpNavy/30 text-bpNavy hover:bg-bpNavy hover:text-bpCream focus:outline-none focus:ring-2 focus:ring-bpNavy/60 transition ${className}`}
+    >
+      {children}
+    </button>
+  )
+}
+
 export default function BixPrixApp() {
   const [currentScreen, setCurrentScreen] = useState('leagues')
   const [user, setUser] = useState(null)
   const [selectedLeague, setSelectedLeague] = useState(null)
   const [garage, setGarage] = useState([])
-  const [budget, setBudget] = useState(100000)
+  const [budget, setBudget] = useState(175000) // UPDATED: $175k budget
   const [auctions, setAuctions] = useState([])
   const [leagues, setLeagues] = useState([])
   const [loading, setLoading] = useState(false)
   const [userGarageId, setUserGarageId] = useState(null)
-  const [bonusCar, setBonusCar] = useState(null) // NEW
-  const [userPrediction, setUserPrediction] = useState(null) // NEW
-  const [showPredictionModal, setShowPredictionModal] = useState(false) // NEW
+  const [bonusCar, setBonusCar] = useState(null)
+  const [userPrediction, setUserPrediction] = useState(null)
+  const [showPredictionModal, setShowPredictionModal] = useState(false)
 
   const calculateTimeLeft = (endTime) => {
     if (!endTime) return 'N/A'
@@ -231,7 +243,6 @@ export default function BixPrixApp() {
     }
   }
 
-  // NEW: Fetch bonus car details
   const fetchBonusCar = async (leagueId) => {
     if (!leagueId) return
     
@@ -243,9 +254,12 @@ export default function BixPrixApp() {
         .single()
       
       if (leagueError || !league.bonus_auction_id) {
+        console.log('No bonus car set for this league')
         setBonusCar(null)
         return
       }
+      
+      console.log(`Fetching bonus car: ${league.bonus_auction_id}`)
       
       const { data: auction, error: auctionError } = await supabase
         .from('auctions')
@@ -254,6 +268,7 @@ export default function BixPrixApp() {
         .single()
       
       if (auctionError || !auction) {
+        console.error('Error fetching bonus auction:', auctionError)
         setBonusCar(null)
         return
       }
@@ -262,7 +277,7 @@ export default function BixPrixApp() {
       const baseline = parseFloat(auction.price_at_48h)
       const imageUrl = auction.image_url || getDefaultCarImage(auction.make)
       
-      setBonusCar({
+      const bonusCarData = {
         id: auction.auction_id,
         title: auction.title,
         make: auction.make,
@@ -274,7 +289,10 @@ export default function BixPrixApp() {
         auctionUrl: auction.url,
         imageUrl: imageUrl,
         endTime: endDate,
-      })
+      }
+      
+      console.log('Bonus car loaded:', bonusCarData)
+      setBonusCar(bonusCarData)
       
     } catch (error) {
       console.error('Error fetching bonus car:', error)
@@ -282,7 +300,6 @@ export default function BixPrixApp() {
     }
   }
 
-  // NEW: Fetch user's prediction
   const fetchUserPrediction = async (leagueId) => {
     if (!user || !leagueId) return
     
@@ -300,7 +317,13 @@ export default function BixPrixApp() {
         return
       }
       
-      setUserPrediction(data ? data.predicted_price : null)
+      if (data) {
+        console.log('User prediction found:', data.predicted_price)
+        setUserPrediction(data.predicted_price)
+      } else {
+        console.log('No prediction found for user')
+        setUserPrediction(null)
+      }
       
     } catch (error) {
       console.error('Error fetching prediction:', error)
@@ -308,7 +331,6 @@ export default function BixPrixApp() {
     }
   }
 
-  // NEW: Submit prediction
   const submitPrediction = async (predictedPrice) => {
     if (!user || !selectedLeague || !bonusCar) {
       alert('Missing required data')
@@ -471,7 +493,7 @@ export default function BixPrixApp() {
       }
     } else {
       setUserGarageId(null)
-      setBudget(100000)
+      setBudget(175000) // UPDATED: $175k budget
       setGarage([])
     }
   }
@@ -497,15 +519,15 @@ export default function BixPrixApp() {
         setSelectedLeague(league)
         await fetchUserGarage(league.id)
         await fetchAuctions()
-        await fetchBonusCar(league.id) // NEW
-        await fetchUserPrediction(league.id) // NEW
+        await fetchBonusCar(league.id)
+        await fetchUserPrediction(league.id)
         setCurrentScreen('cars')
         return
       }
       
       const { data: g, error: ge } = await supabase
         .from('garages')
-        .insert([{ user_id: user.id, league_id: league.id, remaining_budget: 100000 }])
+        .insert([{ user_id: user.id, league_id: league.id, remaining_budget: 175000 }]) // UPDATED: $175k budget
         .select()
         .single()
       
@@ -519,12 +541,12 @@ export default function BixPrixApp() {
       
       setSelectedLeague(league)
       setUserGarageId(g.id)
-      setBudget(100000)
+      setBudget(175000) // UPDATED: $175k budget
       setGarage([])
       
       await fetchAuctions()
-      await fetchBonusCar(league.id) // NEW
-      await fetchUserPrediction(league.id) // NEW
+      await fetchBonusCar(league.id)
+      await fetchUserPrediction(league.id)
       setCurrentScreen('cars')
       
     } catch (error) {
@@ -603,8 +625,8 @@ export default function BixPrixApp() {
     if (selectedLeague && user) {
       fetchUserGarage(selectedLeague.id)
       fetchAuctions()
-      fetchBonusCar(selectedLeague.id) // NEW
-      fetchUserPrediction(selectedLeague.id) // NEW
+      fetchBonusCar(selectedLeague.id)
+      fetchUserPrediction(selectedLeague.id)
     }
   }, [selectedLeague, user])
 
@@ -732,7 +754,6 @@ export default function BixPrixApp() {
     )
   }
 
-  // NEW: Prediction Modal Component
   function PredictionModal({ car, onClose, onSubmit, currentPrediction }) {
     const [prediction, setPrediction] = useState(currentPrediction ? currentPrediction.toString() : '')
     
@@ -754,7 +775,7 @@ export default function BixPrixApp() {
               <Zap className="text-bpGold" size={24} />
               Predict the Final Price
             </h2>
-            <button onClick={onClose} className="text-bpInk/60 hover:text-bpInk">✕</button>
+            <button onClick={onClose} className="text-bpInk/60 hover:text-bpInk text-2xl">✕</button>
           </div>
           
           <div className="mb-6 p-4 rounded-lg bg-bpGold/10 border-2 border-bpGold/30">
@@ -838,7 +859,6 @@ export default function BixPrixApp() {
           </div>
         </div>
 
-        {/* NEW: Bonus Car Section */}
         {bonusCar && (
           <Card className="mb-6 overflow-hidden border-2 border-bpGold/50">
             <div className="bg-gradient-to-r from-bpGold/20 to-bpGold/10 px-4 py-2 border-b border-bpGold/30">
@@ -981,7 +1001,6 @@ export default function BixPrixApp() {
           })}
         </div>
 
-        {/* NEW: Prediction Modal */}
         {showPredictionModal && bonusCar && (
           <PredictionModal
             car={bonusCar}
@@ -1014,7 +1033,6 @@ export default function BixPrixApp() {
           </div>
         )}
 
-        {/* NEW: Show bonus car in garage too */}
         {bonusCar && (
           <Card className="mb-4 p-4 border-2 border-bpGold/50">
             <div className="flex gap-4">
@@ -1104,9 +1122,9 @@ export default function BixPrixApp() {
                         <div>{car.timeLeft} left</div>
                       </div>
                       {canModify && (
-                        <OutlineButton className="mt-3" onClick={()=> removeFromGarage(car)}>
+                        <LightButton className="mt-3 text-sm" onClick={()=> removeFromGarage(car)}>
                           Remove
-                        </OutlineButton>
+                        </LightButton>
                       )}
                       {!canModify && (
                         <div className="mt-3 text-xs text-bpInk/60">🔒 Locked</div>
