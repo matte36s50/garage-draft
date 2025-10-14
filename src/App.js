@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
@@ -111,6 +111,9 @@ export default function BixPrixApp() {
   const [leagues, setLeagues] = useState([])
   const [loading, setLoading] = useState(false)
   const [userGarageId, setUserGarageId] = useState(null)
+  const [bonusCar, setBonusCar] = useState(null) // NEW
+  const [userPrediction, setUserPrediction] = useState(null) // NEW
+  const [showPredictionModal, setShowPredictionModal] = useState(false) // NEW
 
   const calculateTimeLeft = (endTime) => {
     if (!endTime) return 'N/A'
@@ -172,12 +175,10 @@ export default function BixPrixApp() {
     return (make && map[make]) || map['Ford']
   }
 
-  // NEW: Create league snapshot - captures current available auctions
   const createLeagueSnapshot = async (leagueId) => {
     console.log(`Creating snapshot for league ${leagueId}...`)
     
     try {
-      // Get current auctions that are eligible (have day 2 price, not ended)
       const now = Math.floor(Date.now() / 1000)
       const { data: availableAuctions, error: auctionError } = await supabase
         .from('auctions')
@@ -185,7 +186,7 @@ export default function BixPrixApp() {
         .not('price_at_48h', 'is', null)
         .gt('timestamp_end', now)
         .is('final_price', null)
-        .limit(100) // Capture up to 100 cars
+        .limit(100)
       
       if (auctionError) {
         console.error('Error fetching auctions for snapshot:', auctionError)
@@ -197,7 +198,6 @@ export default function BixPrixApp() {
         return false
       }
       
-      // Create league_cars entries for each auction
       const leagueCars = availableAuctions.map(a => ({
         league_id: leagueId,
         auction_id: a.auction_id,
@@ -213,7 +213,6 @@ export default function BixPrixApp() {
         return false
       }
       
-      // Mark league as having snapshot
       const { error: updateError } = await supabase
         .from('leagues')
         .update({ snapshot_created: true })
@@ -232,7 +231,119 @@ export default function BixPrixApp() {
     }
   }
 
-  // UPDATED: Fetch auctions from league snapshot instead of all auctions
+  // NEW: Fetch bonus car details
+  const fetchBonusCar = async (leagueId) => {
+    if (!leagueId) return
+    
+    try {
+      const { data: league, error: leagueError } = await supabase
+        .from('leagues')
+        .select('bonus_auction_id')
+        .eq('id', leagueId)
+        .single()
+      
+      if (leagueError || !league.bonus_auction_id) {
+        setBonusCar(null)
+        return
+      }
+      
+      const { data: auction, error: auctionError } = await supabase
+        .from('auctions')
+        .select('*')
+        .eq('auction_id', league.bonus_auction_id)
+        .single()
+      
+      if (auctionError || !auction) {
+        setBonusCar(null)
+        return
+      }
+      
+      const endDate = new Date(auction.timestamp_end * 1000)
+      const baseline = parseFloat(auction.price_at_48h)
+      const imageUrl = auction.image_url || getDefaultCarImage(auction.make)
+      
+      setBonusCar({
+        id: auction.auction_id,
+        title: auction.title,
+        make: auction.make,
+        model: auction.model,
+        year: auction.year,
+        currentBid: parseFloat(auction.current_bid) || baseline || 0,
+        baselinePrice: baseline,
+        timeLeft: calculateTimeLeft(endDate),
+        auctionUrl: auction.url,
+        imageUrl: imageUrl,
+        endTime: endDate,
+      })
+      
+    } catch (error) {
+      console.error('Error fetching bonus car:', error)
+      setBonusCar(null)
+    }
+  }
+
+  // NEW: Fetch user's prediction
+  const fetchUserPrediction = async (leagueId) => {
+    if (!user || !leagueId) return
+    
+    try {
+      const { data, error } = await supabase
+        .from('bonus_predictions')
+        .select('predicted_price')
+        .eq('league_id', leagueId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      
+      if (error) {
+        console.error('Error fetching prediction:', error)
+        setUserPrediction(null)
+        return
+      }
+      
+      setUserPrediction(data ? data.predicted_price : null)
+      
+    } catch (error) {
+      console.error('Error fetching prediction:', error)
+      setUserPrediction(null)
+    }
+  }
+
+  // NEW: Submit prediction
+  const submitPrediction = async (predictedPrice) => {
+    if (!user || !selectedLeague || !bonusCar) {
+      alert('Missing required data')
+      return false
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('bonus_predictions')
+        .upsert({
+          league_id: selectedLeague.id,
+          user_id: user.id,
+          predicted_price: parseFloat(predictedPrice)
+        }, {
+          onConflict: 'league_id,user_id'
+        })
+      
+      if (error) {
+        console.error('Error submitting prediction:', error)
+        alert('Error saving prediction: ' + error.message)
+        return false
+      }
+      
+      setUserPrediction(parseFloat(predictedPrice))
+      setShowPredictionModal(false)
+      alert('Prediction saved! You predicted: $' + parseFloat(predictedPrice).toLocaleString())
+      return true
+      
+    } catch (error) {
+      console.error('Error submitting prediction:', error)
+      alert('Error saving prediction')
+      return false
+    }
+  }
+
   const fetchAuctions = async () => {
     if (!selectedLeague) {
       console.log('No league selected, cannot fetch auctions')
@@ -241,7 +352,6 @@ export default function BixPrixApp() {
     
     setLoading(true)
     try {
-      // First check if league has a snapshot
       const { data: leagueData, error: leagueError } = await supabase
         .from('leagues')
         .select('snapshot_created')
@@ -250,7 +360,6 @@ export default function BixPrixApp() {
       
       if (leagueError) throw leagueError
       
-      // If no snapshot exists, create one now
       if (!leagueData.snapshot_created) {
         console.log('League has no snapshot yet, creating one...')
         const created = await createLeagueSnapshot(selectedLeague.id)
@@ -262,7 +371,6 @@ export default function BixPrixApp() {
         }
       }
       
-      // Fetch league's car snapshot with full auction details
       const { data: leagueCars, error: leagueCarsError } = await supabase
         .from('league_cars')
         .select(`
@@ -274,9 +382,8 @@ export default function BixPrixApp() {
       
       if (leagueCarsError) throw leagueCarsError
       
-      // Transform the data
       const transformed = (leagueCars || [])
-        .filter(lc => lc.auctions) // Only include if auction data exists
+        .filter(lc => lc.auctions)
         .map((lc) => {
           const a = lc.auctions
           const endDate = new Date(a.timestamp_end * 1000)
@@ -389,7 +496,9 @@ export default function BixPrixApp() {
       if (existing) {
         setSelectedLeague(league)
         await fetchUserGarage(league.id)
-        await fetchAuctions() // Fetch league's snapshot
+        await fetchAuctions()
+        await fetchBonusCar(league.id) // NEW
+        await fetchUserPrediction(league.id) // NEW
         setCurrentScreen('cars')
         return
       }
@@ -413,8 +522,9 @@ export default function BixPrixApp() {
       setBudget(100000)
       setGarage([])
       
-      // Fetch auctions after joining
       await fetchAuctions()
+      await fetchBonusCar(league.id) // NEW
+      await fetchUserPrediction(league.id) // NEW
       setCurrentScreen('cars')
       
     } catch (error) {
@@ -489,11 +599,12 @@ export default function BixPrixApp() {
     } 
   }, [user])
   
-  // UPDATED: Fetch auctions when league changes
   useEffect(() => { 
     if (selectedLeague && user) {
       fetchUserGarage(selectedLeague.id)
-      fetchAuctions() // Fetch league's specific cars
+      fetchAuctions()
+      fetchBonusCar(selectedLeague.id) // NEW
+      fetchUserPrediction(selectedLeague.id) // NEW
     }
   }, [selectedLeague, user])
 
@@ -621,6 +732,79 @@ export default function BixPrixApp() {
     )
   }
 
+  // NEW: Prediction Modal Component
+  function PredictionModal({ car, onClose, onSubmit, currentPrediction }) {
+    const [prediction, setPrediction] = useState(currentPrediction ? currentPrediction.toString() : '')
+    
+    const handleSubmit = (e) => {
+      e.preventDefault()
+      const price = parseFloat(prediction.replace(/[^0-9.]/g, ''))
+      if (isNaN(price) || price <= 0) {
+        alert('Please enter a valid price')
+        return
+      }
+      onSubmit(price)
+    }
+    
+    return (
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <Card className="max-w-2xl w-full p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold text-bpInk flex items-center gap-2">
+              <Zap className="text-bpGold" size={24} />
+              Predict the Final Price
+            </h2>
+            <button onClick={onClose} className="text-bpInk/60 hover:text-bpInk">✕</button>
+          </div>
+          
+          <div className="mb-6 p-4 rounded-lg bg-bpGold/10 border-2 border-bpGold/30">
+            <p className="text-sm text-bpInk/80 mb-2">🏆 <strong>BONUS CAR</strong> (Shared by all players)</p>
+            <h3 className="font-bold text-lg text-bpInk">{car.title}</h3>
+            <p className="text-sm text-bpInk/70 mt-1">Current Bid: ${car.currentBid.toLocaleString()}</p>
+          </div>
+          
+          <div className="mb-6">
+            <img 
+              src={car.imageUrl} 
+              alt={car.title} 
+              className="w-full h-64 object-cover rounded-lg"
+            />
+          </div>
+          
+          <div className="mb-6 p-4 rounded-lg bg-bpInk/5">
+            <p className="text-sm text-bpInk/80 mb-2">
+              <strong>How it works:</strong>
+            </p>
+            <ul className="text-sm text-bpInk/70 space-y-1 list-disc list-inside">
+              <li>Everyone gets this car's percentage gain</li>
+              <li>Closest prediction gets <strong>DOUBLE</strong> the percentage gain</li>
+              <li>You can change your prediction anytime during the draft</li>
+            </ul>
+          </div>
+          
+          <form onSubmit={handleSubmit}>
+            <label className="block text-sm font-semibold text-bpInk mb-2">
+              Your Prediction:
+            </label>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={prediction}
+                onChange={(e) => setPrediction(e.target.value)}
+                placeholder="Enter final sale price..."
+                className="flex-1 px-4 py-3 rounded-md border-2 border-bpNavy/20 text-bpInk text-lg font-semibold"
+                autoFocus
+              />
+              <PrimaryButton type="submit" className="px-6">
+                {currentPrediction ? 'Update' : 'Submit'}
+              </PrimaryButton>
+            </div>
+          </form>
+        </Card>
+      </div>
+    )
+  }
+
   function CarsScreen({ onNavigate, currentScreen }) {
     const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
     const canPick = draftStatus.status === 'open'
@@ -653,6 +837,79 @@ export default function BixPrixApp() {
             </div>
           </div>
         </div>
+
+        {/* NEW: Bonus Car Section */}
+        {bonusCar && (
+          <Card className="mb-6 overflow-hidden border-2 border-bpGold/50">
+            <div className="bg-gradient-to-r from-bpGold/20 to-bpGold/10 px-4 py-2 border-b border-bpGold/30">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-bpInk flex items-center gap-2">
+                  <Zap className="text-bpGold" size={20} />
+                  BONUS CAR (Shared by All Players)
+                </h3>
+                {userPrediction ? (
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-semibold">
+                    ✓ Predicted: ${userPrediction.toLocaleString()}
+                  </span>
+                ) : (
+                  <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded font-semibold animate-pulse">
+                    ⚡ Predict to win 2x points!
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            <div className="grid md:grid-cols-2 gap-4 p-4">
+              <a 
+                href={bonusCar.auctionUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="block aspect-[16/9] w-full bg-bpInk/10 overflow-hidden hover:opacity-90 transition-opacity rounded-lg"
+              >
+                <img 
+                  src={bonusCar.imageUrl} 
+                  alt={bonusCar.title} 
+                  className="w-full h-full object-cover"
+                />
+              </a>
+              
+              <div className="flex flex-col justify-between">
+                <div>
+                  <a 
+                    href={bonusCar.auctionUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="font-bold text-lg text-bpInk hover:underline"
+                  >
+                    {bonusCar.title}
+                  </a>
+                  <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-3">
+                    <div className="flex items-center gap-1">
+                      <DollarSign size={14}/> Current: ${bonusCar.currentBid.toLocaleString()}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock size={14}/> {bonusCar.timeLeft}
+                    </div>
+                  </div>
+                  
+                  {userPrediction && (
+                    <div className="mt-3 p-2 rounded bg-green-50 text-sm text-green-700">
+                      Your prediction: <strong>${userPrediction.toLocaleString()}</strong>
+                    </div>
+                  )}
+                </div>
+                
+                <PrimaryButton
+                  className="w-full mt-4"
+                  onClick={() => setShowPredictionModal(true)}
+                  disabled={!canPick}
+                >
+                  {userPrediction ? '✏️ Change Prediction' : '🎯 Make Prediction'}
+                </PrimaryButton>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {loading && <p className="text-bpGray mb-4">Loading auctions…</p>}
 
@@ -723,6 +980,16 @@ export default function BixPrixApp() {
             )
           })}
         </div>
+
+        {/* NEW: Prediction Modal */}
+        {showPredictionModal && bonusCar && (
+          <PredictionModal
+            car={bonusCar}
+            onClose={() => setShowPredictionModal(false)}
+            onSubmit={submitPrediction}
+            currentPrediction={userPrediction}
+          />
+        )}
       </Shell>
     )
   }
@@ -745,6 +1012,56 @@ export default function BixPrixApp() {
           <div className="mb-4 p-3 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
             🔒 {draftStatus.message} - Your garage is locked
           </div>
+        )}
+
+        {/* NEW: Show bonus car in garage too */}
+        {bonusCar && (
+          <Card className="mb-4 p-4 border-2 border-bpGold/50">
+            <div className="flex gap-4">
+              <a 
+                href={bonusCar.auctionUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex-shrink-0 hover:opacity-90 transition-opacity"
+              >
+                <img 
+                  src={bonusCar.imageUrl} 
+                  alt={bonusCar.title} 
+                  className="w-28 h-20 rounded-lg object-cover"
+                />
+              </a>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <Zap className="text-bpGold" size={16} />
+                  <span className="text-xs font-semibold text-bpInk/60 uppercase">Bonus Car</span>
+                </div>
+                <a 
+                  href={bonusCar.auctionUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="font-bold text-bpInk hover:underline"
+                >
+                  {bonusCar.title}
+                </a>
+                <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
+                  <div>Current: ${bonusCar.currentBid.toLocaleString()}</div>
+                  <div>{bonusCar.timeLeft} left</div>
+                  {userPrediction && (
+                    <>
+                      <div className="col-span-2 text-green-700 font-semibold">
+                        Your prediction: ${userPrediction.toLocaleString()}
+                      </div>
+                    </>
+                  )}
+                  {!userPrediction && (
+                    <div className="col-span-2 text-yellow-600 text-xs">
+                      ⚡ Make a prediction for 2x points!
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Card>
         )}
         
         <div className="grid md:grid-cols-2 gap-4">
