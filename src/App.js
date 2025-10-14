@@ -640,11 +640,9 @@ export default function BixPrixApp() {
     }
   }, [selectedLeague, user])
 
-  // NEW: Landing Screen
   function LandingScreen({ onGetStarted }) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-bpNavy via-[#0B1220] to-bpNavy">
-        {/* Hero Section */}
         <div className="relative overflow-hidden">
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDMpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-40"></div>
           
@@ -673,7 +671,7 @@ export default function BixPrixApp() {
               </PrimaryButton>
               <OutlineButton 
                 className="px-8 py-4 text-lg"
-                onClick={() => document.getElementById('how-it-works').scrollIntoView({ behavior: 'smooth' })}
+                onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
               >
                 Learn More
               </OutlineButton>
@@ -681,7 +679,6 @@ export default function BixPrixApp() {
           </div>
         </div>
 
-        {/* How It Works */}
         <div id="how-it-works" className="mx-auto max-w-5xl px-4 py-20">
           <h2 className="text-3xl font-bold text-bpCream text-center mb-12">How It Works</h2>
           
@@ -718,7 +715,6 @@ export default function BixPrixApp() {
           </div>
         </div>
 
-        {/* Rules & Scoring */}
         <div className="bg-white/5 py-20">
           <div className="mx-auto max-w-5xl px-4">
             <h2 className="text-3xl font-bold text-bpCream text-center mb-12">Rules & Scoring</h2>
@@ -775,7 +771,6 @@ export default function BixPrixApp() {
               </Card>
             </div>
 
-            {/* Example */}
             <Card className="mt-8 p-6 bg-gradient-to-br from-bpGold/10 to-bpRed/10 border-2 border-bpGold/30">
               <h3 className="text-lg font-bold text-bpInk mb-4 flex items-center gap-2">
                 <Target size={20} className="text-bpGold" />
@@ -817,7 +812,6 @@ export default function BixPrixApp() {
           </div>
         </div>
 
-        {/* CTA */}
         <div className="mx-auto max-w-3xl px-4 py-20 text-center">
           <h2 className="text-4xl font-bold text-bpCream mb-6">
             Ready to Race the Market?
@@ -833,7 +827,6 @@ export default function BixPrixApp() {
           </PrimaryButton>
         </div>
 
-        {/* Footer */}
         <div className="border-t border-white/10 py-8">
           <div className="mx-auto max-w-5xl px-4 text-center text-sm text-bpGray">
             <p>© {new Date().getFullYear()} BixPrix. Not affiliated with Bring a Trailer.</p>
@@ -907,9 +900,475 @@ export default function BixPrixApp() {
     )
   }
 
-  // ... [Rest of your component code continues - LeaguesScreen, PredictionModal, CarsScreen, GarageScreen, LeaderboardScreen - KEEP ALL OF THESE THE SAME] ...
+  function LeaguesScreen({ onNavigate, currentScreen }) {
+    return (
+      <Shell onSignOut={() => supabase.auth.signOut()} onNavigate={onNavigate} currentScreen={currentScreen}>
+        <h2 className="text-2xl font-extrabold tracking-tight mb-4">Join a League</h2>
+        <div className="grid sm:grid-cols-2 gap-4">
+          {leagues.length === 0 && (
+            <Card className="p-6 text-bpInk/80">
+              <p>No public leagues yet. Check back soon.</p>
+            </Card>
+          )}
+          {leagues.map(l => {
+            const draftStatus = getDraftStatus(l)
+            const canJoin = draftStatus.status === 'open'
+            
+            return (
+              <Card key={l.id} className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-bold text-lg text-bpInk">{l.name}</h3>
+                    <p className="text-sm text-bpInk/70">Ends {new Date(l.end_date).toLocaleDateString()}</p>
+                  </div>
+                  <span className={`text-[11px] px-2 py-1 rounded font-semibold ${
+                    draftStatus.status === 'open' ? 'bg-green-100 text-green-700' :
+                    draftStatus.status === 'upcoming' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>
+                    {draftStatus.status === 'open' ? '🟢 Open' : 
+                     draftStatus.status === 'upcoming' ? '🟡 Soon' : 
+                     '🔴 Closed'}
+                  </span>
+                </div>
+                
+                <div className="mt-3 p-2 rounded bg-bpInk/5 text-sm text-bpInk/80">
+                  ⏰ {draftStatus.message}
+                </div>
+                
+                <div className="mt-4 flex items-center justify-between text-sm text-bpInk/75">
+                  <span className="flex items-center gap-2"><Users size={16}/> {l.playerCount} players</span>
+                  <span className="flex items-center gap-2"><Trophy size={16}/> {l.status || 'Open'}</span>
+                </div>
+                
+                <div className="mt-5">
+                  {canJoin ? (
+                    <PrimaryButton className="w-full" onClick={() => joinLeague(l)}>
+                      Join League
+                    </PrimaryButton>
+                  ) : (
+                    <PrimaryButton className="w-full opacity-50 cursor-not-allowed" disabled>
+                      {draftStatus.status === 'upcoming' ? 'Draft Not Started' : 'Draft Closed'}
+                    </PrimaryButton>
+                  )}
+                </div>
+              </Card>
+            )
+          })}
+        </div>
+      </Shell>
+    )
+  }
 
-  // [Continue with the rest of the file - I'll post that in a follow-up message since this is getting long]
+  function PredictionModal({ car, onClose, onSubmit, currentPrediction }) {
+    const [prediction, setPrediction] = useState(currentPrediction ? currentPrediction.toString() : '')
+    
+    const handleSubmit = (e) => {
+      e.preventDefault()
+      const price = parseFloat(prediction.replace(/[^0-9.]/g, ''))
+      if (isNaN(price) || price <= 0) {
+        alert('Please enter a valid price')
+        return
+      }
+      onSubmit(price)
+    }
+    
+    return (
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <Card className="max-w-2xl w-full p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold text-bpInk flex items-center gap-2">
+              <Zap className="text-bpGold" size={24} />
+              Predict the Final Price
+            </h2>
+            <button onClick={onClose} className="text-bpInk/60 hover:text-bpInk text-2xl">✕</button>
+          </div>
+          
+          <div className="mb-6 p-4 rounded-lg bg-bpGold/10 border-2 border-bpGold/30">
+            <p className="text-sm text-bpInk/80 mb-2">🏆 <strong>BONUS CAR</strong> (Shared by all players)</p>
+            <h3 className="font-bold text-lg text-bpInk">{car.title}</h3>
+            <p className="text-sm text-bpInk/70 mt-1">Current Bid: ${car.currentBid.toLocaleString()}</p>
+          </div>
+          
+          <div className="mb-6">
+            <img 
+              src={car.imageUrl} 
+              alt={car.title} 
+              className="w-full h-64 object-cover rounded-lg"
+            />
+          </div>
+          
+          <div className="mb-6 p-4 rounded-lg bg-bpInk/5">
+            <p className="text-sm text-bpInk/80 mb-2">
+              <strong>How it works:</strong>
+            </p>
+            <ul className="text-sm text-bpInk/70 space-y-1 list-disc list-inside">
+              <li>Everyone gets this car's percentage gain</li>
+              <li>Closest prediction gets <strong>DOUBLE</strong> the percentage gain</li>
+              <li>You can change your prediction anytime during the draft</li>
+            </ul>
+          </div>
+          
+          <form onSubmit={handleSubmit}>
+            <label className="block text-sm font-semibold text-bpInk mb-2">
+              Your Prediction:
+            </label>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={prediction}
+                onChange={(e) => setPrediction(e.target.value)}
+                placeholder="Enter final sale price..."
+                className="flex-1 px-4 py-3 rounded-md border-2 border-bpNavy/20 text-bpInk text-lg font-semibold"
+                autoFocus
+              />
+              <PrimaryButton type="submit" className="px-6">
+                {currentPrediction ? 'Update' : 'Submit'}
+              </PrimaryButton>
+            </div>
+          </form>
+        </Card>
+      </div>
+    )
+  }
+
+  function CarsScreen({ onNavigate, currentScreen }) {
+    const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
+    const canPick = draftStatus.status === 'open'
+    
+    return (
+      <Shell onNavigate={onNavigate} currentScreen={currentScreen}>
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-2xl font-extrabold tracking-tight">Available Cars</h2>
+            <p className="text-sm text-bpCream/70">Budget: ${budget.toLocaleString()} · Garage: {garage.length}/7</p>
+            
+            {!canPick && (
+              <div className="mt-2 p-2 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
+                ⚠️ {draftStatus.message} - You cannot modify your garage
+              </div>
+            )}
+            {canPick && (
+              <div className="mt-2 p-2 rounded bg-green-500/20 text-sm text-bpCream border border-green-500/40">
+                ✓ {draftStatus.message}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-bpGray"/>
+              <input 
+                className="pl-9 pr-3 py-2 rounded-md bg-white/5 border border-white/10 text-bpCream placeholder:text-bpGray/70" 
+                placeholder="Search make or model"
+              />
+            </div>
+          </div>
+        </div>
+
+        {bonusCar && (
+          <Card className="mb-6 overflow-hidden border-2 border-bpGold/50">
+            <div className="bg-gradient-to-r from-bpGold/20 to-bpGold/10 px-4 py-2 border-b border-bpGold/30">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-bpInk flex items-center gap-2">
+                  <Zap className="text-bpGold" size={20} />
+                  BONUS CAR (Shared by All Players)
+                </h3>
+                {userPrediction ? (
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-semibold">
+                    ✓ Predicted: ${userPrediction.toLocaleString()}
+                  </span>
+                ) : (
+                  <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded font-semibold animate-pulse">
+                    ⚡ Predict to win 2x points!
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            <div className="grid md:grid-cols-2 gap-4 p-4">
+              <a 
+                href={bonusCar.auctionUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="block aspect-[16/9] w-full bg-bpInk/10 overflow-hidden hover:opacity-90 transition-opacity rounded-lg"
+              >
+                <img 
+                  src={bonusCar.imageUrl} 
+                  alt={bonusCar.title} 
+                  className="w-full h-full object-cover"
+                />
+              </a>
+              
+              <div className="flex flex-col justify-between">
+                <div>
+                  <a 
+                    href={bonusCar.auctionUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="font-bold text-lg text-bpInk hover:underline"
+                  >
+                    {bonusCar.title}
+                  </a>
+                  <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-3">
+                    <div className="flex items-center gap-1">
+                      <DollarSign size={14}/> Current: ${bonusCar.currentBid.toLocaleString()}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock size={14}/> {bonusCar.timeLeft}
+                    </div>
+                  </div>
+                  
+                  {userPrediction && (
+                    <div className="mt-3 p-2 rounded bg-green-50 text-sm text-green-700">
+                      Your prediction: <strong>${userPrediction.toLocaleString()}</strong>
+                    </div>
+                  )}
+                </div>
+                
+                <PrimaryButton
+                  className="w-full mt-4"
+                  onClick={() => setShowPredictionModal(true)}
+                  disabled={!canPick}
+                >
+                  {userPrediction ? '✏️ Change Prediction' : '🎯 Make Prediction'}
+                </PrimaryButton>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {loading && <p className="text-bpGray mb-4">Loading auctions…</p>}
+
+        {!loading && auctions.length === 0 && (
+          <Card className="p-8 text-center text-bpInk/70">
+            <p>No cars available in this league yet. The snapshot may still be loading.</p>
+          </Card>
+        )}
+
+        <div className="grid md:grid-cols-2 gap-4">
+          {auctions.map(a => {
+            const draftPrice = a.baselinePrice || a.currentBid
+            const disabled = garage.some((c)=>c.id===a.id) || budget < draftPrice || !canPick
+            
+            return (
+              <Card key={a.id} className="overflow-hidden">
+                <a 
+                  href={a.auctionUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block aspect-[16/9] w-full bg-bpInk/10 overflow-hidden hover:opacity-90 transition-opacity"
+                >
+                  <img 
+                    src={a.imageUrl} 
+                    alt={a.title} 
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.src = getDefaultCarImage(a.make)
+                    }}
+                  />
+                </a>
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <a 
+                      href={a.auctionUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="font-bold text-bpInk hover:underline"
+                    >
+                      {a.title}
+                    </a>
+                    {a.trending && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-bpRed/15 text-bpInk">
+                        <Star size={12}/> Trending
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-y-1 text-sm text-bpInk/80 mt-2">
+                    <div className="flex items-center gap-1">
+                      <DollarSign size={14}/> Draft: ${draftPrice.toLocaleString()}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock size={14}/> {a.timeLeft}
+                    </div>
+                    <div className="text-bpInk/60">Current: ${a.currentBid.toLocaleString()}</div>
+                  </div>
+                  <PrimaryButton
+                    className={`w-full mt-3 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
+                    onClick={() => addToGarage(a)}
+                  >
+                    {!canPick ? 'Draft Closed' :
+                     garage.some(c=>c.id===a.id) ? 'In Garage' : 
+                     budget < draftPrice ? 'Insufficient Budget' : 
+                     'Add to Garage'}
+                  </PrimaryButton>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
+
+        {showPredictionModal && bonusCar && (
+          <PredictionModal
+            car={bonusCar}
+            onClose={() => setShowPredictionModal(false)}
+            onSubmit={submitPrediction}
+            currentPrediction={userPrediction}
+          />
+        )}
+      </Shell>
+    )
+  }
+
+  function GarageScreen({ onNavigate, currentScreen }) {
+    const gain = (purchase, current) => {
+      if (!purchase) return 0
+      return +(((current - purchase) / purchase) * 100).toFixed(1)
+    }
+    
+    const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
+    const canModify = draftStatus.status === 'open'
+    
+    return (
+      <Shell onNavigate={onNavigate} currentScreen={currentScreen}>
+        <h2 className="text-2xl font-extrabold tracking-tight mb-3">My Garage</h2>
+        <p className="text-sm text-bpCream/70 mb-5">Budget: ${budget.toLocaleString()} · {garage.length}/7 cars</p>
+        
+        {!canModify && (
+          <div className="mb-4 p-3 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
+            🔒 {draftStatus.message} - Your garage is locked
+          </div>
+        )}
+
+        {bonusCar && (
+          <Card className="mb-4 p-4 border-2 border-bpGold/50">
+            <div className="flex gap-4">
+              <a 
+                href={bonusCar.auctionUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex-shrink-0 hover:opacity-90 transition-opacity"
+              >
+                <img 
+                  src={bonusCar.imageUrl} 
+                  alt={bonusCar.title} 
+                  className="w-28 h-20 rounded-lg object-cover"
+                />
+              </a>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <Zap className="text-bpGold" size={16} />
+                  <span className="text-xs font-semibold text-bpInk/60 uppercase">Bonus Car</span>
+                </div>
+                <a 
+                  href={bonusCar.auctionUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="font-bold text-bpInk hover:underline"
+                >
+                  {bonusCar.title}
+                </a>
+                <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
+                  <div>Current: ${bonusCar.currentBid.toLocaleString()}</div>
+                  <div>{bonusCar.timeLeft} left</div>
+                  {userPrediction && (
+                    <>
+                      <div className="col-span-2 text-green-700 font-semibold">
+                        Your prediction: ${userPrediction.toLocaleString()}
+                      </div>
+                    </>
+                  )}
+                  {!userPrediction && (
+                    <div className="col-span-2 text-yellow-600 text-xs">
+                      ⚡ Make a prediction for 2x points!
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+        
+        <div className="grid md:grid-cols-2 gap-4">
+          {Array.from({ length: 7 }).map((_, i) => {
+            const car = garage[i]
+            return (
+              <Card key={i} className={`p-4 ${car ? '' : 'border-dashed bg-bpCream/70 text-bpInk/60'}`}>
+                {car ? (
+                  <div className="flex gap-4">
+                    <a 
+                      href={car.auctionUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex-shrink-0 hover:opacity-90 transition-opacity"
+                    >
+                      <img 
+                        src={car.imageUrl} 
+                        alt={car.title} 
+                        className="w-28 h-20 rounded-lg object-cover"
+                        onError={(e) => {
+                          e.target.src = getDefaultCarImage(car.make)
+                        }}
+                      />
+                    </a>
+                    <div className="flex-1">
+                      <a 
+                        href={car.auctionUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="font-bold text-bpInk hover:underline"
+                      >
+                        {car.title}
+                      </a>
+                      <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
+                        <div>Draft: ${(car.purchasePrice || car.currentBid).toLocaleString()}</div>
+                        <div>Current: ${car.currentBid.toLocaleString()}</div>
+                        <div className={`${gain(car.purchasePrice || car.currentBid, car.currentBid) >= 0 ? 'text-green-700' : 'text-bpRed'}`}>
+                          Gain: {gain(car.purchasePrice || car.currentBid, car.currentBid) >= 0 ? '+' : ''}{gain(car.purchasePrice || car.currentBid, car.currentBid)}%
+                        </div>
+                        <div>{car.timeLeft} left</div>
+                      </div>
+                      {canModify && (
+                        <LightButton className="mt-3 text-sm" onClick={()=> removeFromGarage(car)}>
+                          Remove
+                        </LightButton>
+                      )}
+                      {!canModify && (
+                        <div className="mt-3 text-xs text-bpInk/60">🔒 Locked</div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-24">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Car size={18}/>
+                      <span>Empty Slot</span>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )
+          })}
+        </div>
+      </Shell>
+    )
+  }
+
+  function LeaderboardScreen({ onNavigate, currentScreen }) {
+    return (
+      <Shell onNavigate={onNavigate} currentScreen={currentScreen}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-extrabold tracking-tight">Leaderboard</h2>
+          <span className="text-sm text-bpCream/70">{selectedLeague?.name || 'Select a League'}</span>
+        </div>
+        <Card className="p-8 text-bpInk/80 flex items-center justify-center">
+          <div className="text-center">
+            <Trophy className="mx-auto mb-2 text-bpInk/60"/>
+            Rankings will appear here once leagues have active members.
+          </div>
+        </Card>
+      </Shell>
+    )
+  }
 
   if (currentScreen === 'landing') return <LandingScreen onGetStarted={() => setCurrentScreen('login')} />
   if (!user) return <LoginScreen />
