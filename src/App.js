@@ -101,7 +101,6 @@ function OutlineButton({ className = '', children, ...props }) {
   )
 }
 
-// NEW: Button for light backgrounds (like cards)
 function LightButton({ className = '', children, ...props }) {
   return (
     <button
@@ -118,7 +117,7 @@ export default function BixPrixApp() {
   const [user, setUser] = useState(null)
   const [selectedLeague, setSelectedLeague] = useState(null)
   const [garage, setGarage] = useState([])
-  const [budget, setBudget] = useState(175000) // UPDATED: $175k budget
+  const [budget, setBudget] = useState(175000)
   const [auctions, setAuctions] = useState([])
   const [leagues, setLeagues] = useState([])
   const [loading, setLoading] = useState(false)
@@ -198,7 +197,7 @@ export default function BixPrixApp() {
         .not('price_at_48h', 'is', null)
         .gt('timestamp_end', now)
         .is('final_price', null)
-        .limit(100)
+        .limit(100) // You can increase this if you want more cars in the league pool
       
       if (auctionError) {
         console.error('Error fetching auctions for snapshot:', auctionError)
@@ -243,6 +242,7 @@ export default function BixPrixApp() {
     }
   }
 
+  // UPDATED: Now validates that bonus car is still active
   const fetchBonusCar = async (leagueId) => {
     if (!leagueId) return
     
@@ -261,14 +261,19 @@ export default function BixPrixApp() {
       
       console.log(`Fetching bonus car: ${league.bonus_auction_id}`)
       
+      // UPDATED: Check if auction is still active
+      const now = Math.floor(Date.now() / 1000)
       const { data: auction, error: auctionError } = await supabase
         .from('auctions')
         .select('*')
         .eq('auction_id', league.bonus_auction_id)
+        .gt('timestamp_end', now)  // ⭐ Only active auctions
+        .is('final_price', null)    // ⭐ Only unfinished auctions
         .single()
       
       if (auctionError || !auction) {
-        console.error('Error fetching bonus auction:', auctionError)
+        console.warn('⚠️ Bonus car auction has ended or not found!')
+        console.error('Error details:', auctionError)
         setBonusCar(null)
         return
       }
@@ -291,7 +296,7 @@ export default function BixPrixApp() {
         endTime: endDate,
       }
       
-      console.log('Bonus car loaded:', bonusCarData)
+      console.log('✅ Active bonus car loaded:', bonusCarData)
       setBonusCar(bonusCarData)
       
     } catch (error) {
@@ -493,7 +498,7 @@ export default function BixPrixApp() {
       }
     } else {
       setUserGarageId(null)
-      setBudget(175000) // UPDATED: $175k budget
+      setBudget(175000)
       setGarage([])
     }
   }
@@ -527,7 +532,7 @@ export default function BixPrixApp() {
       
       const { data: g, error: ge } = await supabase
         .from('garages')
-        .insert([{ user_id: user.id, league_id: league.id, remaining_budget: 175000 }]) // UPDATED: $175k budget
+        .insert([{ user_id: user.id, league_id: league.id, remaining_budget: 175000 }])
         .select()
         .single()
       
@@ -541,7 +546,7 @@ export default function BixPrixApp() {
       
       setSelectedLeague(league)
       setUserGarageId(g.id)
-      setBudget(175000) // UPDATED: $175k budget
+      setBudget(175000)
       setGarage([])
       
       await fetchAuctions()
