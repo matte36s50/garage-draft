@@ -895,7 +895,7 @@ export default function BixPrixApp() {
             <PrimaryButton className="w-full" onClick={isSignUp ? signUp : signIn}>
               {isSignUp ? 'Create Account' : 'Sign In'}
             </PrimaryButton>
-            <OutlineButton className="w-full" onClick={()=>setIsSignUp(!isSignUp)}>
+            <OutlineButton className="w-full text-bpInk" onClick={()=>setIsSignUp(!isSignUp)}>
               {isSignUp ? 'Have an account? Sign in' : 'New here? Create an account'}
             </OutlineButton>
           </div>
