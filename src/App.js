@@ -187,60 +187,100 @@ export default function BixPrixApp() {
   }
 
   const createLeagueSnapshot = async (leagueId) => {
-    console.log(`Creating snapshot for league ${leagueId}...`)
+  console.log(`Creating snapshot for league ${leagueId}...`)
+  
+  try {
+    // Get league draft period
+    const { data: league, error: leagueError } = await supabase
+      .from('leagues')
+      .select('draft_starts_at, draft_ends_at')
+      .eq('id', leagueId)
+      .single()
     
-    try {
-      const now = Math.floor(Date.now() / 1000)
-      const { data: availableAuctions, error: auctionError } = await supabase
-        .from('auctions')
-        .select('auction_id, price_at_48h')
-        .not('price_at_48h', 'is', null)
-        .gt('timestamp_end', now)
-        .is('final_price', null)
-        .limit(100)
-      
-      if (auctionError) {
-        console.error('Error fetching auctions for snapshot:', auctionError)
-        return false
-      }
-      
-      if (!availableAuctions || availableAuctions.length === 0) {
-        console.log('No available auctions to snapshot')
-        return false
-      }
-      
-      const leagueCars = availableAuctions.map(a => ({
-        league_id: leagueId,
-        auction_id: a.auction_id,
-        baseline_price: parseFloat(a.price_at_48h)
-      }))
-      
-      const { error: insertError } = await supabase
-        .from('league_cars')
-        .insert(leagueCars)
-      
-      if (insertError) {
-        console.error('Error creating league snapshot:', insertError)
-        return false
-      }
-      
-      const { error: updateError } = await supabase
-        .from('leagues')
-        .update({ snapshot_created: true })
-        .eq('id', leagueId)
-      
-      if (updateError) {
-        console.error('Error updating league:', updateError)
-      }
-      
-      console.log(`Successfully created snapshot with ${leagueCars.length} cars`)
-      return true
-      
-    } catch (error) {
-      console.error('Exception creating snapshot:', error)
+    if (leagueError || !league.draft_starts_at || !league.draft_ends_at) {
+      console.error('League draft period not set:', leagueError)
       return false
     }
+    
+    const draftStart = Math.floor(new Date(league.draft_starts_at).getTime() / 1000)
+    const draftEnd = Math.floor(new Date(league.draft_ends_at).getTime() / 1000)
+    const auctionDuration = 7 * 24 * 60 * 60 // 7 days in seconds
+    const hours48 = 48 * 60 * 60
+    const hours72 = 72 * 60 * 60
+    
+    // Fetch all potential auctions
+    const { data: availableAuctions, error: auctionError } = await supabase
+      .from('auctions')
+      .select('auction_id, price_at_48h, timestamp_end')
+      .not('price_at_48h', 'is', null)
+      .is('final_price', null)
+      .limit(200)
+    
+    if (auctionError) {
+      console.error('Error fetching auctions for snapshot:', auctionError)
+      return false
+    }
+    
+    if (!availableAuctions || availableAuctions.length === 0) {
+      console.log('No available auctions to snapshot')
+      return false
+    }
+    
+    // Filter auctions to only those in 48-72 hour window during draft period
+    const validAuctions = availableAuctions.filter(auction => {
+      const auctionEnd = auction.timestamp_end
+      const auctionStart = auctionEnd - auctionDuration
+      
+      // Check if auction is in 48-72 hour window at any point during draft
+      // At draft start: auction should be at most 72 hours old
+      const ageAtDraftStart = draftStart - auctionStart
+      // At draft end: auction should be at least 48 hours old  
+      const ageAtDraftEnd = draftEnd - auctionStart
+      // Auction should not have ended before draft ends
+      const isStillActive = auctionEnd > draftStart
+      
+      return ageAtDraftStart <= hours72 && ageAtDraftEnd >= hours48 && isStillActive
+    })
+    
+    if (validAuctions.length === 0) {
+      console.log('No auctions in 48-72 hour window during draft period')
+      return false
+    }
+    
+    console.log(`Found ${validAuctions.length} auctions in 48-72h window out of ${availableAuctions.length} total`)
+    
+    const leagueCars = validAuctions.map(a => ({
+      league_id: leagueId,
+      auction_id: a.auction_id,
+      baseline_price: parseFloat(a.price_at_48h)
+    }))
+    
+    const { error: insertError } = await supabase
+      .from('league_cars')
+      .insert(leagueCars)
+    
+    if (insertError) {
+      console.error('Error creating league snapshot:', insertError)
+      return false
+    }
+    
+    const { error: updateError } = await supabase
+      .from('leagues')
+      .update({ snapshot_created: true })
+      .eq('id', leagueId)
+    
+    if (updateError) {
+      console.error('Error updating league:', updateError)
+    }
+    
+    console.log(`Successfully created snapshot with ${leagueCars.length} cars`)
+    return true
+    
+  } catch (error) {
+    console.error('Exception creating snapshot:', error)
+    return false
   }
+}
 
   const fetchBonusCar = async (leagueId) => {
     if (!leagueId) return
