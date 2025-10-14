@@ -647,15 +647,20 @@ export default function BixPrixApp() {
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDMpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-40"></div>
           
           <div className="relative mx-auto max-w-5xl px-4 py-20 text-center">
-            <div className="mb-8 flex justify-center">
-              <div className="text-6xl font-black tracking-tight text-bpCream drop-shadow-2xl">
-                BIXPRIX
+            <div className="mb-8 flex flex-col items-center gap-4">
+              <div className="text-center">
+                <div className="text-6xl font-black tracking-tight text-bpCream drop-shadow-2xl mb-2">
+                  BIXPRIX
+                </div>
+                <div className="text-2xl tracking-[0.2em] text-bpCream/90 uppercase font-bold">
+                  Race the Market
+                </div>
               </div>
             </div>
             
-            <h1 className="text-4xl sm:text-5xl font-bold text-bpCream mb-6 leading-tight">
-              Fantasy Sports Meets <br/>
-              <span className="bg-gradient-to-r from-bpGold to-bpRed bg-clip-text text-transparent">Classic Car Auctions</span>
+            <h1 className="text-4xl sm:text-5xl font-bold text-bpCream mb-6 leading-tight mt-8">
+              Race the Market with <br/>
+              <span className="bg-gradient-to-r from-bpGold to-bpRed bg-clip-text text-transparent">Fantasy Auto Auctions</span>
             </h1>
             
             <p className="text-xl text-bpCream/80 mb-10 max-w-2xl mx-auto leading-relaxed">
