@@ -1,10 +1,91 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
 const supabase = createClient(supabaseUrl, supabaseKey)
+
+function ConnectionStatus({ lastUpdated, connectionStatus, onRefresh, isRefreshing }) {
+  const formatTimeAgo = (date) => {
+    const seconds = Math.floor((new Date() - date) / 1000)
+    if (seconds < 60) return 'just now'
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+    return `${Math.floor(seconds / 3600)}h ago`
+  }
+
+  return (
+    <div className="flex items-center gap-3 text-sm">
+      <div className="flex items-center gap-1.5">
+        {connectionStatus === 'connected' && (
+          <>
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-bpCream/70">Live</span>
+          </>
+        )}
+        {connectionStatus === 'connecting' && (
+          <>
+            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+            <span className="text-bpCream/70">Connecting...</span>
+          </>
+        )}
+        {connectionStatus === 'disconnected' && (
+          <>
+            <div className="w-2 h-2 bg-red-500 rounded-full" />
+            <span className="text-bpCream/70">Offline</span>
+          </>
+        )}
+      </div>
+      
+      <span className="text-bpCream/50">•</span>
+      
+      <div className="flex items-center gap-1.5">
+        <Clock size={14} className="text-bpCream/50" />
+        <span className="text-bpCream/70">{formatTimeAgo(lastUpdated)}</span>
+      </div>
+
+      <button
+        onClick={onRefresh}
+        disabled={isRefreshing}
+        className={`p-1 hover:bg-white/10 rounded transition ${
+          isRefreshing ? 'animate-spin' : ''
+        }`}
+        title="Refresh data"
+      >
+        <RefreshCw size={14} className="text-bpCream/70" />
+      </button>
+    </div>
+  )
+}
+
+function RecentUpdates({ updates }) {
+  if (updates.length === 0) return null
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 space-y-2 max-w-sm">
+      {updates.map((update, index) => (
+        <div
+          key={index}
+          className="bg-bpNavy border-2 border-bpGold/50 rounded-lg shadow-xl p-3 animate-fade-in"
+        >
+          {update.type === 'bid_increase' && (
+            <div className="flex items-start gap-2">
+              <TrendingUp className="text-green-500 flex-shrink-0 mt-0.5" size={18} />
+              <div>
+                <div className="font-semibold text-bpCream text-sm">
+                  🚀 Bid Increased!
+                </div>
+                <div className="text-bpCream/70 text-xs">
+                  {update.carTitle}: +${update.amount.toLocaleString()}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function BrandLogo({ compact }) {
   return (
@@ -21,7 +102,24 @@ function BrandLogo({ compact }) {
   )
 }
 
-function Shell({ children, onSignOut, onNavigate, currentScreen }) {
+function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, connectionStatus, recentUpdates, selectedLeague, onManualRefresh }) {
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    if (isManualRefreshing) return
+    setIsManualRefreshing(true)
+    
+    try {
+      if (onManualRefresh) {
+        await onManualRefresh()
+      }
+    } catch (error) {
+      console.error('Error during manual refresh:', error)
+    } finally {
+      setIsManualRefreshing(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-bpNavy text-bpCream">
       <header className="sticky top-0 z-40 bg-bpNavy border-b border-white/10">
@@ -47,20 +145,34 @@ function Shell({ children, onSignOut, onNavigate, currentScreen }) {
               Leaderboard
             </button>
           </nav>
-          {onSignOut && (
-            <button
-              onClick={onSignOut}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-bpCream text-sm"
-            >
-              <LogOut size={16} />
-              <span className="hidden sm:inline">Sign out</span>
-            </button>
-          )}
+          
+          <div className="flex items-center gap-4">
+            {(currentScreen === 'garage' || currentScreen === 'cars' || currentScreen === 'leaderboard') && lastUpdated && (
+              <ConnectionStatus 
+                lastUpdated={lastUpdated}
+                connectionStatus={connectionStatus}
+                onRefresh={handleRefresh}
+                isRefreshing={isManualRefreshing}
+              />
+            )}
+            
+            {onSignOut && (
+              <button
+                onClick={onSignOut}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-bpCream text-sm"
+              >
+                <LogOut size={16} />
+                <span className="hidden sm:inline">Sign out</span>
+              </button>
+            )}
+          </div>
         </div>
         <div className="h-0.5 bg-bpRed/80" />
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+
+      {recentUpdates && <RecentUpdates updates={recentUpdates} />}
 
       <footer className="border-t border-white/10 mt-10">
         <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-bpGray">
@@ -125,6 +237,9 @@ export default function BixPrixApp() {
   const [bonusCar, setBonusCar] = useState(null)
   const [userPrediction, setUserPrediction] = useState(null)
   const [showPredictionModal, setShowPredictionModal] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState('connected')
+  const [lastUpdated, setLastUpdated] = useState(new Date())
+  const [recentUpdates, setRecentUpdates] = useState([])
 
   const calculateTimeLeft = (endTime) => {
     if (!endTime) return 'N/A'
@@ -137,6 +252,32 @@ export default function BixPrixApp() {
     if (days > 0) return `${days}d ${hours}h`
     if (hours > 0) return `${hours}h ${minutes}m`
     return `${minutes}m`
+  }
+
+  const addRecentUpdate = (update) => {
+    setRecentUpdates(prev => {
+      const newUpdates = [{ ...update, timestamp: new Date() }, ...prev].slice(0, 5)
+      return newUpdates
+    })
+    
+    setTimeout(() => {
+      setRecentUpdates(prev => prev.filter(u => u.timestamp !== update.timestamp))
+    }, 10000)
+  }
+
+  const manualRefresh = async () => {
+    if (!selectedLeague) return
+    
+    try {
+      await Promise.all([
+        fetchUserGarage(selectedLeague.id),
+        fetchAuctions(),
+        fetchBonusCar(selectedLeague.id)
+      ])
+      setLastUpdated(new Date())
+    } catch (error) {
+      console.error('Error during manual refresh:', error)
+    }
   }
 
   const isDraftOpen = (league) => {
@@ -187,100 +328,93 @@ export default function BixPrixApp() {
   }
 
   const createLeagueSnapshot = async (leagueId) => {
-  console.log(`Creating snapshot for league ${leagueId}...`)
-  
-  try {
-    // Get league draft period
-    const { data: league, error: leagueError } = await supabase
-      .from('leagues')
-      .select('draft_starts_at, draft_ends_at')
-      .eq('id', leagueId)
-      .single()
+    console.log(`Creating snapshot for league ${leagueId}...`)
     
-    if (leagueError || !league.draft_starts_at || !league.draft_ends_at) {
-      console.error('League draft period not set:', leagueError)
-      return false
-    }
-    
-    const draftStart = Math.floor(new Date(league.draft_starts_at).getTime() / 1000)
-    const draftEnd = Math.floor(new Date(league.draft_ends_at).getTime() / 1000)
-    const auctionDuration = 7 * 24 * 60 * 60 // 7 days in seconds
-    const hours48 = 48 * 60 * 60
-    const hours72 = 72 * 60 * 60
-    
-    // Fetch all potential auctions
-    const { data: availableAuctions, error: auctionError } = await supabase
-      .from('auctions')
-      .select('auction_id, price_at_48h, timestamp_end')
-      .not('price_at_48h', 'is', null)
-      .is('final_price', null)
-      .limit(200)
-    
-    if (auctionError) {
-      console.error('Error fetching auctions for snapshot:', auctionError)
-      return false
-    }
-    
-    if (!availableAuctions || availableAuctions.length === 0) {
-      console.log('No available auctions to snapshot')
-      return false
-    }
-    
-    // Filter auctions to only those in 48-72 hour window during draft period
-    const validAuctions = availableAuctions.filter(auction => {
-      const auctionEnd = auction.timestamp_end
-      const auctionStart = auctionEnd - auctionDuration
+    try {
+      const { data: league, error: leagueError } = await supabase
+        .from('leagues')
+        .select('draft_starts_at, draft_ends_at')
+        .eq('id', leagueId)
+        .single()
       
-      // Check if auction is in 48-72 hour window at any point during draft
-      // At draft start: auction should be at most 72 hours old
-      const ageAtDraftStart = draftStart - auctionStart
-      // At draft end: auction should be at least 48 hours old  
-      const ageAtDraftEnd = draftEnd - auctionStart
-      // Auction should not have ended before draft ends
-      const isStillActive = auctionEnd > draftStart
+      if (leagueError || !league.draft_starts_at || !league.draft_ends_at) {
+        console.error('League draft period not set:', leagueError)
+        return false
+      }
       
-      return ageAtDraftStart <= hours72 && ageAtDraftEnd >= hours48 && isStillActive
-    })
-    
-    if (validAuctions.length === 0) {
-      console.log('No auctions in 48-72 hour window during draft period')
+      const draftStart = Math.floor(new Date(league.draft_starts_at).getTime() / 1000)
+      const draftEnd = Math.floor(new Date(league.draft_ends_at).getTime() / 1000)
+      const auctionDuration = 7 * 24 * 60 * 60
+      const hours48 = 48 * 60 * 60
+      const hours72 = 72 * 60 * 60
+      
+      const { data: availableAuctions, error: auctionError } = await supabase
+        .from('auctions')
+        .select('auction_id, price_at_48h, timestamp_end')
+        .not('price_at_48h', 'is', null)
+        .is('final_price', null)
+        .limit(200)
+      
+      if (auctionError) {
+        console.error('Error fetching auctions for snapshot:', auctionError)
+        return false
+      }
+      
+      if (!availableAuctions || availableAuctions.length === 0) {
+        console.log('No available auctions to snapshot')
+        return false
+      }
+      
+      const validAuctions = availableAuctions.filter(auction => {
+        const auctionEnd = auction.timestamp_end
+        const auctionStart = auctionEnd - auctionDuration
+        
+        const ageAtDraftStart = draftStart - auctionStart
+        const ageAtDraftEnd = draftEnd - auctionStart
+        const isStillActive = auctionEnd > draftStart
+        
+        return ageAtDraftStart <= hours72 && ageAtDraftEnd >= hours48 && isStillActive
+      })
+      
+      if (validAuctions.length === 0) {
+        console.log('No auctions in 48-72 hour window during draft period')
+        return false
+      }
+      
+      console.log(`Found ${validAuctions.length} auctions in 48-72h window out of ${availableAuctions.length} total`)
+      
+      const leagueCars = validAuctions.map(a => ({
+        league_id: leagueId,
+        auction_id: a.auction_id,
+        baseline_price: parseFloat(a.price_at_48h)
+      }))
+      
+      const { error: insertError } = await supabase
+        .from('league_cars')
+        .insert(leagueCars)
+      
+      if (insertError) {
+        console.error('Error creating league snapshot:', insertError)
+        return false
+      }
+      
+      const { error: updateError } = await supabase
+        .from('leagues')
+        .update({ snapshot_created: true })
+        .eq('id', leagueId)
+      
+      if (updateError) {
+        console.error('Error updating league:', updateError)
+      }
+      
+      console.log(`Successfully created snapshot with ${leagueCars.length} cars`)
+      return true
+      
+    } catch (error) {
+      console.error('Exception creating snapshot:', error)
       return false
     }
-    
-    console.log(`Found ${validAuctions.length} auctions in 48-72h window out of ${availableAuctions.length} total`)
-    
-    const leagueCars = validAuctions.map(a => ({
-      league_id: leagueId,
-      auction_id: a.auction_id,
-      baseline_price: parseFloat(a.price_at_48h)
-    }))
-    
-    const { error: insertError } = await supabase
-      .from('league_cars')
-      .insert(leagueCars)
-    
-    if (insertError) {
-      console.error('Error creating league snapshot:', insertError)
-      return false
-    }
-    
-    const { error: updateError } = await supabase
-      .from('leagues')
-      .update({ snapshot_created: true })
-      .eq('id', leagueId)
-    
-    if (updateError) {
-      console.error('Error updating league:', updateError)
-    }
-    
-    console.log(`Successfully created snapshot with ${leagueCars.length} cars`)
-    return true
-    
-  } catch (error) {
-    console.error('Exception creating snapshot:', error)
-    return false
   }
-}
 
   const fetchBonusCar = async (leagueId) => {
     if (!leagueId) return
@@ -446,49 +580,48 @@ export default function BixPrixApp() {
         .eq('league_id', selectedLeague.id)
       
       if (leagueCarsError) throw leagueCarsError
+      
       const now = Math.floor(Date.now() / 1000)
-const auctionDuration = 7 * 24 * 60 * 60 // 7 days in seconds
-const hours48 = 48 * 60 * 60
-const hours72 = 72 * 60 * 60
+      const auctionDuration = 7 * 24 * 60 * 60
+      const hours48 = 48 * 60 * 60
+      const hours72 = 72 * 60 * 60
 
-const transformed = (leagueCars || [])
-  .filter(lc => lc.auctions)
-  .map((lc) => {
-    const a = lc.auctions
-    const endDate = new Date(a.timestamp_end * 1000)
-    const baseline = lc.baseline_price || parseFloat(a.price_at_48h)
-    const imageUrl = a.image_url || getDefaultCarImage(a.make)
-    
-    return {
-      id: a.auction_id,
-      title: a.title,
-      make: a.make,
-      model: a.model,
-      year: a.year,
-      currentBid: parseFloat(a.current_bid) || baseline || 0,
-      baselinePrice: baseline,
-      day2Price: baseline,
-      finalPrice: a.final_price,
-      timeLeft: calculateTimeLeft(endDate),
-      auctionUrl: a.url,
-      imageUrl: imageUrl,
-      trending: Math.random() > 0.7,
-      endTime: endDate,
-      timestamp_end: a.timestamp_end,
-    }
-  })
-  .filter(car => {
-    // Real-time check: ensure car is still in 48-72 hour window
-    const auctionEnd = car.timestamp_end
-    const auctionStart = auctionEnd - auctionDuration
-    const currentAge = now - auctionStart
-    
-    // Only show cars between 48-72 hours old right now
-    return currentAge >= hours48 && currentAge <= hours72 && auctionEnd > now
-  })
+      const transformed = (leagueCars || [])
+        .filter(lc => lc.auctions)
+        .map((lc) => {
+          const a = lc.auctions
+          const endDate = new Date(a.timestamp_end * 1000)
+          const baseline = lc.baseline_price || parseFloat(a.price_at_48h)
+          const imageUrl = a.image_url || getDefaultCarImage(a.make)
+          
+          return {
+            id: a.auction_id,
+            title: a.title,
+            make: a.make,
+            model: a.model,
+            year: a.year,
+            currentBid: parseFloat(a.current_bid) || baseline || 0,
+            baselinePrice: baseline,
+            day2Price: baseline,
+            finalPrice: a.final_price,
+            timeLeft: calculateTimeLeft(endDate),
+            auctionUrl: a.url,
+            imageUrl: imageUrl,
+            trending: Math.random() > 0.7,
+            endTime: endDate,
+            timestamp_end: a.timestamp_end,
+          }
+        })
+        .filter(car => {
+          const auctionEnd = car.timestamp_end
+          const auctionStart = auctionEnd - auctionDuration
+          const currentAge = now - auctionStart
+          
+          return currentAge >= hours48 && currentAge <= hours72 && auctionEnd > now
+        })
 
-console.log(`Loaded ${transformed.length} cars from league snapshot (after real-time filtering)`)
-setAuctions(transformed)
+      console.log(`Loaded ${transformed.length} cars from league snapshot (after real-time filtering)`)
+      setAuctions(transformed)
       
     } catch (e) {
       console.error('Error fetching league auctions:', e)
@@ -693,6 +826,87 @@ setAuctions(transformed)
       fetchUserPrediction(selectedLeague.id)
     }
   }, [selectedLeague, user])
+
+  useEffect(() => {
+    if (!selectedLeague || !user) return
+
+    console.log('🔌 Setting up real-time subscriptions...')
+    setConnectionStatus('connecting')
+
+    const auctionChannel = supabase
+      .channel(`league-${selectedLeague.id}-auctions`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'auctions',
+        },
+        (payload) => {
+          console.log('📊 Auction updated:', payload.new.auction_id)
+          setLastUpdated(new Date())
+          
+          setAuctions(prev => prev.map(car => 
+            car.id === payload.new.auction_id
+              ? {
+                  ...car,
+                  currentBid: parseFloat(payload.new.current_bid),
+                  finalPrice: payload.new.final_price,
+                  timeLeft: calculateTimeLeft(new Date(payload.new.timestamp_end * 1000))
+                }
+              : car
+          ))
+
+          setGarage(prev => prev.map(car => {
+            if (car.id === payload.new.auction_id) {
+              const oldBid = car.currentBid
+              const newBid = parseFloat(payload.new.current_bid)
+              
+              if (newBid > oldBid) {
+                const increase = newBid - oldBid
+                addRecentUpdate({
+                  type: 'bid_increase',
+                  carTitle: payload.new.title,
+                  amount: increase,
+                  carId: car.id
+                })
+              }
+              
+              return {
+                ...car,
+                currentBid: newBid,
+                finalPrice: payload.new.final_price,
+                timeLeft: calculateTimeLeft(new Date(payload.new.timestamp_end * 1000))
+              }
+            }
+            return car
+          }))
+
+          if (bonusCar && bonusCar.id === payload.new.auction_id) {
+            setBonusCar(prev => ({
+              ...prev,
+              currentBid: parseFloat(payload.new.current_bid),
+              finalPrice: payload.new.final_price,
+              timeLeft: calculateTimeLeft(new Date(payload.new.timestamp_end * 1000))
+            }))
+          }
+        }
+      )
+      .on('subscribe', (status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Connected to auction updates')
+          setConnectionStatus('connected')
+          setLastUpdated(new Date())
+        }
+      })
+      .subscribe()
+
+    return () => {
+      console.log('🔌 Cleaning up subscriptions...')
+      supabase.removeChannel(auctionChannel)
+      setConnectionStatus('disconnected')
+    }
+  }, [selectedLeague, user, bonusCar])
 
   function LandingScreen({ onGetStarted }) {
     return (
@@ -960,7 +1174,16 @@ setAuctions(transformed)
 
   function LeaguesScreen({ onNavigate, currentScreen }) {
     return (
-      <Shell onSignOut={() => supabase.auth.signOut()} onNavigate={onNavigate} currentScreen={currentScreen}>
+      <Shell 
+        onSignOut={() => supabase.auth.signOut()} 
+        onNavigate={onNavigate} 
+        currentScreen={currentScreen}
+        lastUpdated={lastUpdated}
+        connectionStatus={connectionStatus}
+        recentUpdates={recentUpdates}
+        selectedLeague={selectedLeague}
+        onManualRefresh={manualRefresh}
+      >
         <h2 className="text-2xl font-extrabold tracking-tight mb-4">Join a League</h2>
         <div className="grid sm:grid-cols-2 gap-4">
           {leagues.length === 0 && (
@@ -1095,7 +1318,15 @@ setAuctions(transformed)
     const canPick = draftStatus.status === 'open'
     
     return (
-      <Shell onNavigate={onNavigate} currentScreen={currentScreen}>
+      <Shell 
+        onNavigate={onNavigate} 
+        currentScreen={currentScreen}
+        lastUpdated={lastUpdated}
+        connectionStatus={connectionStatus}
+        recentUpdates={recentUpdates}
+        selectedLeague={selectedLeague}
+        onManualRefresh={manualRefresh}
+      >
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
           <div>
             <h2 className="text-2xl font-extrabold tracking-tight">Available Cars</h2>
@@ -1287,7 +1518,15 @@ setAuctions(transformed)
     const canModify = draftStatus.status === 'open'
     
     return (
-      <Shell onNavigate={onNavigate} currentScreen={currentScreen}>
+      <Shell 
+        onNavigate={onNavigate} 
+        currentScreen={currentScreen}
+        lastUpdated={lastUpdated}
+        connectionStatus={connectionStatus}
+        recentUpdates={recentUpdates}
+        selectedLeague={selectedLeague}
+        onManualRefresh={manualRefresh}
+      >
         <h2 className="text-2xl font-extrabold tracking-tight mb-3">My Garage</h2>
         <p className="text-sm text-bpCream/70 mb-5">Budget: ${budget.toLocaleString()} · {garage.length}/7 cars</p>
         
@@ -1411,73 +1650,152 @@ setAuctions(transformed)
     )
   }
 
-function LeaderboardScreen({ onNavigate, currentScreen }) {
-  const [standings, setStandings] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [sortBy, setSortBy] = useState('total_percent')
-  const [bonusWinner, setBonusWinner] = useState(null)
+  function LeaderboardScreen({ onNavigate, currentScreen }) {
+    const [standings, setStandings] = useState([])
+    const [loading, setLoading] = useState(true)
+    const [sortBy, setSortBy] = useState('total_percent')
+    const [bonusWinner, setBonusWinner] = useState(null)
 
-  useEffect(() => {
-    if (selectedLeague && user) {
-      fetchLeaderboard()
-    }
-  }, [selectedLeague, user])
-
-  const fetchLeaderboard = async () => {
-    if (!selectedLeague) return
-    
-    setLoading(true)
-    try {
-      const { data: members, error: membersError } = await supabase
-        .from('league_members')
-        .select(`
-          user_id,
-          total_score,
-          users (username, email)
-        `)
-        .eq('league_id', selectedLeague.id)
-      
-      if (membersError) throw membersError
-      
-      if (!members || members.length === 0) {
-        setStandings([])
-        setLoading(false)
-        return
+    useEffect(() => {
+      if (selectedLeague && user) {
+        fetchLeaderboard()
       }
-      
-      const standingsPromises = members.map(async (member) => {
-        const score = await calculateUserScore(member.user_id, selectedLeague.id)
-        return {
-          userId: member.user_id,
-          username: member.users?.username || member.users?.email?.split('@')[0] || 'Unknown',
-          ...score
-        }
-      })
-      
-      const calculatedStandings = await Promise.all(standingsPromises)
-      await findBonusCarWinner(selectedLeague.id, calculatedStandings)
-      
-      const sorted = sortStandings(calculatedStandings, sortBy)
-      setStandings(sorted)
-      
-    } catch (error) {
-      console.error('Error fetching leaderboard:', error)
-      setStandings([])
-    } finally {
-      setLoading(false)
-    }
-  }
+    }, [selectedLeague, user])
 
-  const calculateUserScore = async (userId, leagueId) => {
-    try {
-      const { data: garage } = await supabase
-        .from('garages')
-        .select('id, remaining_budget')
-        .eq('user_id', userId)
-        .eq('league_id', leagueId)
-        .maybeSingle()
+    const fetchLeaderboard = async () => {
+      if (!selectedLeague) return
       
-      if (!garage) {
+      setLoading(true)
+      try {
+        const { data: members, error: membersError } = await supabase
+          .from('league_members')
+          .select(`
+            user_id,
+            total_score,
+            users (username, email)
+          `)
+          .eq('league_id', selectedLeague.id)
+        
+        if (membersError) throw membersError
+        
+        if (!members || members.length === 0) {
+          setStandings([])
+          setLoading(false)
+          return
+        }
+        
+        const standingsPromises = members.map(async (member) => {
+          const score = await calculateUserScore(member.user_id, selectedLeague.id)
+          return {
+            userId: member.user_id,
+            username: member.users?.username || member.users?.email?.split('@')[0] || 'Unknown',
+            ...score
+          }
+        })
+        
+        const calculatedStandings = await Promise.all(standingsPromises)
+        await findBonusCarWinner(selectedLeague.id, calculatedStandings)
+        
+        const sorted = sortStandings(calculatedStandings, sortBy)
+        setStandings(sorted)
+        
+      } catch (error) {
+        console.error('Error fetching leaderboard:', error)
+        setStandings([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    const calculateUserScore = async (userId, leagueId) => {
+      try {
+        const { data: garage } = await supabase
+          .from('garages')
+          .select('id, remaining_budget')
+          .eq('user_id', userId)
+          .eq('league_id', leagueId)
+          .maybeSingle()
+        
+        if (!garage) {
+          return {
+            totalPercentGain: 0,
+            totalDollarGain: 0,
+            bonusCarScore: null,
+            carsCount: 0,
+            totalSpent: 0,
+            avgPercentPerCar: 0
+          }
+        }
+        
+        const { data: cars } = await supabase
+          .from('garage_cars')
+          .select(`
+            purchase_price,
+            auctions!garage_cars_auction_id_fkey (
+              auction_id,
+              title,
+              current_bid,
+              final_price,
+              price_at_48h,
+              timestamp_end
+            )
+          `)
+          .eq('garage_id', garage.id)
+        
+        let totalPercentGain = 0
+        let totalDollarGain = 0
+        let carsCount = 0
+        let totalSpent = 0
+        
+        if (cars && cars.length > 0) {
+          cars.forEach(car => {
+            const auction = car.auctions
+            if (!auction) return
+            
+            const purchasePrice = parseFloat(car.purchase_price)
+            const currentPrice = auction.final_price 
+              ? parseFloat(auction.final_price) 
+              : parseFloat(auction.current_bid || purchasePrice)
+            
+            const now = Math.floor(Date.now() / 1000)
+            const auctionEnded = auction.timestamp_end < now
+            const reserveNotMet = auctionEnded && !auction.final_price
+            
+            let effectivePrice = currentPrice
+            
+            if (reserveNotMet) {
+              effectivePrice = currentPrice * 0.25
+            }
+            
+            const percentGain = ((effectivePrice - purchasePrice) / purchasePrice) * 100
+            totalPercentGain += percentGain
+            
+            const dollarGain = effectivePrice - purchasePrice
+            totalDollarGain += dollarGain
+            
+            totalSpent += purchasePrice
+            carsCount++
+          })
+        }
+        
+        const bonusScore = await calculateBonusCarScore(userId, leagueId)
+        if (bonusScore) {
+          totalPercentGain += bonusScore.percentGain
+        }
+        
+        const avgPercentPerCar = carsCount > 0 ? totalPercentGain / (carsCount + (bonusScore ? 1 : 0)) : 0
+        
+        return {
+          totalPercentGain: parseFloat(totalPercentGain.toFixed(2)),
+          totalDollarGain: parseFloat(totalDollarGain.toFixed(2)),
+          bonusCarScore: bonusScore,
+          carsCount,
+          totalSpent: parseFloat(totalSpent.toFixed(2)),
+          avgPercentPerCar: parseFloat(avgPercentPerCar.toFixed(2))
+        }
+        
+      } catch (error) {
+        console.error(`Error calculating score for user ${userId}:`, error)
         return {
           totalPercentGain: 0,
           totalDollarGain: 0,
@@ -1487,426 +1805,356 @@ function LeaderboardScreen({ onNavigate, currentScreen }) {
           avgPercentPerCar: 0
         }
       }
-      
-      const { data: cars } = await supabase
-        .from('garage_cars')
-        .select(`
-          purchase_price,
-          auctions!garage_cars_auction_id_fkey (
-            auction_id,
-            title,
-            current_bid,
-            final_price,
-            price_at_48h,
-            timestamp_end
-          )
-        `)
-        .eq('garage_id', garage.id)
-      
-      let totalPercentGain = 0
-      let totalDollarGain = 0
-      let carsCount = 0
-      let totalSpent = 0
-      
-      if (cars && cars.length > 0) {
-        cars.forEach(car => {
-          const auction = car.auctions
-          if (!auction) return
-          
-          const purchasePrice = parseFloat(car.purchase_price)
-          const currentPrice = auction.final_price 
-            ? parseFloat(auction.final_price) 
-            : parseFloat(auction.current_bid || purchasePrice)
-          
-          const now = Math.floor(Date.now() / 1000)
-          const auctionEnded = auction.timestamp_end < now
-          const reserveNotMet = auctionEnded && !auction.final_price
-          
-          let effectivePrice = currentPrice
-          
-          if (reserveNotMet) {
-            effectivePrice = currentPrice * 0.25
-          }
-          
-          const percentGain = ((effectivePrice - purchasePrice) / purchasePrice) * 100
-          totalPercentGain += percentGain
-          
-          const dollarGain = effectivePrice - purchasePrice
-          totalDollarGain += dollarGain
-          
-          totalSpent += purchasePrice
-          carsCount++
-        })
-      }
-      
-      const bonusScore = await calculateBonusCarScore(userId, leagueId)
-      if (bonusScore) {
-        totalPercentGain += bonusScore.percentGain
-      }
-      
-      const avgPercentPerCar = carsCount > 0 ? totalPercentGain / (carsCount + (bonusScore ? 1 : 0)) : 0
-      
-      return {
-        totalPercentGain: parseFloat(totalPercentGain.toFixed(2)),
-        totalDollarGain: parseFloat(totalDollarGain.toFixed(2)),
-        bonusCarScore: bonusScore,
-        carsCount,
-        totalSpent: parseFloat(totalSpent.toFixed(2)),
-        avgPercentPerCar: parseFloat(avgPercentPerCar.toFixed(2))
-      }
-      
-    } catch (error) {
-      console.error(`Error calculating score for user ${userId}:`, error)
-      return {
-        totalPercentGain: 0,
-        totalDollarGain: 0,
-        bonusCarScore: null,
-        carsCount: 0,
-        totalSpent: 0,
-        avgPercentPerCar: 0
-      }
     }
-  }
 
-  const calculateBonusCarScore = async (userId, leagueId) => {
-    try {
-      const { data: league } = await supabase
-        .from('leagues')
-        .select('bonus_auction_id')
-        .eq('id', leagueId)
-        .single()
-      
-      if (!league?.bonus_auction_id) return null
-      
-      const { data: prediction } = await supabase
-        .from('bonus_predictions')
-        .select('predicted_price')
-        .eq('league_id', leagueId)
-        .eq('user_id', userId)
-        .maybeSingle()
-      
-      if (!prediction) return null
-      
-      const { data: bonusAuction } = await supabase
-        .from('auctions')
-        .select('current_bid, final_price, price_at_48h')
-        .eq('auction_id', league.bonus_auction_id)
-        .single()
-      
-      if (!bonusAuction) return null
-      
-      const baseline = parseFloat(bonusAuction.price_at_48h)
-      const finalPrice = bonusAuction.final_price 
-        ? parseFloat(bonusAuction.final_price)
-        : parseFloat(bonusAuction.current_bid)
-      
-      const basePercentGain = ((finalPrice - baseline) / baseline) * 100
-      
-      const predictedPrice = parseFloat(prediction.predicted_price)
-      const predictionError = Math.abs(predictedPrice - finalPrice)
-      const percentError = (predictionError / finalPrice) * 100
-      
-      return {
-        predicted: predictedPrice,
-        actual: finalPrice,
-        error: predictionError,
-        percentError: parseFloat(percentError.toFixed(2)),
-        percentGain: parseFloat(basePercentGain.toFixed(2)),
-        hasPrediction: true
-      }
-      
-    } catch (error) {
-      console.error('Error calculating bonus car score:', error)
-      return null
-    }
-  }
-
-  const findBonusCarWinner = async (leagueId, standings) => {
-    try {
-      const { data: league } = await supabase
-        .from('leagues')
-        .select('bonus_auction_id')
-        .eq('id', leagueId)
-        .single()
-      
-      if (!league?.bonus_auction_id) {
-        setBonusWinner(null)
-        return
-      }
-      
-      const { data: bonusAuction } = await supabase
-        .from('auctions')
-        .select('final_price, current_bid')
-        .eq('auction_id', league.bonus_auction_id)
-        .single()
-      
-      if (!bonusAuction) {
-        setBonusWinner(null)
-        return
-      }
-      
-      const actualPrice = bonusAuction.final_price 
-        ? parseFloat(bonusAuction.final_price)
-        : parseFloat(bonusAuction.current_bid)
-      
-      const playersWithPredictions = standings.filter(s => s.bonusCarScore?.hasPrediction)
-      
-      if (playersWithPredictions.length === 0) {
-        setBonusWinner(null)
-        return
-      }
-      
-      const winner = playersWithPredictions.reduce((closest, current) => {
-        if (!closest) return current
-        return current.bonusCarScore.error < closest.bonusCarScore.error ? current : closest
-      }, null)
-      
-      setBonusWinner({
-        username: winner.username,
-        predicted: winner.bonusCarScore.predicted,
-        actual: actualPrice,
-        error: winner.bonusCarScore.error
-      })
-      
-    } catch (error) {
-      console.error('Error finding bonus winner:', error)
-      setBonusWinner(null)
-    }
-  }
-
-  const sortStandings = (standings, sortBy) => {
-    const sorted = [...standings]
-    switch (sortBy) {
-      case 'total_percent':
-        return sorted.sort((a, b) => b.totalPercentGain - a.totalPercentGain)
-      case 'total_dollar':
-        return sorted.sort((a, b) => b.totalDollarGain - a.totalDollarGain)
-      case 'avg_percent':
-        return sorted.sort((a, b) => b.avgPercentPerCar - a.avgPercentPerCar)
-      default:
-        return sorted
-    }
-  }
-
-  const handleSortChange = (newSort) => {
-    setSortBy(newSort)
-    setStandings(sortStandings(standings, newSort))
-  }
-
-  return (
-    <Shell onSignOut={() => supabase.auth.signOut()} onNavigate={onNavigate} currentScreen={currentScreen}>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-extrabold tracking-tight">Leaderboard</h2>
-          <p className="text-sm text-bpCream/70">{selectedLeague?.name || 'Select a League'}</p>
-        </div>
+    const calculateBonusCarScore = async (userId, leagueId) => {
+      try {
+        const { data: league } = await supabase
+          .from('leagues')
+          .select('bonus_auction_id')
+          .eq('id', leagueId)
+          .single()
         
-        <div className="flex gap-2">
-          <button
-            onClick={() => handleSortChange('total_percent')}
-            className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
-              sortBy === 'total_percent' 
-                ? 'bg-bpGold text-bpInk' 
-                : 'bg-white/5 text-bpCream hover:bg-white/10'
-            }`}
-          >
-            % Gain
-          </button>
-          <button
-            onClick={() => handleSortChange('total_dollar')}
-            className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
-              sortBy === 'total_dollar' 
-                ? 'bg-bpGold text-bpInk' 
+        if (!league?.bonus_auction_id) return null
+        
+        const { data: prediction } = await supabase
+          .from('bonus_predictions')
+          .select('predicted_price')
+          .eq('league_id', leagueId)
+          .eq('user_id', userId)
+          .maybeSingle()
+        
+        if (!prediction) return null
+        
+        const { data: bonusAuction } = await supabase
+          .from('auctions')
+          .select('current_bid, final_price, price_at_48h')
+          .eq('auction_id', league.bonus_auction_id)
+          .single()
+        
+        if (!bonusAuction) return null
+        
+        const baseline = parseFloat(bonusAuction.price_at_48h)
+        const finalPrice = bonusAuction.final_price 
+          ? parseFloat(bonusAuction.final_price)
+          : parseFloat(bonusAuction.current_bid)
+        
+        const basePercentGain = ((finalPrice - baseline) / baseline) * 100
+        
+        const predictedPrice = parseFloat(prediction.predicted_price)
+        const predictionError = Math.abs(predictedPrice - finalPrice)
+        const percentError = (predictionError / finalPrice) * 100
+        
+        return {
+          predicted: predictedPrice,
+          actual: finalPrice,
+          error: predictionError,
+          percentError: parseFloat(percentError.toFixed(2)),
+          percentGain: parseFloat(basePercentGain.toFixed(2)),
+          hasPrediction: true
+        }
+        
+      } catch (error) {
+        console.error('Error calculating bonus car score:', error)
+        return null
+      }
+    }
+
+    const findBonusCarWinner = async (leagueId, standings) => {
+      try {
+        const { data: league } = await supabase
+          .from('leagues')
+          .select('bonus_auction_id')
+          .eq('id', leagueId)
+          .single()
+        
+        if (!league?.bonus_auction_id) {
+          setBonusWinner(null)
+          return
+        }
+        
+        const { data: bonusAuction } = await supabase
+          .from('auctions')
+          .select('final_price, current_bid')
+          .eq('auction_id', league.bonus_auction_id)
+          .single()
+        
+        if (!bonusAuction) {
+          setBonusWinner(null)
+          return
+        }
+        
+        const actualPrice = bonusAuction.final_price 
+          ? parseFloat(bonusAuction.final_price)
+          : parseFloat(bonusAuction.current_bid)
+        
+        const playersWithPredictions = standings.filter(s => s.bonusCarScore?.hasPrediction)
+        
+        if (playersWithPredictions.length === 0) {
+          setBonusWinner(null)
+          return
+        }
+        
+        const winner = playersWithPredictions.reduce((closest, current) => {
+          if (!closest) return current
+          return current.bonusCarScore.error < closest.bonusCarScore.error ? current : closest
+        }, null)
+        
+        setBonusWinner({
+          username: winner.username,
+          predicted: winner.bonusCarScore.predicted,
+          actual: actualPrice,
+          error: winner.bonusCarScore.error
+        })
+        
+      } catch (error) {
+        console.error('Error finding bonus winner:', error)
+        setBonusWinner(null)
+      }
+    }
+
+    const sortStandings = (standings, sortBy) => {
+      const sorted = [...standings]
+      switch (sortBy) {
+        case 'total_percent':
+          return sorted.sort((a, b) => b.totalPercentGain - a.totalPercentGain)
+        case 'total_dollar':
+          return sorted.sort((a, b) => b.totalDollarGain - a.totalDollarGain)
+        case 'avg_percent':
+          return sorted.sort((a, b) => b.avgPercentPerCar - a.avgPercentPerCar)
+        default:
+          return sorted
+      }
+    }
+
+    const handleSortChange = (newSort) => {
+      setSortBy(newSort)
+      setStandings(sortStandings(standings, newSort))
+    }
+
+    return (
+      <Shell 
+        onSignOut={() => supabase.auth.signOut()} 
+        onNavigate={onNavigate} 
+        currentScreen={currentScreen}
+        lastUpdated={lastUpdated}
+        connectionStatus={connectionStatus}
+        recentUpdates={recentUpdates}
+        selectedLeague={selectedLeague}
+        onManualRefresh={manualRefresh}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-extrabold tracking-tight">Leaderboard</h2>
+            <p className="text-sm text-bpCream/70">{selectedLeague?.name || 'Select a League'}</p>
+          </div>
+          
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleSortChange('total_percent')}
+              className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
+                sortBy === 'total_percent' 
+                  ? 'bg-bpGold text-bpInk' 
                   : 'bg-white/5 text-bpCream hover:bg-white/10'
-            }`}
-          >
-            $ Gain
-          </button>
-          <button
-            onClick={() => handleSortChange('avg_percent')}
-            className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
-              sortBy === 'avg_percent' 
-                ? 'bg-bpGold text-bpInk' 
-                : 'bg-white/5 text-bpCream hover:bg-white/10'
-            }`}
-          >
-            Avg %
-          </button>
-          <button
-            onClick={fetchLeaderboard}
-            className="p-1.5 rounded bg-white/5 hover:bg-white/10 transition"
-            title="Refresh"
-          >
-            <RefreshCw size={16} />
-          </button>
+              }`}
+            >
+              % Gain
+            </button>
+            <button
+              onClick={() => handleSortChange('total_dollar')}
+              className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
+                sortBy === 'total_dollar' 
+                  ? 'bg-bpGold text-bpInk' 
+                    : 'bg-white/5 text-bpCream hover:bg-white/10'
+              }`}
+            >
+              $ Gain
+            </button>
+            <button
+              onClick={() => handleSortChange('avg_percent')}
+              className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
+                sortBy === 'avg_percent' 
+                  ? 'bg-bpGold text-bpInk' 
+                  : 'bg-white/5 text-bpCream hover:bg-white/10'
+              }`}
+            >
+              Avg %
+            </button>
+            <button
+              onClick={fetchLeaderboard}
+              className="p-1.5 rounded bg-white/5 hover:bg-white/10 transition"
+              title="Refresh"
+            >
+              <RefreshCw size={16} />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {loading && (
-        <Card className="p-12 text-center text-bpInk/70">
-          <p>Loading standings...</p>
-        </Card>
-      )}
+        {loading && (
+          <Card className="p-12 text-center text-bpInk/70">
+            <p>Loading standings...</p>
+          </Card>
+        )}
 
-      {!loading && standings.length === 0 && (
-        <Card className="p-8 text-bpInk/80 flex items-center justify-center">
-          <div className="text-center">
-            <Trophy className="mx-auto mb-2 text-bpInk/60" size={48} />
-            <p>No standings yet. Join the league and draft your garage!</p>
-          </div>
-        </Card>
-      )}
-
-      {!loading && standings.length > 0 && (
-        <>
-          <div className="grid md:grid-cols-4 gap-4 mb-6">
-            <Card className="p-4 border-2 border-bpGold/50 bg-gradient-to-br from-bpGold/10 to-bpGold/5">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="text-bpGold" size={20} />
-                <span className="text-xs font-bold text-bpInk uppercase">% Gain Leader</span>
-              </div>
-              <div className="font-bold text-xl text-bpInk mb-1">
-                {sortStandings(standings, 'total_percent')[0]?.username}
-              </div>
-              <div className="text-2xl font-bold text-green-700">
-                +{sortStandings(standings, 'total_percent')[0]?.totalPercentGain}%
-              </div>
-            </Card>
-
-            <Card className="p-4 border-2 border-green-500/50 bg-gradient-to-br from-green-500/10 to-green-500/5">
-              <div className="flex items-center gap-2 mb-2">
-                <DollarSign className="text-green-700" size={20} />
-                <span className="text-xs font-bold text-bpInk uppercase">$ Gain Leader</span>
-              </div>
-              <div className="font-bold text-xl text-bpInk mb-1">
-                {sortStandings(standings, 'total_dollar')[0]?.username}
-              </div>
-              <div className="text-2xl font-bold text-green-700">
-                +${sortStandings(standings, 'total_dollar')[0]?.totalDollarGain.toLocaleString()}
-              </div>
-            </Card>
-
-            <Card className="p-4 border-2 border-bpRed/50 bg-gradient-to-br from-bpRed/10 to-bpRed/5">
-              <div className="flex items-center gap-2 mb-2">
-                <Target className="text-bpRed" size={20} />
-                <span className="text-xs font-bold text-bpInk uppercase">Best Avg</span>
-              </div>
-              <div className="font-bold text-xl text-bpInk mb-1">
-                {sortStandings(standings, 'avg_percent')[0]?.username}
-              </div>
-              <div className="text-2xl font-bold text-green-700">
-                +{sortStandings(standings, 'avg_percent')[0]?.avgPercentPerCar}%
-              </div>
-            </Card>
-
-            {bonusWinner && (
-              <Card className="p-4 border-2 border-purple-500/50 bg-gradient-to-br from-purple-500/10 to-purple-500/5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Zap className="text-purple-600" size={20} />
-                  <span className="text-xs font-bold text-bpInk uppercase">Bonus Winner</span>
-                </div>
-                <div className="font-bold text-xl text-bpInk mb-1">
-                  {bonusWinner.username}
-                </div>
-                <div className="text-sm text-bpInk/70">
-                  ${bonusWinner.error.toLocaleString()} off
-                </div>
-              </Card>
-            )}
-          </div>
-
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-bpInk/5 border-b border-bpInk/10">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-bpInk">Rank</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-bpInk">Player</th>
-                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">% Gain</th>
-                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">$ Gain</th>
-                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Avg %</th>
-                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Cars</th>
-                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Spent</th>
-                    <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Bonus</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {standings.map((player, index) => {
-                    const isCurrentUser = player.userId === user?.id
-                    const rank = index + 1
-                    
-                    return (
-                      <tr 
-                        key={player.userId} 
-                        className={`border-b border-bpInk/10 ${
-                          isCurrentUser ? 'bg-bpGold/10' : 'hover:bg-bpInk/5'
-                        }`}
-                      >
-                        <td className="px-4 py-3 text-sm font-semibold text-bpInk">
-                          {rank === 1 && '🥇'}
-                          {rank === 2 && '🥈'}
-                          {rank === 3 && '🥉'}
-                          {rank > 3 && rank}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-semibold text-bpInk">
-                          {player.username}
-                          {isCurrentUser && (
-                            <span className="ml-2 text-xs bg-bpGold/20 text-bpInk px-2 py-0.5 rounded">
-                              You
-                            </span>
-                          )}
-                        </td>
-                        <td className={`px-4 py-3 text-sm font-semibold text-right ${
-                          player.totalPercentGain >= 0 ? 'text-green-700' : 'text-red-700'
-                        }`}>
-                          {player.totalPercentGain >= 0 ? '+' : ''}{player.totalPercentGain}%
-                        </td>
-                        <td className={`px-4 py-3 text-sm font-semibold text-right ${
-                          player.totalDollarGain >= 0 ? 'text-green-700' : 'text-red-700'
-                        }`}>
-                          {player.totalDollarGain >= 0 ? '+' : ''}${player.totalDollarGain.toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
-                          {player.avgPercentPerCar >= 0 ? '+' : ''}{player.avgPercentPerCar}%
-                        </td>
-                        <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
-                          {player.carsCount}/7
-                        </td>
-                        <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
-                          ${player.totalSpent.toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right">
-                          {player.bonusCarScore?.hasPrediction ? (
-                            <span className="text-purple-600" title={`Predicted: $${player.bonusCarScore.predicted.toLocaleString()}`}>
-                              ✓
-                            </span>
-                          ) : (
-                            <span className="text-bpInk/40">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+        {!loading && standings.length === 0 && (
+          <Card className="p-8 text-bpInk/80 flex items-center justify-center">
+            <div className="text-center">
+              <Trophy className="mx-auto mb-2 text-bpInk/60" size={48} />
+              <p>No standings yet. Join the league and draft your garage!</p>
             </div>
           </Card>
+        )}
 
-          <Card className="mt-6 p-4 bg-bpInk/5">
-            <h3 className="text-sm font-bold text-bpInk mb-2">Scoring Info</h3>
-            <ul className="text-xs text-bpInk/70 space-y-1">
-              <li>• <strong>% Gain:</strong> Total percentage increase across all cars (including bonus car base gain)</li>
-              <li>• <strong>$ Gain:</strong> Total dollar profit across all cars</li>
-              <li>• <strong>Avg %:</strong> Average percentage gain per car</li>
-              <li>• <strong>Bonus:</strong> Closest prediction gets DOUBLE the bonus car's percentage gain</li>
-              <li>• <strong>Reserve Not Met:</strong> Cars that don't sell count as 25% of high bid (penalty)</li>
-            </ul>
-          </Card>
-        </>
-      )}
-    </Shell>
-  )
-}
+        {!loading && standings.length > 0 && (
+          <>
+            <div className="grid md:grid-cols-4 gap-4 mb-6">
+              <Card className="p-4 border-2 border-bpGold/50 bg-gradient-to-br from-bpGold/10 to-bpGold/5">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="text-bpGold" size={20} />
+                  <span className="text-xs font-bold text-bpInk uppercase">% Gain Leader</span>
+                </div>
+                <div className="font-bold text-xl text-bpInk mb-1">
+                  {sortStandings(standings, 'total_percent')[0]?.username}
+                </div>
+                <div className="text-2xl font-bold text-green-700">
+                  +{sortStandings(standings, 'total_percent')[0]?.totalPercentGain}%
+                </div>
+              </Card>
+
+              <Card className="p-4 border-2 border-green-500/50 bg-gradient-to-br from-green-500/10 to-green-500/5">
+                <div className="flex items-center gap-2 mb-2">
+                  <DollarSign className="text-green-700" size={20} />
+                  <span className="text-xs font-bold text-bpInk uppercase">$ Gain Leader</span>
+                </div>
+                <div className="font-bold text-xl text-bpInk mb-1">
+                  {sortStandings(standings, 'total_dollar')[0]?.username}
+                </div>
+                <div className="text-2xl font-bold text-green-700">
+                  +${sortStandings(standings, 'total_dollar')[0]?.totalDollarGain.toLocaleString()}
+                </div>
+              </Card>
+
+              <Card className="p-4 border-2 border-bpRed/50 bg-gradient-to-br from-bpRed/10 to-bpRed/5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="text-bpRed" size={20} />
+                  <span className="text-xs font-bold text-bpInk uppercase">Best Avg</span>
+                </div>
+                <div className="font-bold text-xl text-bpInk mb-1">
+                  {sortStandings(standings, 'avg_percent')[0]?.username}
+                </div>
+                <div className="text-2xl font-bold text-green-700">
+                  +{sortStandings(standings, 'avg_percent')[0]?.avgPercentPerCar}%
+                </div>
+              </Card>
+
+              {bonusWinner && (
+                <Card className="p-4 border-2 border-purple-500/50 bg-gradient-to-br from-purple-500/10 to-purple-500/5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="text-purple-600" size={20} />
+                    <span className="text-xs font-bold text-bpInk uppercase">Bonus Winner</span>
+                  </div>
+                  <div className="font-bold text-xl text-bpInk mb-1">
+                    {bonusWinner.username}
+                  </div>
+                  <div className="text-sm text-bpInk/70">
+                    ${bonusWinner.error.toLocaleString()} off
+                  </div>
+                </Card>
+              )}
+            </div>
+
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-bpInk/5 border-b border-bpInk/10">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-bpInk">Rank</th>
+                      <th className="px-4 py-3 text-left text-sm font-bold text-bpInk">Player</th>
+                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">% Gain</th>
+                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">$ Gain</th>
+                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Avg %</th>
+                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Cars</th>
+                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Spent</th>
+                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Bonus</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {standings.map((player, index) => {
+                      const isCurrentUser = player.userId === user?.id
+                      const rank = index + 1
+                      
+                      return (
+                        <tr 
+                          key={player.userId} 
+                          className={`border-b border-bpInk/10 ${
+                            isCurrentUser ? 'bg-bpGold/10' : 'hover:bg-bpInk/5'
+                          }`}
+                        >
+                          <td className="px-4 py-3 text-sm font-semibold text-bpInk">
+                            {rank === 1 && '🥇'}
+                            {rank === 2 && '🥈'}
+                            {rank === 3 && '🥉'}
+                            {rank > 3 && rank}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-semibold text-bpInk">
+                            {player.username}
+                            {isCurrentUser && (
+                              <span className="ml-2 text-xs bg-bpGold/20 text-bpInk px-2 py-0.5 rounded">
+                                You
+                              </span>
+                            )}
+                          </td>
+                          <td className={`px-4 py-3 text-sm font-semibold text-right ${
+                            player.totalPercentGain >= 0 ? 'text-green-700' : 'text-red-700'
+                          }`}>
+                            {player.totalPercentGain >= 0 ? '+' : ''}{player.totalPercentGain}%
+                          </td>
+                          <td className={`px-4 py-3 text-sm font-semibold text-right ${
+                            player.totalDollarGain >= 0 ? 'text-green-700' : 'text-red-700'
+                          }`}>
+                            {player.totalDollarGain >= 0 ? '+' : ''}${player.totalDollarGain.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
+                            {player.avgPercentPerCar >= 0 ? '+' : ''}{player.avgPercentPerCar}%
+                          </td>
+                          <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
+                            {player.carsCount}/7
+                          </td>
+                          <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
+                            ${player.totalSpent.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            {player.bonusCarScore?.hasPrediction ? (
+                              <span className="text-purple-600" title={`Predicted: $${player.bonusCarScore.predicted.toLocaleString()}`}>
+                                ✓
+                              </span>
+                            ) : (
+                              <span className="text-bpInk/40">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            <Card className="mt-6 p-4 bg-bpInk/5">
+              <h3 className="text-sm font-bold text-bpInk mb-2">Scoring Info</h3>
+              <ul className="text-xs text-bpInk/70 space-y-1">
+                <li>• <strong>% Gain:</strong> Total percentage increase across all cars (including bonus car base gain)</li>
+                <li>• <strong>$ Gain:</strong> Total dollar profit across all cars</li>
+                <li>• <strong>Avg %:</strong> Average percentage gain per car</li>
+                <li>• <strong>Bonus:</strong> Closest prediction gets DOUBLE the bonus car's percentage gain</li>
+                <li>• <strong>Reserve Not Met:</strong> Cars that don't sell count as 25% of high bid (penalty)</li>
+              </ul>
+            </Card>
+          </>
+        )}
+      </Shell>
+    )
+  }
 
   if (currentScreen === 'landing') return <LandingScreen onGetStarted={() => setCurrentScreen('login')} />
   if (!user) return <LoginScreen />
