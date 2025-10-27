@@ -190,6 +190,11 @@ const AdminPortal = () => {
     const file = event.target.files[0];
     if (!file) return;
     
+    if (!file.name.endsWith('.csv')) {
+      alert('Please upload a CSV file');
+      return;
+    }
+    
     setCsvImporting(true);
     
     try {
@@ -201,51 +206,29 @@ const AdminPortal = () => {
       for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
         
-        // Parse CSV line (handle quoted fields)
-        const values = [];
-        let current = '';
-        let inQuotes = false;
+        const values = lines[i].match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)
+          ?.map(v => v.replace(/^"|"$/g, '').trim()) || [];
         
-        for (let char of lines[i]) {
-          if (char === '"') {
-            inQuotes = !inQuotes;
-          } else if (char === ',' && !inQuotes) {
-            values.push(current.trim());
-            current = '';
-          } else {
-            current += char;
-          }
-        }
-        values.push(current.trim());
+        if (values.length === 0) continue;
         
-        const auction = {};
-        headers.forEach((header, index) => {
-          let value = values[index]?.replace(/^"|"$/g, '').replace(/""/g, '"') || null;
-          
-          if (header === 'year' && value) {
-            auction[header] = parseInt(value);
-          } else if ((header === 'price_at_48h' || header === 'final_price') && value) {
-            auction[header] = parseFloat(value);
-          } else {
-            auction[header] = value;
-          }
-        });
-        
-        if (!auction.auction_id) {
-          auction.auction_id = `import_${Date.now()}_${i}`;
-        }
-        
-        auction.inserted_at = new Date().toISOString();
-        auction.current_bid = auction.price_at_48h || auction.final_price || null;
+        const auction = {
+          auction_id: values[0] || `imported_${Date.now()}_${i}`,
+          title: values[1] || '',
+          make: values[2] || '',
+          model: values[3] || '',
+          year: values[4] ? parseInt(values[4]) : null,
+          price_at_48h: values[5] ? parseFloat(values[5]) : null,
+          final_price: values[6] ? parseFloat(values[6]) : null,
+          url: values[7] || null,
+          image_url: values[8] || null,
+          inserted_at: new Date().toISOString(),
+          current_bid: values[5] || values[6] || null
+        };
         
         auctions.push(auction);
       }
       
-      if (auctions.length === 0) {
-        alert('No valid auctions found in CSV');
-        setCsvImporting(false);
-        return;
-      }
+      console.log(`Parsed ${auctions.length} auctions from CSV`);
       
       const { supabase } = await import('@/lib/supabase');
       
@@ -319,10 +302,36 @@ const AdminPortal = () => {
     }
   };
 
-  // ========== LEAGUE FUNCTIONS (UPDATED!) ==========
+  // ========== LEAGUE FUNCTIONS (FIXED!) ==========
   const handleAddLeague = async () => {
-    if (!newLeague.name || !newLeague.draft_starts_at || !newLeague.draft_ends_at) {
+    // Better validation with trimming and explicit checks
+    const trimmedName = newLeague.name?.trim();
+    
+    console.log('Validation check:', {
+      name: trimmedName,
+      draft_starts_at: newLeague.draft_starts_at,
+      draft_ends_at: newLeague.draft_ends_at,
+      nameLength: trimmedName?.length,
+      startEmpty: newLeague.draft_starts_at === '',
+      endEmpty: newLeague.draft_ends_at === ''
+    });
+    
+    if (!trimmedName || !newLeague.draft_starts_at || !newLeague.draft_ends_at) {
       alert('Please fill in league name and draft dates');
+      return;
+    }
+    
+    // Validate dates are actually valid
+    const startDate = new Date(newLeague.draft_starts_at);
+    const endDate = new Date(newLeague.draft_ends_at);
+    
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      alert('Invalid date format. Please select valid dates.');
+      return;
+    }
+    
+    if (endDate <= startDate) {
+      alert('Draft end date must be after draft start date');
       return;
     }
     
@@ -339,10 +348,10 @@ const AdminPortal = () => {
       }
       
       const league = {
-        name: newLeague.name,
+        name: trimmedName,
         created_by: creatorId, // Can be null for admin-created leagues
-        draft_starts_at: new Date(newLeague.draft_starts_at).toISOString(),
-        draft_ends_at: new Date(newLeague.draft_ends_at).toISOString(),
+        draft_starts_at: startDate.toISOString(),
+        draft_ends_at: endDate.toISOString(),
         is_public: newLeague.is_public,
         status: 'draft',
         snapshot_created: false
@@ -351,6 +360,8 @@ const AdminPortal = () => {
       if (newLeague.bonus_auction_id) {
         league.bonus_auction_id = newLeague.bonus_auction_id;
       }
+      
+      console.log('Creating league with data:', league);
       
       const { error } = await supabase.from('leagues').insert([league]);
       
@@ -405,139 +416,150 @@ const AdminPortal = () => {
   });
 
   const getLeagueMembers = (leagueId) => {
-    return leagueMembers.filter(m => m.league_id === leagueId);
+    return leagueMembers.filter(m => m.league_id === leagueId)
+      .sort((a, b) => (b.total_score || 0) - (a.total_score || 0));
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="text-white text-xl">Loading data...</div>
+      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="animate-spin w-12 h-12 mx-auto mb-4 text-blue-500" />
+          <p className="text-xl">Loading admin portal...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 p-6">
+    <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Fantasy Auto Auction Admin</h1>
-            <p className="text-slate-400 mt-1">Manage your game database</p>
-          </div>
-          <button onClick={loadAllData}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
-            <RefreshCw size={18} />
-            Refresh
-          </button>
+        {/* HEADER */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold mb-2">🏁 Admin Portal</h1>
+          <p className="text-slate-400">Manage auctions, users, leagues, and garages</p>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-          <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
-            <div className="text-slate-400 text-xs font-semibold">AUCTIONS</div>
-            <div className="text-2xl font-bold text-white mt-1">{auctions.length}</div>
+        {/* STATS CARDS */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-6 rounded-lg shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-blue-200 text-sm mb-1">Total Auctions</div>
+                <div className="text-3xl font-bold">{auctions.length}</div>
+              </div>
+              <Car className="w-12 h-12 text-blue-300 opacity-50" />
+            </div>
           </div>
-          <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
-            <div className="text-slate-400 text-xs font-semibold">USERS</div>
-            <div className="text-2xl font-bold text-white mt-1">{users.length}</div>
+          
+          <div className="bg-gradient-to-br from-green-600 to-green-700 p-6 rounded-lg shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-green-200 text-sm mb-1">Total Users</div>
+                <div className="text-3xl font-bold">{users.length}</div>
+              </div>
+              <Users className="w-12 h-12 text-green-300 opacity-50" />
+            </div>
           </div>
-          <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
-            <div className="text-slate-400 text-xs font-semibold">LEAGUES</div>
-            <div className="text-2xl font-bold text-white mt-1">{leagues.length}</div>
+          
+          <div className="bg-gradient-to-br from-purple-600 to-purple-700 p-6 rounded-lg shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-purple-200 text-sm mb-1">Active Leagues</div>
+                <div className="text-3xl font-bold">{leagues.length}</div>
+              </div>
+              <Trophy className="w-12 h-12 text-purple-300 opacity-50" />
+            </div>
           </div>
-          <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
-            <div className="text-slate-400 text-xs font-semibold">GARAGES</div>
-            <div className="text-2xl font-bold text-white mt-1">{garages.length}</div>
-          </div>
-          <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
-            <div className="text-slate-400 text-xs font-semibold">MEMBERS</div>
-            <div className="text-2xl font-bold text-white mt-1">{leagueMembers.length}</div>
+          
+          <div className="bg-gradient-to-br from-orange-600 to-orange-700 p-6 rounded-lg shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-orange-200 text-sm mb-1">Total Garages</div>
+                <div className="text-3xl font-bold">{garages.length}</div>
+              </div>
+              <DollarSign className="w-12 h-12 text-orange-300 opacity-50" />
+            </div>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-slate-700 overflow-x-auto">
-          {[
-            { id: 'auctions', label: 'Auctions', icon: Car },
-            { id: 'users', label: 'Users', icon: Users },
-            { id: 'leagues', label: 'Leagues', icon: Trophy },
-            { id: 'garages', label: 'Garages', icon: DollarSign }
-          ].map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => setActiveTab(id)}
-              className={`pb-3 px-4 font-semibold flex items-center gap-2 transition whitespace-nowrap ${
-                activeTab === id ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-400 hover:text-white'
-              }`}>
-              <Icon size={18} />
-              {label}
+        {/* TABS */}
+        <div className="flex gap-2 mb-6 border-b border-slate-700">
+          {['auctions', 'users', 'leagues', 'garages'].map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-6 py-3 font-semibold capitalize transition-all ${
+                activeTab === tab 
+                  ? 'bg-blue-600 text-white rounded-t-lg' 
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800 rounded-t-lg'
+              }`}
+            >
+              {tab}
             </button>
           ))}
         </div>
 
         {/* AUCTIONS TAB */}
         {activeTab === 'auctions' && (
-          <div className="space-y-6">
-            <div className="flex gap-4 items-center flex-wrap">
-              <button onClick={() => setShowAddAuction(!showAddAuction)}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
-                <Plus size={20} />
-                Add Auction
+          <div>
+            <div className="flex gap-3 mb-6">
+              <button onClick={() => setShowAddAuction(!showAddAuction)} 
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex items-center gap-2">
+                <Plus size={20} /> Add Auction
               </button>
-              
               <button onClick={handleExportAuctionsCSV}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
-                <Download size={20} />
-                Export CSV
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center gap-2">
+                <Download size={20} /> Export CSV
               </button>
-              
-              <label className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer">
-                <Upload size={20} />
-                {csvImporting ? 'Importing...' : 'Import CSV'}
-                <input type="file" accept=".csv" onChange={handleImportAuctionsCSV}
-                  disabled={csvImporting} className="hidden" />
+              <label className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded flex items-center gap-2 cursor-pointer">
+                <Upload size={20} /> Import CSV
+                <input type="file" accept=".csv" onChange={handleImportAuctionsCSV} className="hidden" disabled={csvImporting} />
               </label>
-              
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 text-slate-400" size={20} />
-                <input placeholder="Search auctions..." value={searchTerm}
+              {csvImporting && <span className="flex items-center text-yellow-400">Importing...</span>}
+              <div className="flex-1"></div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <input type="text" placeholder="Search auctions..."
+                  value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-slate-700 text-white pl-10 pr-4 py-2 rounded-lg border border-slate-600 focus:border-blue-400 outline-none" />
+                  className="pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded text-white w-64" />
               </div>
             </div>
 
             {showAddAuction && (
-              <div className="bg-slate-800 p-6 rounded-lg border border-slate-600">
-                <h3 className="text-xl font-bold text-white mb-4">Add New Auction</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <input placeholder="Auction ID (auto)" value={newAuction.auction_id}
+              <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 mb-6">
+                <h3 className="text-xl font-bold mb-4">Add New Auction</h3>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <input type="text" placeholder="Auction ID (optional)" value={newAuction.auction_id}
                     onChange={(e) => setNewAuction({...newAuction, auction_id: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
-                  <input placeholder="Title *" value={newAuction.title}
+                  <input type="text" placeholder="Title *" value={newAuction.title}
                     onChange={(e) => setNewAuction({...newAuction, title: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
-                  <input placeholder="Make *" value={newAuction.make}
+                  <input type="text" placeholder="Make *" value={newAuction.make}
                     onChange={(e) => setNewAuction({...newAuction, make: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
-                  <input placeholder="Model *" value={newAuction.model}
+                  <input type="text" placeholder="Model *" value={newAuction.model}
                     onChange={(e) => setNewAuction({...newAuction, model: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
-                  <input placeholder="Year" type="number" value={newAuction.year}
+                  <input type="number" placeholder="Year" value={newAuction.year}
                     onChange={(e) => setNewAuction({...newAuction, year: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
-                  <input placeholder="48h Price" type="number" value={newAuction.price_at_48h}
+                  <input type="number" placeholder="Price at 48h" value={newAuction.price_at_48h}
                     onChange={(e) => setNewAuction({...newAuction, price_at_48h: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
-                  <input placeholder="Final Price" type="number" value={newAuction.final_price}
+                  <input type="number" placeholder="Final Price" value={newAuction.final_price}
                     onChange={(e) => setNewAuction({...newAuction, final_price: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
-                  <input placeholder="BaT URL" value={newAuction.url}
+                  <input type="text" placeholder="URL" value={newAuction.url}
                     onChange={(e) => setNewAuction({...newAuction, url: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
-                  <input placeholder="Image URL" value={newAuction.image_url}
+                  <input type="text" placeholder="Image URL" value={newAuction.image_url}
                     onChange={(e) => setNewAuction({...newAuction, image_url: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600 col-span-2" />
                 </div>
-                <div className="flex gap-3 mt-4">
+                <div className="flex gap-3">
                   <button onClick={handleAddAuction} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded">
                     Add Auction
                   </button>
@@ -548,62 +570,64 @@ const AdminPortal = () => {
               </div>
             )}
 
-            <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-700">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-slate-300 font-semibold">Title</th>
-                      <th className="px-4 py-3 text-left text-slate-300 font-semibold">Make/Model</th>
-                      <th className="px-4 py-3 text-left text-slate-300 font-semibold">Year</th>
-                      <th className="px-4 py-3 text-left text-slate-300 font-semibold">48h Price</th>
-                      <th className="px-4 py-3 text-left text-slate-300 font-semibold">Final</th>
-                      <th className="px-4 py-3 text-left text-slate-300 font-semibold">Gain %</th>
-                      <th className="px-4 py-3 text-left text-slate-300 font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAuctions.map((auction) => {
-                      const gain = calculateGain(auction.price_at_48h, auction.final_price);
-                      return (
-                        <tr key={auction.id} className="border-t border-slate-700 hover:bg-slate-750">
-                          <td className="px-4 py-3">
-                            <div className="text-white font-medium">{auction.title || 'No title'}</div>
-                            {auction.url && (
-                              <a href={auction.url} target="_blank" rel="noopener noreferrer"
-                                className="text-blue-400 text-xs hover:underline">View on BaT →</a>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-slate-300">{auction.make} {auction.model}</td>
-                          <td className="px-4 py-3 text-slate-300">{auction.year || '-'}</td>
-                          <td className="px-4 py-3 text-slate-300">
-                            ${auction.price_at_48h?.toLocaleString() || '-'}
-                          </td>
-                          <td className="px-4 py-3 text-slate-300">
-                            ${auction.final_price?.toLocaleString() || '-'}
-                          </td>
-                          <td className={`px-4 py-3 font-semibold ${
-                            gain !== 'N/A' && parseFloat(gain) > 0 ? 'text-green-400' : 
-                            gain !== 'N/A' && parseFloat(gain) < 0 ? 'text-red-400' : 'text-slate-400'
-                          }`}>
-                            {gain !== 'N/A' ? `${gain}%` : '-'}
-                          </td>
-                          <td className="px-4 py-3">
-                            <button onClick={() => handleDeleteAuction(auction.id)}
-                              className="bg-red-600 hover:bg-red-700 text-white p-2 rounded">
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {filteredAuctions.length === 0 && (
-                <div className="text-center py-8 text-slate-400">
-                  {searchTerm ? 'No auctions match your search' : 'No auctions found'}
+            <div className="space-y-4">
+              {filteredAuctions.length === 0 ? (
+                <div className="bg-slate-800 p-8 rounded-lg border border-slate-700 text-center">
+                  <div className="text-slate-400 text-lg">
+                    {searchTerm ? 'No auctions match your search' : 'No auctions found'}
+                  </div>
+                  <p className="text-slate-500 text-sm mt-2">Add auctions manually or import from CSV!</p>
                 </div>
+              ) : (
+                filteredAuctions.map(auction => (
+                  <div key={auction.id} className="bg-slate-800 p-6 rounded-lg border border-slate-700">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h3 className="text-xl font-bold text-white">{auction.title}</h3>
+                        <div className="flex gap-4 mt-2 text-slate-400 text-sm">
+                          <span>{auction.year}</span>
+                          <span>•</span>
+                          <span>{auction.make} {auction.model}</span>
+                        </div>
+                        <div className="flex gap-4 mt-2">
+                          {auction.price_at_48h && (
+                            <div>
+                              <div className="text-slate-400 text-xs">48h Price</div>
+                              <div className="text-white font-semibold">${auction.price_at_48h?.toLocaleString()}</div>
+                            </div>
+                          )}
+                          {auction.final_price && (
+                            <div>
+                              <div className="text-slate-400 text-xs">Final Price</div>
+                              <div className="text-green-400 font-semibold">${auction.final_price?.toLocaleString()}</div>
+                            </div>
+                          )}
+                          {auction.price_at_48h && auction.final_price && (
+                            <div>
+                              <div className="text-slate-400 text-xs">Gain</div>
+                              <div className={`font-semibold ${
+                                auction.final_price > auction.price_at_48h ? 'text-green-400' : 'text-red-400'
+                              }`}>
+                                {calculateGain(auction.price_at_48h, auction.final_price)}%
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2 items-end">
+                        <span className="text-xs text-slate-500">{auction.auction_id}</span>
+                        {auction.url && (
+                          <a href={auction.url} target="_blank" rel="noopener noreferrer"
+                            className="text-blue-400 hover:text-blue-300 text-sm">View Auction →</a>
+                        )}
+                        <button onClick={() => handleDeleteAuction(auction.id)}
+                          className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1">
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </div>
@@ -611,25 +635,24 @@ const AdminPortal = () => {
 
         {/* USERS TAB */}
         {activeTab === 'users' && (
-          <div className="space-y-6">
-            <button onClick={() => setShowAddUser(!showAddUser)}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-              <Plus size={20} />
-              Add User
+          <div>
+            <button onClick={() => setShowAddUser(!showAddUser)} 
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex items-center gap-2 mb-6">
+              <Plus size={20} /> Add User
             </button>
 
             {showAddUser && (
-              <div className="bg-slate-800 p-6 rounded-lg border border-slate-600">
-                <h3 className="text-xl font-bold text-white mb-4">Add New User</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <input placeholder="Username *" value={newUser.username}
+              <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 mb-6">
+                <h3 className="text-xl font-bold mb-4">Add New User</h3>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <input type="text" placeholder="Username" value={newUser.username}
                     onChange={(e) => setNewUser({...newUser, username: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
-                  <input placeholder="Email *" type="email" value={newUser.email}
+                  <input type="email" placeholder="Email" value={newUser.email}
                     onChange={(e) => setNewUser({...newUser, email: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
                 </div>
-                <div className="flex gap-3 mt-4">
+                <div className="flex gap-3">
                   <button onClick={handleAddUser} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded">
                     Add User
                   </button>
@@ -640,39 +663,30 @@ const AdminPortal = () => {
               </div>
             )}
 
-            <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-slate-700">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Username</th>
-                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Email</th>
-                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Joined</th>
-                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => (
-                    <tr key={user.id} className="border-t border-slate-700 hover:bg-slate-750">
-                      <td className="px-4 py-3 text-white font-medium">{user.username}</td>
-                      <td className="px-4 py-3 text-slate-300">{user.email}</td>
-                      <td className="px-4 py-3 text-slate-300">
-                        {user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button onClick={() => handleDeleteUser(user.id)}
-                          className="bg-red-600 hover:bg-red-700 text-white p-2 rounded">
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {users.length === 0 && (
-                <div className="text-center py-8 text-slate-400">
-                  <p className="mb-2">No users yet!</p>
-                  <p className="text-sm">Users will appear here when they sign up through your game app.</p>
+            <div className="space-y-4">
+              {users.length === 0 ? (
+                <div className="bg-slate-800 p-8 rounded-lg border border-slate-700 text-center">
+                  <div className="text-slate-400 text-lg">No users found</div>
+                  <p className="text-slate-500 text-sm mt-2">Add your first user above!</p>
                 </div>
+              ) : (
+                users.map(user => (
+                  <div key={user.id} className="bg-slate-800 p-6 rounded-lg border border-slate-700">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="text-xl font-bold text-white">{user.username}</h3>
+                        <p className="text-slate-400 text-sm">{user.email}</p>
+                        <p className="text-slate-500 text-xs mt-1">
+                          Joined: {new Date(user.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <button onClick={() => handleDeleteUser(user.id)}
+                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1">
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </div>
@@ -680,20 +694,20 @@ const AdminPortal = () => {
 
         {/* LEAGUES TAB */}
         {activeTab === 'leagues' && (
-          <div className="space-y-6">
-            <button onClick={() => setShowAddLeague(!showAddLeague)}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-              <Plus size={20} />
-              Create League
+          <div>
+            <button onClick={() => setShowAddLeague(!showAddLeague)} 
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex items-center gap-2 mb-6">
+              <Plus size={20} /> Create New League
             </button>
 
             {showAddLeague && (
-              <div className="bg-slate-800 p-6 rounded-lg border border-slate-600">
-                <h3 className="text-xl font-bold text-white mb-4">Create New League</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <input placeholder="League Name *" value={newLeague.name}
+              <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 mb-6">
+                <h3 className="text-xl font-bold mb-4">Create New League</h3>
+                <div className="grid grid-cols-1 gap-4 mb-4">
+                  <input type="text" placeholder="League Name (e.g., Fall 2024 Championship)" 
+                    value={newLeague.name}
                     onChange={(e) => setNewLeague({...newLeague, name: e.target.value})}
-                    className="bg-slate-700 text-white p-2 rounded border border-slate-600 col-span-2" />
+                    className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full" />
                   
                   <div>
                     <label className="text-slate-400 text-sm mb-1 block">Draft Starts At *</label>
