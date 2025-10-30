@@ -43,12 +43,38 @@ const AdminPortal = () => {
     try {
       const { supabase } = await import('@/lib/supabase');
       
-      const { data: auctionData } = await supabase
+      // ============================================
+      // FIXED: Only show auctions in DRAFT WINDOW (4-5 days before end)
+      // ============================================
+      const now = Math.floor(Date.now() / 1000); // Current Unix timestamp
+      const fourDaysInSeconds = 4 * 24 * 60 * 60;  // 345,600 seconds
+      const fiveDaysInSeconds = 5 * 24 * 60 * 60;  // 432,000 seconds
+      
+      const minEndTime = now + fourDaysInSeconds;  // Must end at least 4 days from now
+      const maxEndTime = now + fiveDaysInSeconds;  // Must end within 5 days from now
+      
+      console.log('Draft window filter:', {
+        now: new Date(now * 1000).toLocaleString(),
+        minEndTime: new Date(minEndTime * 1000).toLocaleString(),
+        maxEndTime: new Date(maxEndTime * 1000).toLocaleString()
+      });
+      
+      // Query for auctions in the draft window only
+      const { data: auctionData, error: auctionError } = await supabase
         .from('auctions')
         .select('*')
-        .order('inserted_at', { ascending: false })
-        .limit(200);
+        .gte('timestamp_end', minEndTime)    // Ends at least 4 days from now
+        .lte('timestamp_end', maxEndTime)    // Ends within 5 days from now
+        .not('price_at_48h', 'is', null)     // Has day 2 price captured
+        .is('final_price', null)              // Still active (hasn't ended)
+        .order('timestamp_end', { ascending: true });
+      
+      if (auctionError) {
+        console.error('Error loading auctions:', auctionError);
+      }
+      
       setAuctions(auctionData || []);
+      console.log(`Loaded ${auctionData?.length || 0} auctions in draft window (4-5 days before end)`);
       
       const { data: userData } = await supabase
         .from('users')
@@ -574,9 +600,13 @@ const AdminPortal = () => {
               {filteredAuctions.length === 0 ? (
                 <div className="bg-slate-800 p-8 rounded-lg border border-slate-700 text-center">
                   <div className="text-slate-400 text-lg">
-                    {searchTerm ? 'No auctions match your search' : 'No auctions found'}
+                    {searchTerm ? 'No auctions match your search' : 'No auctions in draft window (4-5 days before end)'}
                   </div>
-                  <p className="text-slate-500 text-sm mt-2">Add auctions manually or import from CSV!</p>
+                  <p className="text-slate-500 text-sm mt-2">
+                    {searchTerm 
+                      ? 'Try a different search term' 
+                      : 'Auctions appear here when they are 4-5 days from ending and have a day 2 price'}
+                  </p>
                 </div>
               ) : (
                 filteredAuctions.map(auction => (
