@@ -434,12 +434,11 @@ export default function BixPrixApp() {
       
       console.log(`Fetching bonus car: ${league.bonus_auction_id}`)
       
-      const now = Math.floor(Date.now() / 1000)
-      const { data: auction, error: auctionError } = await supabase
-        .from('auctions')
-        .select('*')
-        .eq('auction_id', league.bonus_auction_id)
-        .single()
+     const { data: auction, error: auctionError } = await supabase
+  .from('auctions')
+  .select('*')
+  .eq('auction_id', league.bonus_auction_id)  // ✅ Just fetch by ID!
+  .single()
       
       if (auctionError || !auction) {
         console.warn('⚠️ Bonus car auction has ended or not found!')
