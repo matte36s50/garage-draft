@@ -11,6 +11,9 @@ const AdminPortal = () => {
   const [leagueMembers, setLeagueMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   
+  // ✅ CHANGE #1: Added new state for all auctions (for bonus car dropdown)
+  const [allAuctionsForBonus, setAllAuctionsForBonus] = useState([]);
+  
   const [showAddAuction, setShowAddAuction] = useState(false);
   const [newAuction, setNewAuction] = useState({
     auction_id: '', title: '', make: '', model: '', year: '',
@@ -46,12 +49,12 @@ const AdminPortal = () => {
       // ============================================
       // FIXED: Only show auctions in DRAFT WINDOW (4-5 days before end)
       // ============================================
-      const now = Math.floor(Date.now() / 1000); // Current Unix timestamp
-      const fourDaysInSeconds = 4 * 24 * 60 * 60;  // 345,600 seconds
-      const fiveDaysInSeconds = 5 * 24 * 60 * 60;  // 432,000 seconds
+      const now = Math.floor(Date.now() / 1000);
+      const fourDaysInSeconds = 4 * 24 * 60 * 60;
+      const fiveDaysInSeconds = 5 * 24 * 60 * 60;
       
-      const minEndTime = now + fourDaysInSeconds;  // Must end at least 4 days from now
-      const maxEndTime = now + fiveDaysInSeconds;  // Must end within 5 days from now
+      const minEndTime = now + fourDaysInSeconds;
+      const maxEndTime = now + fiveDaysInSeconds;
       
       console.log('Draft window filter:', {
         now: new Date(now * 1000).toLocaleString(),
@@ -59,14 +62,13 @@ const AdminPortal = () => {
         maxEndTime: new Date(maxEndTime * 1000).toLocaleString()
       });
       
-      // Query for auctions in the draft window only
       const { data: auctionData, error: auctionError } = await supabase
         .from('auctions')
         .select('*')
-        .gte('timestamp_end', minEndTime)    // Ends at least 4 days from now
-        .lte('timestamp_end', maxEndTime)    // Ends within 5 days from now
-        .not('price_at_48h', 'is', null)     // Has day 2 price captured
-        .is('final_price', null)              // Still active (hasn't ended)
+        .gte('timestamp_end', minEndTime)
+        .lte('timestamp_end', maxEndTime)
+        .not('price_at_48h', 'is', null)
+        .is('final_price', null)
         .order('timestamp_end', { ascending: true });
       
       if (auctionError) {
@@ -91,6 +93,23 @@ const AdminPortal = () => {
         `)
         .order('created_at', { ascending: false });
       setLeagues(leagueData || []);
+      
+      // ✅ CHANGE #2: Load ALL auctions for bonus car dropdown (not just 4-5 day window)
+      console.log('Loading all auctions for bonus car selection...');
+      const { data: bonusAuctionData, error: bonusError } = await supabase
+        .from('auctions')
+        .select('*')
+        .not('price_at_48h', 'is', null)
+        .order('timestamp_end', { ascending: false })
+        .limit(200);
+      
+      if (bonusError) {
+        console.error('Error loading bonus auctions:', bonusError);
+        setAllAuctionsForBonus([]);
+      } else {
+        setAllAuctionsForBonus(bonusAuctionData || []);
+        console.log(`Loaded ${bonusAuctionData?.length || 0} auctions for bonus car selection`);
+      }
       
       const { data: garageData } = await supabase
         .from('garages')
@@ -258,7 +277,6 @@ const AdminPortal = () => {
       
       const { supabase } = await import('@/lib/supabase');
       
-      // Import in batches of 50
       const batchSize = 50;
       let imported = 0;
       
@@ -284,7 +302,7 @@ const AdminPortal = () => {
       alert('Failed to import CSV: ' + error.message);
     } finally {
       setCsvImporting(false);
-      event.target.value = ''; // Reset file input
+      event.target.value = '';
     }
   };
 
@@ -328,26 +346,15 @@ const AdminPortal = () => {
     }
   };
 
-  // ========== LEAGUE FUNCTIONS (FIXED!) ==========
+  // ========== LEAGUE FUNCTIONS ==========
   const handleAddLeague = async () => {
-    // Better validation with trimming and explicit checks
     const trimmedName = newLeague.name?.trim();
-    
-    console.log('Validation check:', {
-      name: trimmedName,
-      draft_starts_at: newLeague.draft_starts_at,
-      draft_ends_at: newLeague.draft_ends_at,
-      nameLength: trimmedName?.length,
-      startEmpty: newLeague.draft_starts_at === '',
-      endEmpty: newLeague.draft_ends_at === ''
-    });
     
     if (!trimmedName || !newLeague.draft_starts_at || !newLeague.draft_ends_at) {
       alert('Please fill in league name and draft dates');
       return;
     }
     
-    // Validate dates are actually valid
     const startDate = new Date(newLeague.draft_starts_at);
     const endDate = new Date(newLeague.draft_ends_at);
     
@@ -364,7 +371,6 @@ const AdminPortal = () => {
     try {
       const { supabase } = await import('@/lib/supabase');
       
-      // Get first user as creator if available, otherwise null (admin-created league)
       let creatorId = null;
       if (users.length > 0) {
         creatorId = users[0].id;
@@ -375,7 +381,7 @@ const AdminPortal = () => {
       
       const league = {
         name: trimmedName,
-        created_by: creatorId, // Can be null for admin-created leagues
+        created_by: creatorId,
         draft_starts_at: startDate.toISOString(),
         draft_ends_at: endDate.toISOString(),
         is_public: newLeague.is_public,
@@ -753,18 +759,45 @@ const AdminPortal = () => {
                       className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full" />
                   </div>
                   
+                  {/* ✅ CHANGE #3: Updated bonus auction dropdown with ALL auctions */}
                   <div>
                     <label className="text-slate-400 text-sm mb-1 block">Bonus Auction (Optional)</label>
-                    <select value={newLeague.bonus_auction_id}
+                    <select 
+                      value={newLeague.bonus_auction_id}
                       onChange={(e) => setNewLeague({...newLeague, bonus_auction_id: e.target.value})}
-                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full">
+                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full"
+                    >
                       <option value="">No bonus auction</option>
-                      {auctions.slice(0, 50).map(auction => (
-                        <option key={auction.auction_id} value={auction.auction_id}>
-                          {auction.title} ({auction.year})
-                        </option>
-                      ))}
+                      {allAuctionsForBonus.map(auction => {
+                        const endDate = new Date(auction.timestamp_end * 1000);
+                        const now = Math.floor(Date.now() / 1000);
+                        const hasEnded = auction.timestamp_end < now;
+                        
+                        let status = '';
+                        if (auction.final_price) {
+                          status = '✅ Sold';
+                        } else if (hasEnded) {
+                          status = '⏱️ Ended';
+                        } else {
+                          status = '🔴 Live';
+                        }
+                        
+                        const dateStr = endDate.toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric',
+                          year: 'numeric'
+                        });
+                        
+                        return (
+                          <option key={auction.auction_id} value={auction.auction_id}>
+                            {auction.title} ({auction.year}) - {status} - {dateStr}
+                          </option>
+                        );
+                      })}
                     </select>
+                    <p className="text-slate-500 text-xs mt-1">
+                      💡 {allAuctionsForBonus.length} auctions available - includes cars outside draft window
+                    </p>
                   </div>
                   
                   <div>
