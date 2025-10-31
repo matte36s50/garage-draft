@@ -94,12 +94,15 @@ const AdminPortal = () => {
         .order('created_at', { ascending: false });
       setLeagues(leagueData || []);
       
-      // ✅ CHANGE #2: Load ALL auctions for bonus car dropdown (not just 4-5 day window)
-      console.log('Loading all auctions for bonus car selection...');
+      // ✅ CHANGE #2: Load auctions for bonus car dropdown (SAME 4-5 day window as draft cars)
+      console.log('Loading bonus car options (draft window only)...');
       const { data: bonusAuctionData, error: bonusError } = await supabase
         .from('auctions')
         .select('*')
-        .not('price_at_48h', 'is', null)
+        .gte('timestamp_end', minEndTime)    // Must end at least 4 days from now
+        .lte('timestamp_end', maxEndTime)    // Must end within 5 days from now
+        .not('price_at_48h', 'is', null)     // Must have day 2 price
+        .is('final_price', null)              // Must still be active (not sold)
         .order('timestamp_end', { ascending: false })
         .limit(200);
       
@@ -108,7 +111,7 @@ const AdminPortal = () => {
         setAllAuctionsForBonus([]);
       } else {
         setAllAuctionsForBonus(bonusAuctionData || []);
-        console.log(`Loaded ${bonusAuctionData?.length || 0} auctions for bonus car selection`);
+        console.log(`Loaded ${bonusAuctionData?.length || 0} active auctions in draft window for bonus selection`);
       }
       
       const { data: garageData } = await supabase
@@ -770,33 +773,25 @@ const AdminPortal = () => {
                       <option value="">No bonus auction</option>
                       {allAuctionsForBonus.map(auction => {
                         const endDate = new Date(auction.timestamp_end * 1000);
-                        const now = Math.floor(Date.now() / 1000);
-                        const hasEnded = auction.timestamp_end < now;
-                        
-                        let status = '';
-                        if (auction.final_price) {
-                          status = '✅ Sold';
-                        } else if (hasEnded) {
-                          status = '⏱️ Ended';
-                        } else {
-                          status = '🔴 Live';
-                        }
-                        
                         const dateStr = endDate.toLocaleDateString('en-US', { 
                           month: 'short', 
                           day: 'numeric',
-                          year: 'numeric'
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
                         });
                         
                         return (
                           <option key={auction.auction_id} value={auction.auction_id}>
-                            {auction.title} ({auction.year}) - {status} - {dateStr}
+                            {auction.title} ({auction.year}) - 🔴 Live - Ends: {dateStr}
                           </option>
                         );
                       })}
                     </select>
                     <p className="text-slate-500 text-xs mt-1">
-                      💡 {allAuctionsForBonus.length} auctions available - includes cars outside draft window
+                      💡 {allAuctionsForBonus.length} active auctions in draft window (4-5 days from ending)
+                      <br />
+                      ⚡ Bonus car will end at same time as other draft cars
                     </p>
                   </div>
                   
