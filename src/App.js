@@ -439,8 +439,6 @@ export default function BixPrixApp() {
         .from('auctions')
         .select('*')
         .eq('auction_id', league.bonus_auction_id)
-        .gt('timestamp_end', now)
-        .is('final_price', null)
         .single()
       
       if (auctionError || !auction) {
