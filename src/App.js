@@ -1003,54 +1003,263 @@ export default function BixPrixApp() {
   // ... [Rest of your screen components remain exactly the same - LandingScreen, LoginScreen, etc.]
   // I'm keeping all the screen components unchanged below for completeness
 
-  function LandingScreen({ onGetStarted }) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-bpNavy via-[#0B1220] to-bpNavy">
-        <div className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDMpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-40"></div>
-          
-          <div className="relative mx-auto max-w-5xl px-4 py-20 text-center">
-            <div className="mb-8 flex flex-col items-center gap-4">
-              <div className="text-center">
-                <div className="text-6xl font-black tracking-tight text-bpCream drop-shadow-2xl mb-2">
-                  BIXPRIX
-                </div>
-                <div className="text-2xl tracking-[0.2em] text-bpCream/90 uppercase font-bold">
-                  Race the Market
-                </div>
+ # How to Fix Your Landing Page - Simple Instructions
+
+## What You Need to Do
+
+Your App.js is almost complete, but the `LandingScreen` function needs the full content. Here's exactly what to do:
+
+### Step 1: Open Your App.js in GitHub
+
+Go to: `https://github.com/matte36s50/garage-draft/blob/main/src/App.js`
+
+### Step 2: Find the LandingScreen Function
+
+Search for this line (should be around line 800-900):
+```javascript
+function LandingScreen({ onGetStarted }) {
+```
+
+### Step 3: Replace the ENTIRE LandingScreen Function
+
+Delete everything from `function LandingScreen({` down to its closing `}` bracket.
+
+Then paste in this COMPLETE LandingScreen function:
+
+```javascript
+function LandingScreen({ onGetStarted }) {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-bpNavy via-[#0B1220] to-bpNavy">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDMpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-40"></div>
+        
+        <div className="relative mx-auto max-w-5xl px-4 py-20 text-center">
+          <div className="mb-8 flex flex-col items-center gap-4">
+            <div className="text-center">
+              <div className="text-6xl font-black tracking-tight text-bpCream drop-shadow-2xl mb-2">
+                BIXPRIX
+              </div>
+              <div className="text-2xl tracking-[0.2em] text-bpCream/90 uppercase font-bold">
+                Race the Market
               </div>
             </div>
-            
-            <h1 className="text-4xl sm:text-5xl font-bold text-bpCream mb-6 leading-tight mt-8">
-              <span className="bg-gradient-to-r from-bpGold to-bpRed bg-clip-text text-transparent">Fantasy Auto Auctions</span>
-            </h1>
-            
-            <p className="text-xl text-bpCream/80 mb-10 max-w-2xl mx-auto leading-relaxed">
-              Draft your dream garage from live Bring a Trailer auctions. Predict prices. Beat the market. Win glory.
-            </p>
-            
-            <div className="flex gap-4 justify-center">
-              <PrimaryButton 
-                className="px-8 py-4 text-lg"
-                onClick={onGetStarted}
-              >
-                Get Started →
-              </PrimaryButton>
-              <OutlineButton 
-                className="px-8 py-4 text-lg"
-                onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
-              >
-                Learn More
-              </OutlineButton>
+          </div>
+          
+          <h1 className="text-4xl sm:text-5xl font-bold text-bpCream mb-6 leading-tight mt-8">
+            <span className="bg-gradient-to-r from-bpGold to-bpRed bg-clip-text text-transparent">Fantasy Auto Auctions</span>
+          </h1>
+          
+          <p className="text-xl text-bpCream/80 mb-10 max-w-2xl mx-auto leading-relaxed">
+            Draft your dream garage from live Bring a Trailer auctions. Predict prices. Beat the market. Win glory.
+          </p>
+          
+          <div className="flex gap-4 justify-center">
+            <PrimaryButton 
+              className="px-8 py-4 text-lg"
+              onClick={onGetStarted}
+            >
+              Get Started →
+            </PrimaryButton>
+            <OutlineButton 
+              className="px-8 py-4 text-lg"
+              onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+            >
+              Learn More
+            </OutlineButton>
+          </div>
+        </div>
+      </div>
+
+      {/* How It Works Section */}
+      <div id="how-it-works" className="py-20 bg-bpNavy/50">
+        <div className="mx-auto max-w-5xl px-4">
+          <h2 className="text-3xl font-bold text-center text-bpCream mb-12">How It Works</h2>
+          
+          <div className="grid md:grid-cols-3 gap-8">
+            <Card className="p-6">
+              <div className="w-12 h-12 rounded-full bg-bpNavy flex items-center justify-center mb-4">
+                <Users className="text-bpGold" size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-bpInk mb-3">1. Join a League</h3>
+              <p className="text-bpInk/70">
+                Create or join a league with friends. Each league runs for one week with live BaT auctions.
+              </p>
+            </Card>
+
+            <Card className="p-6">
+              <div className="w-12 h-12 rounded-full bg-bpNavy flex items-center justify-center mb-4">
+                <Car className="text-bpGold" size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-bpInk mb-3">2. Build Your Garage</h3>
+              <p className="text-bpInk/70">
+                Draft 7 cars with a $175,000 budget. Lock in your prices on day 2 of each auction. Plus predict the bonus car!
+              </p>
+            </Card>
+
+            <Card className="p-6">
+              <div className="w-12 h-12 rounded-full bg-bpNavy flex items-center justify-center mb-4">
+                <Trophy className="text-bpGold" size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-bpInk mb-3">3. Race the Market</h3>
+              <p className="text-bpInk/70">
+                Score points based on how much each car appreciates. Highest total score wins!
+              </p>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* Rules & Scoring Section */}
+      <div className="bg-white/5 py-20">
+        <div className="mx-auto max-w-5xl px-4">
+          <h2 className="text-3xl font-bold text-bpCream text-center mb-12">Rules & Scoring</h2>
+          
+          <div className="grid md:grid-cols-2 gap-6">
+            <Card className="p-6">
+              <h3 className="text-lg font-bold text-bpInk mb-4 flex items-center gap-2">
+                <CheckCircle size={20} className="text-green-600" />
+                The Basics
+              </h3>
+              <ul className="space-y-2 text-bpInk/80 text-sm">
+                <li className="flex items-start gap-2">
+                  <span className="text-bpNavy font-bold">•</span>
+                  <span><strong>$175,000 budget</strong> - Spend wisely across 7 cars</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-bpNavy font-bold">•</span>
+                  <span><strong>Draft window</strong> - Pick your cars when leagues open</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-bpNavy font-bold">•</span>
+                  <span><strong>Day 2 prices locked</strong> - Your purchase price is the bid 48 hours into each auction</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-bpNavy font-bold">•</span>
+                  <span><strong>Bonus car prediction</strong> - Everyone gets the same 8th car. Closest prediction wins bonus points!</span>
+                </li>
+              </ul>
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="text-lg font-bold text-bpInk mb-4 flex items-center gap-2">
+                <TrendingUp size={20} className="text-bpGold" />
+                How to Score
+              </h3>
+              <ul className="space-y-2 text-bpInk/80 text-sm">
+                <li className="flex items-start gap-2">
+                  <span className="text-bpNavy font-bold">•</span>
+                  <span><strong>Main scoring:</strong> Total percentage gain across all 7 cars</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-bpNavy font-bold">•</span>
+                  <span><strong>Reserve not met:</strong> -25% penalty if auction doesn't meet reserve</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-bpNavy font-bold">•</span>
+                  <span><strong>Bonus points:</strong> Predict the final sale price of the bonus car</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-bpNavy font-bold">•</span>
+                  <span><strong>Winner:</strong> Highest total score at the end of the week!</span>
+                </li>
+              </ul>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* Features Section */}
+      <div className="py-20 bg-bpNavy">
+        <div className="mx-auto max-w-5xl px-4">
+          <h2 className="text-3xl font-bold text-center text-bpCream mb-12">Why Play BixPrix?</h2>
+          
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-bpGold/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Zap className="text-bpGold" size={28} />
+              </div>
+              <h3 className="text-lg font-bold text-bpCream mb-2">Real-Time Action</h3>
+              <p className="text-bpCream/70 text-sm">
+                Watch live bids update as auctions progress throughout the week
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-bpGold/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Target className="text-bpGold" size={28} />
+              </div>
+              <h3 className="text-lg font-bold text-bpCream mb-2">Strategy Matters</h3>
+              <p className="text-bpCream/70 text-sm">
+                Balance your budget, pick undervalued gems, and predict market moves
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-bpGold/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Users className="text-bpGold" size={28} />
+              </div>
+              <h3 className="text-lg font-bold text-bpCream mb-2">Play with Friends</h3>
+              <p className="text-bpCream/70 text-sm">
+                Create private leagues and compete for bragging rights
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-bpGold/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Star className="text-bpGold" size={28} />
+              </div>
+              <h3 className="text-lg font-bold text-bpCream mb-2">No Money Required</h3>
+              <p className="text-bpCream/70 text-sm">
+                Pure skill and market knowledge - no real money betting
+              </p>
             </div>
           </div>
         </div>
-
-        {/* Rest of LandingScreen content - keeping it the same */}
-        {/* ... (all your existing landing page content) ... */}
       </div>
-    )
-  }
+
+      {/* CTA Section */}
+      <div className="py-20 bg-gradient-to-b from-bpNavy to-black">
+        <div className="mx-auto max-w-3xl px-4 text-center">
+          <h2 className="text-4xl font-bold text-bpCream mb-6">
+            Ready to Race the Market?
+          </h2>
+          <p className="text-xl text-bpCream/80 mb-8">
+            Join the first fantasy game where car enthusiasm meets market strategy
+          </p>
+          <PrimaryButton 
+            className="px-12 py-4 text-lg"
+            onClick={onGetStarted}
+          >
+            Start Playing Now →
+          </PrimaryButton>
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+### Step 4: Save and Commit
+
+1. Save the file in GitHub
+2. Commit with message: "Fix: Add complete landing page content"
+3. Vercel will automatically deploy
+
+### Step 5: Test
+
+Visit your app and you should see:
+- ✅ Hero section with "BIXPRIX" and "Race the Market"
+- ✅ "How It Works" section with 3 steps
+- ✅ "Rules & Scoring" section
+- ✅ "Why Play BixPrix?" features section
+- ✅ Final "Ready to Race the Market?" CTA
+
+---
+
+## That's It!
+
+Just replace that one function and your landing page will be complete with all the content that was working before.
 
   function LoginScreen() {
     const [isSignUp, setIsSignUp] = useState(false)
