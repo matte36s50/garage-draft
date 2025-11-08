@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, Wifi, WifiOff } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
