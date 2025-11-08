@@ -541,92 +541,73 @@ export default function BixPrixApp() {
   }
 
   const fetchAuctions = async () => {
-    if (!selectedLeague) {
-      console.log('No league selected, cannot fetch auctions')
-      return
-    }
-    
-    setLoading(true)
-    try {
-      const { data: leagueData, error: leagueError } = await supabase
-        .from('leagues')
-        .select('snapshot_created')
-        .eq('id', selectedLeague.id)
-        .single()
-      
-      if (leagueError) throw leagueError
-      
-      if (!leagueData.snapshot_created) {
-        console.log('League has no snapshot yet, creating one...')
-        const created = await createLeagueSnapshot(selectedLeague.id)
-        if (!created) {
-          console.error('Failed to create snapshot')
-          setAuctions([])
-          setLoading(false)
-          return
-        }
-      }
-      
-      const { data: leagueCars, error: leagueCarsError } = await supabase
-        .from('league_cars')
-        .select(`
-          auction_id,
-          baseline_price,
-          auctions (*)
-        `)
-        .eq('league_id', selectedLeague.id)
-      
-      if (leagueCarsError) throw leagueCarsError
-      
-      const now = Math.floor(Date.now() / 1000)
-      const auctionDuration = 7 * 24 * 60 * 60
-      const hours48 = 48 * 60 * 60
-      const hours72 = 72 * 60 * 60
-
-      const transformed = (leagueCars || [])
-        .filter(lc => lc.auctions)
-        .map((lc) => {
-          const a = lc.auctions
-          const endDate = new Date(a.timestamp_end * 1000)
-          const baseline = lc.baseline_price || parseFloat(a.price_at_48h)
-          const imageUrl = a.image_url || getDefaultCarImage(a.make)
-          
-          return {
-            id: a.auction_id,
-            title: a.title,
-            make: a.make,
-            model: a.model,
-            year: a.year,
-            currentBid: parseFloat(a.current_bid) || baseline || 0,
-            baselinePrice: baseline,
-            day2Price: baseline,
-            finalPrice: a.final_price,
-            timeLeft: calculateTimeLeft(endDate),
-            auctionUrl: a.url,
-            imageUrl: imageUrl,
-            trending: Math.random() > 0.7,
-            endTime: endDate,
-            timestamp_end: a.timestamp_end,
-          }
-        })
-        .filter(car => {
-          const auctionEnd = car.timestamp_end
-          const auctionStart = auctionEnd - auctionDuration
-          const currentAge = now - auctionStart
-          
-          return currentAge >= hours48 && currentAge <= hours72 && auctionEnd > now
-        })
-
-      console.log(`Loaded ${transformed.length} cars from league snapshot (after real-time filtering)`)
-      setAuctions(transformed)
-      
-    } catch (e) {
-      console.error('Error fetching league auctions:', e)
-      setAuctions([])
-    } finally { 
-      setLoading(false) 
-    }
+  if (!selectedLeague) {
+    console.log('No league selected, cannot fetch auctions')
+    return
   }
+  
+  setLoading(true)
+  try {
+    // ✅ Use SAME logic as admin portal (4-5 day window)
+    const now = Math.floor(Date.now() / 1000);
+    const fourDaysInSeconds = 4 * 24 * 60 * 60;
+    const fiveDaysInSeconds = 5 * 24 * 60 * 60;
+    
+    const minEndTime = now + fourDaysInSeconds;
+    const maxEndTime = now + fiveDaysInSeconds;
+    
+    console.log('Draft window filter:', {
+      now: new Date(now * 1000).toLocaleString(),
+      minEndTime: new Date(minEndTime * 1000).toLocaleString(),
+      maxEndTime: new Date(maxEndTime * 1000).toLocaleString()
+    });
+    
+    const { data: auctionData, error: auctionError } = await supabase
+      .from('auctions')
+      .select('*')
+      .gte('timestamp_end', minEndTime)      // At least 4 days from now
+      .lte('timestamp_end', maxEndTime)      // Within 5 days from now
+      .not('price_at_48h', 'is', null)       // Has baseline price
+      .is('final_price', null)                // Not sold yet
+      .order('timestamp_end', { ascending: true })
+      .limit(100);
+    
+    if (auctionError) throw auctionError;
+    
+    const transformed = (auctionData || []).map((a) => {
+      const endDate = new Date(a.timestamp_end * 1000)
+      const baseline = parseFloat(a.price_at_48h)
+      const imageUrl = a.image_url || getDefaultCarImage(a.make)
+      
+      return {
+        id: a.auction_id,
+        title: a.title,
+        make: a.make,
+        model: a.model,
+        year: a.year,
+        currentBid: parseFloat(a.current_bid) || baseline || 0,
+        baselinePrice: baseline,
+        day2Price: baseline,
+        finalPrice: a.final_price,
+        timeLeft: calculateTimeLeft(endDate),
+        auctionUrl: a.url,
+        imageUrl: imageUrl,
+        trending: Math.random() > 0.7,
+        endTime: endDate,
+        timestamp_end: a.timestamp_end,
+      }
+    })
+    
+    console.log(`✅ Loaded ${transformed.length} cars in draft window (4-5 days before end)`)
+    setAuctions(transformed)
+    
+  } catch (e) {
+    console.error('Error fetching auctions:', e)
+    setAuctions([])
+  } finally { 
+    setLoading(false) 
+  }
+}
 
   const fetchLeagues = async () => {
     const { data, error } = await supabase
