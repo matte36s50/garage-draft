@@ -797,13 +797,13 @@ export default function BixPrixApp() {
   }, [user])
   
   useEffect(() => { 
-    if (selectedLeague && user) {
-      fetchUserGarage(selectedLeague.id)
-      fetchAuctions()
-      fetchBonusCar(selectedLeague.id)
-      fetchUserPrediction(selectedLeague.id)
-    }
-  }, [selectedLeague, user])
+  if (selectedLeague && user) {
+    fetchUserGarage(selectedLeague.id)
+    fetchAuctions()
+    fetchBonusCar(selectedLeague.id)
+    fetchUserPrediction(selectedLeague.id)
+  }
+}, [selectedLeague, user, fetchUserGarage, fetchAuctions, fetchBonusCar, fetchUserPrediction])
 
   useEffect(() => {
     if (!selectedLeague || !user) return
@@ -1634,11 +1634,11 @@ export default function BixPrixApp() {
     const [sortBy, setSortBy] = useState('total_percent')
     const [bonusWinner, setBonusWinner] = useState(null)
 
-    useEffect(() => {
-      if (selectedLeague && user) {
-        fetchLeaderboard()
-      }
-    }, [selectedLeague, user])
+   useEffect(() => {
+  if (selectedLeague && user) {
+    fetchLeaderboard()
+  }
+}, [selectedLeague, user, fetchLeaderboard])
 
     const fetchLeaderboard = async () => {
       if (!selectedLeague) return
