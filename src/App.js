@@ -796,6 +796,7 @@ export default function BixPrixApp() {
     } 
   }, [user])
   
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { 
   if (selectedLeague && user) {
     fetchUserGarage(selectedLeague.id)
@@ -1634,7 +1635,8 @@ export default function BixPrixApp() {
     const [sortBy, setSortBy] = useState('total_percent')
     const [bonusWinner, setBonusWinner] = useState(null)
 
-   useEffect(() => {
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
   if (selectedLeague && user) {
     fetchLeaderboard()
   }
