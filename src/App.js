@@ -796,15 +796,14 @@ export default function BixPrixApp() {
     } 
   }, [user])
   
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { 
   if (selectedLeague && user) {
     fetchUserGarage(selectedLeague.id)
     fetchAuctions()
     fetchBonusCar(selectedLeague.id)
     fetchUserPrediction(selectedLeague.id)
-  }
-}, [selectedLeague, user, fetchUserGarage, fetchAuctions, fetchBonusCar, fetchUserPrediction])
+   // eslint-disable-next-line react-hooks/exhaustive-deps}
+}, [selectedLeague, user])
 
   useEffect(() => {
     if (!selectedLeague || !user) return
@@ -1635,12 +1634,11 @@ export default function BixPrixApp() {
     const [sortBy, setSortBy] = useState('total_percent')
     const [bonusWinner, setBonusWinner] = useState(null)
 
-   // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
   if (selectedLeague && user) {
     fetchLeaderboard()
-  }
-}, [selectedLeague, user, fetchLeaderboard])
+   // eslint-disable-next-line react-hooks/exhaustive-deps}
+}, [selectedLeague, user])
 
     const fetchLeaderboard = async () => {
       if (!selectedLeague) return
