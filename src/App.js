@@ -802,8 +802,8 @@ export default function BixPrixApp() {
     fetchAuctions()
     fetchBonusCar(selectedLeague.id)
     fetchUserPrediction(selectedLeague.id)
-   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }
+   }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [selectedLeague, user])
 
   useEffect(() => {
@@ -1638,8 +1638,8 @@ export default function BixPrixApp() {
     useEffect(() => {
   if (selectedLeague && user) {
     fetchLeaderboard()
-   // eslint-disable-next-line react-hooks/exhaustive-deps
   }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [selectedLeague, user])
 
     const fetchLeaderboard = async () => {
