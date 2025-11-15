@@ -1572,7 +1572,12 @@ export default function BixPrixApp() {
     const [loading, setLoading] = useState(true)
     const [sortBy, setSortBy] = useState('total_percent')
     const [bonusWinner, setBonusWinner] = useState(null)
-
+  
+    useEffect(() => {
+    if (selectedLeague) {
+      fetchLeaderboard()
+    }
+  }, [selectedLeague])
    // ADD THIS - League selector if no league selected
   if (!selectedLeague && !leagueLoading) {
     return (
