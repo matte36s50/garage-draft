@@ -5,6 +5,24 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
 const supabase = createClient(supabaseUrl, supabaseKey)
+const STORAGE_KEY = 'bixprix_selected_league'
+
+function saveSelectedLeague(league) {
+  if (league) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(league))
+  } else {
+    localStorage.removeItem(STORAGE_KEY)
+  }
+}
+
+function loadSelectedLeague() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    return stored ? JSON.parse(stored) : null
+  } catch {
+    return null
+  }
+}
 
 function ConnectionStatus({ lastUpdated, connectionStatus, onRefresh, isRefreshing }) {
   const formatTimeAgo = (date) => {
@@ -234,13 +252,17 @@ export default function BixPrixApp() {
   const [leagues, setLeagues] = useState([])
   const [loading, setLoading] = useState(false)
   const [userGarageId, setUserGarageId] = useState(null)
+  const [leagueLoading, setLeagueLoading] = useState(true)
   const [bonusCar, setBonusCar] = useState(null)
   const [userPrediction, setUserPrediction] = useState(null)
   const [showPredictionModal, setShowPredictionModal] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState('connected')
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [recentUpdates, setRecentUpdates] = useState([])
-
+  const updateSelectedLeague = (league) => {
+    setSelectedLeague(league)
+    saveSelectedLeague(league)
+  }
   const calculateTimeLeft = (endTime) => {
     if (!endTime) return 'N/A'
     const now = new Date()
@@ -588,7 +610,7 @@ export default function BixPrixApp() {
         .maybeSingle()
       
       if (existing) {
-        setSelectedLeague(league)
+        updateSelectedLeague(league)
         await fetchUserGarage(league.id)
         await fetchAuctions()
         await fetchBonusCar(league.id)
@@ -611,7 +633,7 @@ export default function BixPrixApp() {
       
       if (me) { alert('Error joining league: '+me.message); return }
       
-      setSelectedLeague(league)
+      updateSelectedLeague(league)
       setUserGarageId(g.id)
       setBudget(175000)
       setGarage([])
@@ -698,6 +720,17 @@ export default function BixPrixApp() {
     if (user) { 
       fetchLeagues() 
     } 
+  }, [user])
+useEffect(() => {
+    const stored = loadSelectedLeague()
+    if (stored && user) {
+      setSelectedLeague(stored)
+      fetchUserGarage(stored.id)
+      fetchAuctions()
+      fetchBonusCar(stored.id)
+      fetchUserPrediction(stored.id)
+    }
+    setLeagueLoading(false)
   }, [user])
   
   useEffect(() => { 
@@ -1541,7 +1574,9 @@ export default function BixPrixApp() {
 
     useEffect(() => {
   if (selectedLeague && user) {
-    fetchLeaderboard()
+      fetchLeaderboard()
+    } else {
+      setLoading(false)
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [selectedLeague, user])
