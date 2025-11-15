@@ -1572,14 +1572,43 @@ useEffect(() => {
     const [sortBy, setSortBy] = useState('total_percent')
     const [bonusWinner, setBonusWinner] = useState(null)
 
-    useEffect(() => {
-  if (selectedLeague && user) {
-      fetchLeaderboard()
-    } else {
-      setLoading(false)
+   // ADD THIS - League selector if no league selected
+  if (!selectedLeague && !leagueLoading) {
+    return (
+      <Shell 
+        onSignOut={() => supabase.auth.signOut()} 
+        onNavigate={onNavigate} 
+        currentScreen={currentScreen}
+      >
+        <div className="max-w-2xl mx-auto">
+          <h2 className="text-2xl font-extrabold tracking-tight mb-4">Select a League</h2>
+          <p className="text-bpCream/70 mb-6">Choose a league to view the leaderboard</p>
+          
+          <div className="space-y-4">
+            {leagues.map(league => (
+              <Card key={league.id} className="p-5">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="font-bold text-lg text-bpInk">{league.name}</h3>
+                    <p className="text-sm text-bpInk/70">
+                      {new Date(league.draft_starts_at).toLocaleDateString()} - {new Date(league.draft_ends_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <PrimaryButton 
+                    onClick={() => {
+                      updateSelectedLeague(league)
+                    }}
+                  >
+                    View Leaderboard
+                  </PrimaryButton>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </Shell>
+    )
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [selectedLeague, user])
 
     const fetchLeaderboard = async () => {
       if (!selectedLeague) return
@@ -1866,6 +1895,14 @@ useEffect(() => {
           <div>
             <h2 className="text-2xl font-extrabold tracking-tight">Leaderboard</h2>
             <p className="text-sm text-bpCream/70">{selectedLeague?.name || 'Select a League'}</p>
+            {selectedLeague && (
+              <button
+                onClick={() => updateSelectedLeague(null)}
+                className="text-xs text-bpGold hover:underline mt-1"
+              >
+                Change League
+              </button>
+            )}
           </div>
           
           <div className="flex gap-2">
