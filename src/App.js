@@ -721,7 +721,8 @@ export default function BixPrixApp() {
       fetchLeagues() 
     } 
   }, [user])
-useEffect(() => {
+  
+  useEffect(() => {
     const stored = loadSelectedLeague()
     if (stored && user) {
       setSelectedLeague(stored)
