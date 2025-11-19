@@ -485,7 +485,7 @@ export default function BixPrixApp() {
         .from('league_auctions')
         .select(`
           custom_end_date,
-          auction:auction_id (*)
+          auctions!league_auctions_auction_id_fkey(*)
         `)
         .eq('league_id', selectedLeague.id);
 
@@ -493,7 +493,7 @@ export default function BixPrixApp() {
 
       // Transform league_auctions data to match expected format
       auctionData = (leagueAuctionsData || []).map(la => {
-        const auction = la.auction;
+        const auction = la.auctions;
         // Use custom end date if provided, otherwise use auction's original end date
         const endTimestamp = la.custom_end_date || auction.timestamp_end;
         return {
