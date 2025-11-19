@@ -29,8 +29,17 @@ const AdminPortal = () => {
     draft_starts_at: '',
     draft_ends_at: '',
     is_public: true,
-    bonus_auction_id: ''
+    bonus_auction_id: '',
+    use_manual_auctions: false
   });
+
+  // State for managing league auctions
+  const [showAuctionManager, setShowAuctionManager] = useState(false);
+  const [managingLeagueId, setManagingLeagueId] = useState(null);
+  const [leagueAuctions, setLeagueAuctions] = useState({});
+  const [allAuctions, setAllAuctions] = useState([]);
+  const [auctionSearchTerm, setAuctionSearchTerm] = useState('');
+  const [auctionFilter, setAuctionFilter] = useState({ make: '', model: '', year: '' });
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLeague, setSelectedLeague] = useState(null);
@@ -136,7 +145,31 @@ const AdminPortal = () => {
         `)
         .order('total_score', { ascending: false });
       setLeagueMembers(memberData || []);
-      
+
+      // Load ALL auctions (no time filter) for manual selection
+      const { data: allAuctionsData } = await supabase
+        .from('auctions')
+        .select('*')
+        .order('inserted_at', { ascending: false })
+        .limit(500);
+      setAllAuctions(allAuctionsData || []);
+
+      // Load league-specific auctions
+      const { data: leagueAuctionsData } = await supabase
+        .from('league_auctions')
+        .select(`
+          *,
+          auction:auction_id(*)
+        `);
+
+      // Group by league_id
+      const grouped = {};
+      (leagueAuctionsData || []).forEach(la => {
+        if (!grouped[la.league_id]) grouped[la.league_id] = [];
+        grouped[la.league_id].push(la);
+      });
+      setLeagueAuctions(grouped);
+
       console.log('Data loaded successfully');
     } catch (error) {
       console.error('Error loading data:', error);
@@ -388,10 +421,11 @@ const AdminPortal = () => {
         draft_starts_at: startDate.toISOString(),
         draft_ends_at: endDate.toISOString(),
         is_public: newLeague.is_public,
+        use_manual_auctions: newLeague.use_manual_auctions,
         status: 'draft',
         snapshot_created: false
       };
-      
+
       if (newLeague.bonus_auction_id) {
         league.bonus_auction_id = newLeague.bonus_auction_id;
       }
@@ -411,7 +445,8 @@ const AdminPortal = () => {
           draft_starts_at: '',
           draft_ends_at: '',
           is_public: true,
-          bonus_auction_id: ''
+          bonus_auction_id: '',
+          use_manual_auctions: false
         });
         setShowAddLeague(false);
       }
@@ -423,7 +458,7 @@ const AdminPortal = () => {
 
   const handleDeleteLeague = async (id) => {
     if (!confirm('Delete this league? This will delete all garages and members!')) return;
-    
+
     try {
       const { supabase } = await import('@/lib/supabase');
       const { error } = await supabase.from('leagues').delete().eq('id', id);
@@ -432,6 +467,65 @@ const AdminPortal = () => {
     } catch (error) {
       alert('Failed: ' + error.message);
     }
+  };
+
+  // ========== LEAGUE AUCTION FUNCTIONS ==========
+  const handleAddAuctionToLeague = async (leagueId, auctionId, customEndDate = null) => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+
+      const leagueAuction = {
+        league_id: leagueId,
+        auction_id: auctionId,
+        custom_end_date: customEndDate
+      };
+
+      const { error } = await supabase
+        .from('league_auctions')
+        .insert([leagueAuction]);
+
+      if (error) {
+        if (error.code === '23505') { // Unique constraint violation
+          alert('This auction is already added to this league');
+        } else {
+          alert('Error: ' + error.message);
+        }
+      } else {
+        alert('Auction added to league!');
+        loadAllData();
+      }
+    } catch (error) {
+      alert('Failed: ' + error.message);
+    }
+  };
+
+  const handleRemoveAuctionFromLeague = async (leagueId, auctionId) => {
+    if (!confirm('Remove this auction from the league?')) return;
+
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase
+        .from('league_auctions')
+        .delete()
+        .eq('league_id', leagueId)
+        .eq('auction_id', auctionId);
+
+      if (!error) {
+        alert('Auction removed from league');
+        loadAllData();
+      } else {
+        alert('Error: ' + error.message);
+      }
+    } catch (error) {
+      alert('Failed: ' + error.message);
+    }
+  };
+
+  const openAuctionManager = (leagueId) => {
+    setManagingLeagueId(leagueId);
+    setShowAuctionManager(true);
+    setAuctionSearchTerm('');
+    setAuctionFilter({ make: '', model: '', year: '' });
   };
 
   // ========== HELPER FUNCTIONS ==========
@@ -804,6 +898,21 @@ const AdminPortal = () => {
                       <option value="false">Private</option>
                     </select>
                   </div>
+
+                  <div>
+                    <label className="text-slate-400 text-sm mb-1 block">Auction Selection</label>
+                    <select value={newLeague.use_manual_auctions}
+                      onChange={(e) => setNewLeague({...newLeague, use_manual_auctions: e.target.value === 'true'})}
+                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full">
+                      <option value="false">Auto (4-5 day window)</option>
+                      <option value="true">Manual selection</option>
+                    </select>
+                    <p className="text-slate-500 text-xs mt-1">
+                      {newLeague.use_manual_auctions
+                        ? '✨ You can manually select specific auctions for this league (e.g., all Porsches, all red cars)'
+                        : '⚡ League will show all BAT auctions in 4-5 day window'}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex gap-3 mt-4">
                   <button onClick={handleAddLeague} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded">
@@ -842,6 +951,16 @@ const AdminPortal = () => {
                             {league.bonus_auction && (
                               <p>Bonus: {league.bonus_auction.title}</p>
                             )}
+                            <p>
+                              <span className={`font-semibold ${league.use_manual_auctions ? 'text-purple-400' : 'text-blue-400'}`}>
+                                {league.use_manual_auctions ? '✨ Manual auctions' : '⚡ Auto auctions'}
+                              </span>
+                              {league.use_manual_auctions && (
+                                <span className="ml-2 text-purple-300">
+                                  ({(leagueAuctions[league.id] || []).length} selected)
+                                </span>
+                              )}
+                            </p>
                           </div>
                         </div>
                         <div className="flex flex-col gap-2">
@@ -853,6 +972,12 @@ const AdminPortal = () => {
                           } text-white`}>
                             {league.is_public ? 'Public' : 'Private'}
                           </span>
+                          {league.use_manual_auctions && (
+                            <button onClick={() => openAuctionManager(league.id)}
+                              className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1">
+                              <Car size={14} /> Manage Auctions
+                            </button>
+                          )}
                           <button onClick={() => handleDeleteLeague(league.id)}
                             className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm">
                             Delete
@@ -948,6 +1073,174 @@ const AdminPortal = () => {
                 </div>
               ))
             )}
+          </div>
+        )}
+
+        {/* AUCTION MANAGER MODAL */}
+        {showAuctionManager && managingLeagueId && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-6 z-50">
+            <div className="bg-slate-800 rounded-lg border-2 border-purple-500 max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              {/* Header */}
+              <div className="p-6 border-b border-slate-700">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-2xl font-bold text-white mb-2">
+                      Manage Auctions - {leagues.find(l => l.id === managingLeagueId)?.name}
+                    </h2>
+                    <p className="text-slate-400 text-sm">
+                      Search and select specific auctions for this league. You can filter by make, model, or search by title.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowAuctionManager(false)}
+                    className="text-slate-400 hover:text-white text-3xl leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="p-6 border-b border-slate-700 bg-slate-900">
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="relative col-span-2">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input
+                      type="text"
+                      placeholder="Search by title..."
+                      value={auctionSearchTerm}
+                      onChange={(e) => setAuctionSearchTerm(e.target.value)}
+                      className="pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded text-white w-full"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Filter by make (e.g., Porsche)"
+                    value={auctionFilter.make}
+                    onChange={(e) => setAuctionFilter({...auctionFilter, make: e.target.value})}
+                    className="px-4 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Filter by model"
+                    value={auctionFilter.model}
+                    onChange={(e) => setAuctionFilter({...auctionFilter, model: e.target.value})}
+                    className="px-4 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+                  />
+                </div>
+              </div>
+
+              {/* Two columns: Available auctions and Selected auctions */}
+              <div className="flex-1 overflow-hidden grid grid-cols-2 gap-4 p-6">
+                {/* Available Auctions */}
+                <div className="flex flex-col">
+                  <h3 className="text-lg font-bold text-white mb-3">
+                    Available Auctions ({
+                      allAuctions.filter(a => {
+                        const searchLower = auctionSearchTerm.toLowerCase();
+                        const makeLower = auctionFilter.make.toLowerCase();
+                        const modelLower = auctionFilter.model.toLowerCase();
+                        const matchesSearch = !auctionSearchTerm || a.title?.toLowerCase().includes(searchLower);
+                        const matchesMake = !auctionFilter.make || a.make?.toLowerCase().includes(makeLower);
+                        const matchesModel = !auctionFilter.model || a.model?.toLowerCase().includes(modelLower);
+                        const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
+                        return matchesSearch && matchesMake && matchesModel && notAlreadyAdded;
+                      }).length
+                    })
+                  </h3>
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                    {allAuctions
+                      .filter(a => {
+                        const searchLower = auctionSearchTerm.toLowerCase();
+                        const makeLower = auctionFilter.make.toLowerCase();
+                        const modelLower = auctionFilter.model.toLowerCase();
+                        const matchesSearch = !auctionSearchTerm || a.title?.toLowerCase().includes(searchLower);
+                        const matchesMake = !auctionFilter.make || a.make?.toLowerCase().includes(makeLower);
+                        const matchesModel = !auctionFilter.model || a.model?.toLowerCase().includes(modelLower);
+                        const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
+                        return matchesSearch && matchesMake && matchesModel && notAlreadyAdded;
+                      })
+                      .slice(0, 50)
+                      .map(auction => (
+                        <div key={auction.auction_id} className="bg-slate-700 p-3 rounded border border-slate-600">
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-white font-medium truncate">{auction.title}</div>
+                              <div className="text-slate-400 text-xs mt-1">
+                                {auction.year} {auction.make} {auction.model}
+                              </div>
+                              {auction.price_at_48h && (
+                                <div className="text-green-400 text-xs mt-1">
+                                  ${auction.price_at_48h?.toLocaleString()}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => {
+                                const customEndDate = prompt('Enter custom end date (Unix timestamp) or leave blank to use auction\'s original end date:');
+                                const endDate = customEndDate ? parseInt(customEndDate) : auction.timestamp_end;
+                                handleAddAuctionToLeague(managingLeagueId, auction.auction_id, endDate);
+                              }}
+                              className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs flex-shrink-0"
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+
+                {/* Selected Auctions */}
+                <div className="flex flex-col border-l border-slate-700 pl-4">
+                  <h3 className="text-lg font-bold text-purple-400 mb-3">
+                    Selected Auctions ({(leagueAuctions[managingLeagueId] || []).length})
+                  </h3>
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                    {(leagueAuctions[managingLeagueId] || []).map(la => (
+                      <div key={la.id} className="bg-purple-900/30 p-3 rounded border border-purple-500/50">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-white font-medium truncate">
+                              {la.auction?.title || 'Unknown'}
+                            </div>
+                            <div className="text-slate-400 text-xs mt-1">
+                              {la.auction?.year} {la.auction?.make} {la.auction?.model}
+                            </div>
+                            {la.custom_end_date && (
+                              <div className="text-purple-300 text-xs mt-1">
+                                Custom end: {new Date(la.custom_end_date * 1000).toLocaleString()}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleRemoveAuctionFromLeague(managingLeagueId, la.auction_id)}
+                            className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs flex-shrink-0"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {(leagueAuctions[managingLeagueId] || []).length === 0 && (
+                      <div className="text-slate-500 text-sm text-center py-8">
+                        No auctions selected yet. Add some from the left panel.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 border-t border-slate-700 bg-slate-900">
+                <button
+                  onClick={() => setShowAuctionManager(false)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
