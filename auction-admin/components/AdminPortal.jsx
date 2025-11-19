@@ -40,6 +40,8 @@ const AdminPortal = () => {
   const [allAuctions, setAllAuctions] = useState([]);
   const [auctionSearchTerm, setAuctionSearchTerm] = useState('');
   const [auctionFilter, setAuctionFilter] = useState({ make: '', model: '', year: '' });
+  const [addingAuctionId, setAddingAuctionId] = useState(null);
+  const [customEndDateTime, setCustomEndDateTime] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLeague, setSelectedLeague] = useState(null);
@@ -1174,18 +1176,60 @@ const AdminPortal = () => {
                                   ${auction.price_at_48h?.toLocaleString()}
                                 </div>
                               )}
+                              {auction.timestamp_end && (
+                                <div className="text-blue-400 text-xs mt-1">
+                                  Original end: {new Date(auction.timestamp_end * 1000).toLocaleString()}
+                                </div>
+                              )}
                             </div>
                             <button
                               onClick={() => {
-                                const customEndDate = prompt('Enter custom end date (Unix timestamp) or leave blank to use auction\'s original end date:');
-                                const endDate = customEndDate ? parseInt(customEndDate) : auction.timestamp_end;
-                                handleAddAuctionToLeague(managingLeagueId, auction.auction_id, endDate);
+                                setAddingAuctionId(auction.auction_id);
+                                // Set default to 7 days from now
+                                const defaultDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                                const formatted = defaultDate.toISOString().slice(0, 16);
+                                setCustomEndDateTime(formatted);
                               }}
                               className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs flex-shrink-0"
                             >
                               <Plus size={14} />
                             </button>
                           </div>
+
+                          {/* Date picker shown when adding this auction */}
+                          {addingAuctionId === auction.auction_id && (
+                            <div className="mt-3 p-3 bg-slate-800 rounded border border-green-500">
+                              <div className="text-white text-sm font-medium mb-2">Set Auction End Date</div>
+                              <input
+                                type="datetime-local"
+                                value={customEndDateTime}
+                                onChange={(e) => setCustomEndDateTime(e.target.value)}
+                                className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full text-sm mb-2"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    const timestamp = Math.floor(new Date(customEndDateTime).getTime() / 1000);
+                                    handleAddAuctionToLeague(managingLeagueId, auction.auction_id, timestamp);
+                                    setAddingAuctionId(null);
+                                    setCustomEndDateTime('');
+                                  }}
+                                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm flex-1"
+                                >
+                                  Add Auction
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setAddingAuctionId(null);
+                                    setCustomEndDateTime('');
+                                  }}
+                                  className="bg-slate-600 hover:bg-slate-700 text-white px-3 py-1 rounded text-sm"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                   </div>
@@ -1207,9 +1251,13 @@ const AdminPortal = () => {
                             <div className="text-slate-400 text-xs mt-1">
                               {la.auction?.year} {la.auction?.make} {la.auction?.model}
                             </div>
-                            {la.custom_end_date && (
+                            {la.custom_end_date ? (
                               <div className="text-purple-300 text-xs mt-1">
                                 Custom end: {new Date(la.custom_end_date * 1000).toLocaleString()}
+                              </div>
+                            ) : (
+                              <div className="text-blue-400 text-xs mt-1">
+                                Original end: {la.auction?.timestamp_end ? new Date(la.auction.timestamp_end * 1000).toLocaleString() : 'Not set'}
                               </div>
                             )}
                           </div>
