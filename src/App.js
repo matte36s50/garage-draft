@@ -498,7 +498,9 @@ export default function BixPrixApp() {
         const endTimestamp = la.custom_end_date || auction.timestamp_end;
         return {
           ...auction,
-          timestamp_end: endTimestamp
+          timestamp_end: endTimestamp,
+          manually_added: true,  // Mark as manually added
+          custom_end_date: la.custom_end_date  // Keep track of custom end date
         };
       });
 
@@ -537,7 +539,9 @@ export default function BixPrixApp() {
     }
 
     const transformed = (auctionData || []).map((a) => {
-      const endDate = new Date(a.timestamp_end * 1000)
+      // Handle missing or invalid timestamp_end
+      const hasValidTimestamp = a.timestamp_end && !isNaN(a.timestamp_end)
+      const endDate = hasValidTimestamp ? new Date(a.timestamp_end * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // Default to 7 days from now
       const baseline = parseFloat(a.price_at_48h)
       const imageUrl = a.image_url || getDefaultCarImage(a.make)
 
@@ -551,12 +555,14 @@ export default function BixPrixApp() {
         baselinePrice: baseline,
         day2Price: baseline,
         finalPrice: a.final_price,
-        timeLeft: calculateTimeLeft(endDate),
+        timeLeft: hasValidTimestamp ? calculateTimeLeft(endDate) : 'Custom end date',
         auctionUrl: a.url,
         imageUrl: imageUrl,
         trending: Math.random() > 0.7,
         endTime: endDate,
         timestamp_end: a.timestamp_end,
+        manually_added: a.manually_added || false,  // Preserve manually added flag
+        custom_end_date: a.custom_end_date  // Preserve custom end date
       }
     })
 
@@ -1410,19 +1416,26 @@ export default function BixPrixApp() {
                 </a>
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <a 
-                      href={a.auctionUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
+                    <a
+                      href={a.auctionUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="font-bold text-bpInk hover:underline"
                     >
                       {a.title}
                     </a>
-                    {a.trending && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-bpRed/15 text-bpInk">
-                        <Star size={12}/> Trending
-                      </span>
-                    )}
+                    <div className="flex gap-1 flex-shrink-0">
+                      {a.manually_added && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-purple-500/15 text-purple-700 border border-purple-500/30">
+                          <Target size={12}/> Manual
+                        </span>
+                      )}
+                      {a.trending && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-bpRed/15 text-bpInk">
+                          <Star size={12}/> Trending
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-y-1 text-sm text-bpInk/80 mt-2">
                     <div className="flex items-center gap-1">
@@ -1432,6 +1445,11 @@ export default function BixPrixApp() {
                       <Clock size={14}/> {a.timeLeft}
                     </div>
                     <div className="text-bpInk/60">Current: ${a.currentBid.toLocaleString()}</div>
+                    {a.custom_end_date && (
+                      <div className="text-purple-600 text-xs col-span-2">
+                        Custom end: {new Date(a.custom_end_date * 1000).toLocaleString()}
+                      </div>
+                    )}
                   </div>
                   <PrimaryButton
                     className={`w-full mt-3 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
