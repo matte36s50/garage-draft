@@ -471,40 +471,76 @@ export default function BixPrixApp() {
     console.log('No league selected, cannot fetch auctions')
     return
   }
-  
+
   setLoading(true)
   try {
-    // ✅ Use SAME logic as admin portal (4-5 day window)
-    const now = Math.floor(Date.now() / 1000);
-    const fourDaysInSeconds = 4 * 24 * 60 * 60;
-    const fiveDaysInSeconds = 5 * 24 * 60 * 60;
-    
-    const minEndTime = now + fourDaysInSeconds;
-    const maxEndTime = now + fiveDaysInSeconds;
-    
-    console.log('Draft window filter:', {
-      now: new Date(now * 1000).toLocaleString(),
-      minEndTime: new Date(minEndTime * 1000).toLocaleString(),
-      maxEndTime: new Date(maxEndTime * 1000).toLocaleString()
-    });
-    
-    const { data: auctionData, error: auctionError } = await supabase
-      .from('auctions')
-      .select('*')
-      .gte('timestamp_end', minEndTime)      // At least 4 days from now
-      .lte('timestamp_end', maxEndTime)      // Within 5 days from now
-      .not('price_at_48h', 'is', null)       // Has baseline price
-      .is('final_price', null)                // Not sold yet
-      .order('timestamp_end', { ascending: true })
-      .limit(100);
-    
-    if (auctionError) throw auctionError;
-    
+    let auctionData = [];
+
+    // Check if league uses manual auction selection
+    if (selectedLeague.use_manual_auctions) {
+      console.log('League uses manual auction selection')
+
+      // Fetch manually selected auctions for this league
+      const { data: leagueAuctionsData, error: leagueAuctionsError } = await supabase
+        .from('league_auctions')
+        .select(`
+          custom_end_date,
+          auction:auction_id (*)
+        `)
+        .eq('league_id', selectedLeague.id);
+
+      if (leagueAuctionsError) throw leagueAuctionsError;
+
+      // Transform league_auctions data to match expected format
+      auctionData = (leagueAuctionsData || []).map(la => {
+        const auction = la.auction;
+        // Use custom end date if provided, otherwise use auction's original end date
+        const endTimestamp = la.custom_end_date || auction.timestamp_end;
+        return {
+          ...auction,
+          timestamp_end: endTimestamp
+        };
+      });
+
+      console.log(`✅ Loaded ${auctionData.length} manually selected auctions for league`)
+    } else {
+      console.log('League uses auto auction selection (4-5 day window)')
+
+      // ✅ Use SAME logic as admin portal (4-5 day window)
+      const now = Math.floor(Date.now() / 1000);
+      const fourDaysInSeconds = 4 * 24 * 60 * 60;
+      const fiveDaysInSeconds = 5 * 24 * 60 * 60;
+
+      const minEndTime = now + fourDaysInSeconds;
+      const maxEndTime = now + fiveDaysInSeconds;
+
+      console.log('Draft window filter:', {
+        now: new Date(now * 1000).toLocaleString(),
+        minEndTime: new Date(minEndTime * 1000).toLocaleString(),
+        maxEndTime: new Date(maxEndTime * 1000).toLocaleString()
+      });
+
+      const { data: autoAuctionData, error: auctionError } = await supabase
+        .from('auctions')
+        .select('*')
+        .gte('timestamp_end', minEndTime)      // At least 4 days from now
+        .lte('timestamp_end', maxEndTime)      // Within 5 days from now
+        .not('price_at_48h', 'is', null)       // Has baseline price
+        .is('final_price', null)                // Not sold yet
+        .order('timestamp_end', { ascending: true })
+        .limit(100);
+
+      if (auctionError) throw auctionError;
+
+      auctionData = autoAuctionData || [];
+      console.log(`✅ Loaded ${auctionData.length} cars in draft window (4-5 days before end)`)
+    }
+
     const transformed = (auctionData || []).map((a) => {
       const endDate = new Date(a.timestamp_end * 1000)
       const baseline = parseFloat(a.price_at_48h)
       const imageUrl = a.image_url || getDefaultCarImage(a.make)
-      
+
       return {
         id: a.auction_id,
         title: a.title,
@@ -523,8 +559,7 @@ export default function BixPrixApp() {
         timestamp_end: a.timestamp_end,
       }
     })
-    
-    console.log(`✅ Loaded ${transformed.length} cars in draft window (4-5 days before end)`)
+
     setAuctions(transformed)
     
   } catch (e) {
