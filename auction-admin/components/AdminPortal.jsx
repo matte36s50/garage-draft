@@ -1131,10 +1131,10 @@ const AdminPortal = () => {
               </div>
 
               {/* Two columns: Available auctions and Selected auctions */}
-              <div className="flex-1 overflow-hidden grid grid-cols-2 gap-4 p-6">
+              <div className="flex-1 overflow-hidden grid grid-cols-2 gap-4 p-6 min-h-0">
                 {/* Available Auctions */}
-                <div className="flex flex-col">
-                  <h3 className="text-lg font-bold text-white mb-3">
+                <div className="flex flex-col min-h-0">
+                  <h3 className="text-lg font-bold text-white mb-3 flex-shrink-0">
                     Available Auctions ({
                       allAuctions.filter(a => {
                         const searchLower = auctionSearchTerm.toLowerCase();
@@ -1148,7 +1148,7 @@ const AdminPortal = () => {
                       }).length
                     })
                   </h3>
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-2 min-h-0">
                     {allAuctions
                       .filter(a => {
                         const searchLower = auctionSearchTerm.toLowerCase();
@@ -1192,11 +1192,11 @@ const AdminPortal = () => {
                 </div>
 
                 {/* Selected Auctions */}
-                <div className="flex flex-col border-l border-slate-700 pl-4">
-                  <h3 className="text-lg font-bold text-purple-400 mb-3">
+                <div className="flex flex-col border-l border-slate-700 pl-4 min-h-0">
+                  <h3 className="text-lg font-bold text-purple-400 mb-3 flex-shrink-0">
                     Selected Auctions ({(leagueAuctions[managingLeagueId] || []).length})
                   </h3>
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-2 min-h-0">
                     {(leagueAuctions[managingLeagueId] || []).map(la => (
                       <div key={la.id} className="bg-purple-900/30 p-3 rounded border border-purple-500/50">
                         <div className="flex justify-between items-start gap-2">
