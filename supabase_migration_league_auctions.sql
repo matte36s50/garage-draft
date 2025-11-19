@@ -7,7 +7,7 @@ ALTER TABLE leagues ADD COLUMN IF NOT EXISTS use_manual_auctions BOOLEAN DEFAULT
 -- 2. Create league_auctions table to store manually selected auctions for leagues
 CREATE TABLE IF NOT EXISTS league_auctions (
   id BIGSERIAL PRIMARY KEY,
-  league_id TEXT NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  league_id UUID NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
   auction_id TEXT NOT NULL REFERENCES auctions(auction_id) ON DELETE CASCADE,
   custom_end_date BIGINT, -- Unix timestamp for custom auction end date (optional)
   added_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
