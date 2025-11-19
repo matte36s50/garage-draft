@@ -484,25 +484,39 @@ export default function BixPrixApp() {
       const { data: leagueAuctionsData, error: leagueAuctionsError } = await supabase
         .from('league_auctions')
         .select(`
+          auction_id,
           custom_end_date,
-          auctions!league_auctions_auction_id_fkey(*)
+          auctions(*)
         `)
         .eq('league_id', selectedLeague.id);
 
       if (leagueAuctionsError) throw leagueAuctionsError;
 
+      console.log('Raw leagueAuctionsData from Supabase:', JSON.stringify(leagueAuctionsData, null, 2));
+
       // Transform league_auctions data to match expected format
-      auctionData = (leagueAuctionsData || []).map(la => {
-        const auction = la.auctions;
-        // Use custom end date if provided, otherwise use auction's original end date
-        const endTimestamp = la.custom_end_date || auction.timestamp_end;
-        return {
-          ...auction,
-          timestamp_end: endTimestamp,
-          manually_added: true,  // Mark as manually added
-          custom_end_date: la.custom_end_date  // Keep track of custom end date
-        };
-      });
+      auctionData = (leagueAuctionsData || [])
+        .filter(la => {
+          if (!la.auctions) {
+            console.warn('⚠️ Missing auction data for league_auction:', la);
+            return false;
+          }
+          return true;
+        })
+        .map(la => {
+          console.log('Processing league auction:', la);
+          const auction = la.auctions;
+          console.log('Extracted auction:', auction);
+          console.log('Image URL from auction:', auction?.image_url);
+          // Use custom end date if provided, otherwise use auction's original end date
+          const endTimestamp = la.custom_end_date || auction.timestamp_end;
+          return {
+            ...auction,
+            timestamp_end: endTimestamp,
+            manually_added: true,  // Mark as manually added
+            custom_end_date: la.custom_end_date  // Keep track of custom end date
+          };
+        });
 
       console.log(`✅ Loaded ${auctionData.length} manually selected auctions for league`)
     } else {
@@ -544,6 +558,7 @@ export default function BixPrixApp() {
       const endDate = hasValidTimestamp ? new Date(a.timestamp_end * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // Default to 7 days from now
       const baseline = parseFloat(a.price_at_48h)
       const imageUrl = a.image_url || getDefaultCarImage(a.make)
+      console.log(`📸 Car: ${a.title}, image_url: ${a.image_url}, final imageUrl: ${imageUrl}`)
 
       return {
         id: a.auction_id,
