@@ -17,7 +17,7 @@ const AdminPortal = () => {
   const [showAddAuction, setShowAddAuction] = useState(false);
   const [newAuction, setNewAuction] = useState({
     auction_id: '', title: '', make: '', model: '', year: '',
-    price_at_48h: '', final_price: '', url: '', image_url: ''
+    price_at_48h: '', final_price: '', url: '', image_url: '', timestamp_end: ''
   });
 
   const [showAddUser, setShowAddUser] = useState(false);
@@ -189,10 +189,25 @@ const AdminPortal = () => {
       alert('Please fill in at least Make, Model, and Title');
       return;
     }
-    
+
+    if (!newAuction.timestamp_end) {
+      alert('Please set an auction end date');
+      return;
+    }
+
     try {
       const { supabase } = await import('@/lib/supabase');
-      
+
+      // Convert datetime-local to Unix timestamp
+      const endTimestamp = Math.floor(new Date(newAuction.timestamp_end).getTime() / 1000);
+
+      // Validate that the end date is in the future
+      const now = Math.floor(Date.now() / 1000);
+      if (endTimestamp <= now) {
+        alert('Auction end date must be in the future');
+        return;
+      }
+
       const auction = {
         auction_id: newAuction.auction_id || `manual_${Date.now()}`,
         title: newAuction.title,
@@ -203,19 +218,20 @@ const AdminPortal = () => {
         final_price: newAuction.final_price ? parseFloat(newAuction.final_price) : null,
         url: newAuction.url || null,
         image_url: newAuction.image_url || null,
+        timestamp_end: endTimestamp,
         inserted_at: new Date().toISOString(),
         current_bid: newAuction.price_at_48h || newAuction.final_price || null
       };
-      
+
       const { error } = await supabase.from('auctions').insert([auction]);
-      
+
       if (error) {
         alert('Error: ' + error.message);
       } else {
         alert('Auction added!');
         loadAllData();
-        setNewAuction({ auction_id: '', title: '', make: '', model: '', year: '', 
-          price_at_48h: '', final_price: '', url: '', image_url: '' });
+        setNewAuction({ auction_id: '', title: '', make: '', model: '', year: '',
+          price_at_48h: '', final_price: '', url: '', image_url: '', timestamp_end: '' });
         setShowAddAuction(false);
       }
     } catch (error) {
@@ -743,6 +759,13 @@ const AdminPortal = () => {
                   <input type="text" placeholder="Image URL" value={newAuction.image_url}
                     onChange={(e) => setNewAuction({...newAuction, image_url: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600 col-span-2" />
+                  <div className="col-span-2">
+                    <label className="text-slate-400 text-sm mb-1 block">Auction End Date *</label>
+                    <input type="datetime-local" value={newAuction.timestamp_end}
+                      onChange={(e) => setNewAuction({...newAuction, timestamp_end: e.target.value})}
+                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full" />
+                    <p className="text-slate-500 text-xs mt-1">Set when this auction should end</p>
+                  </div>
                 </div>
                 <div className="flex gap-3">
                   <button onClick={handleAddAuction} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded">
@@ -1238,11 +1261,18 @@ const AdminPortal = () => {
                             </div>
                             <button
                               onClick={() => {
-                                setAddingAuctionId(auction.auction_id);
-                                // Set default to 7 days from now
-                                const defaultDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-                                const formatted = defaultDate.toISOString().slice(0, 16);
-                                setCustomEndDateTime(formatted);
+                                // If auction already has a valid end date, add directly without custom date picker
+                                const now = Math.floor(Date.now() / 1000);
+                                if (auction.timestamp_end && auction.timestamp_end > now) {
+                                  handleAddAuctionToLeague(managingLeagueId, auction.auction_id, null);
+                                } else {
+                                  // Show date picker for auctions without valid end dates
+                                  setAddingAuctionId(auction.auction_id);
+                                  // Set default to 7 days from now
+                                  const defaultDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                                  const formatted = defaultDate.toISOString().slice(0, 16);
+                                  setCustomEndDateTime(formatted);
+                                }
                               }}
                               className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs flex-shrink-0"
                             >
@@ -1250,10 +1280,13 @@ const AdminPortal = () => {
                             </button>
                           </div>
 
-                          {/* Date picker shown when adding this auction */}
+                          {/* Date picker shown only for auctions without valid end dates */}
                           {addingAuctionId === auction.auction_id && (
-                            <div className="mt-3 p-3 bg-slate-800 rounded border border-green-500">
-                              <div className="text-white text-sm font-medium mb-2">Set Auction End Date</div>
+                            <div className="mt-3 p-3 bg-slate-800 rounded border border-yellow-500">
+                              <div className="text-white text-sm font-medium mb-1">Set Custom End Date</div>
+                              <div className="text-yellow-400 text-xs mb-2">
+                                This auction doesn't have a valid end date. Please set one:
+                              </div>
                               <input
                                 type="datetime-local"
                                 value={customEndDateTime}
@@ -1270,7 +1303,7 @@ const AdminPortal = () => {
                                   }}
                                   className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm flex-1"
                                 >
-                                  Add Auction
+                                  Add with Custom Date
                                 </button>
                                 <button
                                   onClick={() => {
