@@ -85,41 +85,32 @@ const AdminPortal = () => {
 
   const loadAllData = async () => {
     setLoading(true);
-    
+
     try {
       const { supabase } = await import('@/lib/supabase');
-      
+
       // ============================================
-      // FIXED: Only show auctions in DRAFT WINDOW (4-5 days before end)
+      // Load ALL active auctions for manual selection
+      // (The 4-5 day window validation is now only enforced for automatic leagues)
       // ============================================
       const now = Math.floor(Date.now() / 1000);
-      const fourDaysInSeconds = 4 * 24 * 60 * 60;
-      const fiveDaysInSeconds = 5 * 24 * 60 * 60;
-      
-      const minEndTime = now + fourDaysInSeconds;
-      const maxEndTime = now + fiveDaysInSeconds;
-      
-      console.log('Draft window filter:', {
-        now: new Date(now * 1000).toLocaleString(),
-        minEndTime: new Date(minEndTime * 1000).toLocaleString(),
-        maxEndTime: new Date(maxEndTime * 1000).toLocaleString()
-      });
-      
+
+      console.log('Loading all active auctions for manual selection');
+
+      // Fetch all active auctions that have price_at_48h and haven't sold yet
       const { data: auctionData, error: auctionError } = await supabase
         .from('auctions')
         .select('*')
-        .gte('timestamp_end', minEndTime)
-        .lte('timestamp_end', maxEndTime)
-        .not('price_at_48h', 'is', null)
-        .is('final_price', null)
+        .not('price_at_48h', 'is', null)  // Must have day 2 price
+        .is('final_price', null)           // Must still be active (not sold)
         .order('timestamp_end', { ascending: true });
-      
+
       if (auctionError) {
         console.error('Error loading auctions:', auctionError);
       }
-      
+
       setAuctions(auctionData || []);
-      console.log(`Loaded ${auctionData?.length || 0} auctions in draft window (4-5 days before end)`);
+      console.log(`Loaded ${auctionData?.length || 0} active auctions`);
       
       const { data: userData } = await supabase
         .from('users')
@@ -137,24 +128,22 @@ const AdminPortal = () => {
         .order('created_at', { ascending: false });
       setLeagues(leagueData || []);
       
-      // ✅ CHANGE #2: Load auctions for bonus car dropdown (SAME 4-5 day window as draft cars)
-      console.log('Loading bonus car options (draft window only)...');
+      // Load all auctions for bonus car dropdown
+      console.log('Loading bonus car options (all active auctions)...');
       const { data: bonusAuctionData, error: bonusError } = await supabase
         .from('auctions')
         .select('*')
-        .gte('timestamp_end', minEndTime)    // Must end at least 4 days from now
-        .lte('timestamp_end', maxEndTime)    // Must end within 5 days from now
         .not('price_at_48h', 'is', null)     // Must have day 2 price
         .is('final_price', null)              // Must still be active (not sold)
         .order('timestamp_end', { ascending: false })
         .limit(200);
-      
+
       if (bonusError) {
         console.error('Error loading bonus auctions:', bonusError);
         setAllAuctionsForBonus([]);
       } else {
         setAllAuctionsForBonus(bonusAuctionData || []);
-        console.log(`Loaded ${bonusAuctionData?.length || 0} active auctions in draft window for bonus selection`);
+        console.log(`Loaded ${bonusAuctionData?.length || 0} active auctions for bonus selection`);
       }
       
       const { data: garageData } = await supabase
@@ -552,6 +541,18 @@ const AdminPortal = () => {
     try {
       const { supabase } = await import('@/lib/supabase');
 
+      // Fetch the league to check if it uses manual auction selection
+      const { data: league, error: leagueError } = await supabase
+        .from('leagues')
+        .select('use_manual_auctions')
+        .eq('id', leagueId)
+        .single();
+
+      if (leagueError || !league) {
+        alert('Error: Could not find league');
+        return;
+      }
+
       // Fetch the auction to validate its end date
       const { data: auction, error: fetchError } = await supabase
         .from('auctions')
@@ -569,25 +570,28 @@ const AdminPortal = () => {
       const now = Math.floor(Date.now() / 1000);
 
       if (isBaTAuction) {
-        // For Bring a Trailer auctions: enforce 4-5 day window
-        const fourDaysInSeconds = 4 * 24 * 60 * 60;
-        const fiveDaysInSeconds = 5 * 24 * 60 * 60;
-        const minEndTime = now + fourDaysInSeconds;
-        const maxEndTime = now + fiveDaysInSeconds;
+        // For Bring a Trailer auctions: only enforce 4-5 day window for automatic leagues
+        // Manual leagues can add any auction at any time
+        if (!league.use_manual_auctions) {
+          const fourDaysInSeconds = 4 * 24 * 60 * 60;
+          const fiveDaysInSeconds = 5 * 24 * 60 * 60;
+          const minEndTime = now + fourDaysInSeconds;
+          const maxEndTime = now + fiveDaysInSeconds;
 
-        if (!auction.timestamp_end) {
-          alert('Error: This Bring a Trailer auction does not have an end date set');
-          return;
-        }
+          if (!auction.timestamp_end) {
+            alert('Error: This Bring a Trailer auction does not have an end date set');
+            return;
+          }
 
-        if (auction.timestamp_end < minEndTime) {
-          alert('Error: This Bring a Trailer auction ends in less than 4 days. Only auctions in the 4-5 day window can be added.');
-          return;
-        }
+          if (auction.timestamp_end < minEndTime) {
+            alert('Error: This Bring a Trailer auction ends in less than 4 days. Only auctions in the 4-5 day window can be added.');
+            return;
+          }
 
-        if (auction.timestamp_end > maxEndTime) {
-          alert('Error: This Bring a Trailer auction ends in more than 5 days. Only auctions in the 4-5 day window can be added.');
-          return;
+          if (auction.timestamp_end > maxEndTime) {
+            alert('Error: This Bring a Trailer auction ends in more than 5 days. Only auctions in the 4-5 day window can be added.');
+            return;
+          }
         }
       } else {
         // For manually added auctions: validate the end date is in the future
