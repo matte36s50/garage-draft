@@ -484,9 +484,8 @@ export default function BixPrixApp() {
       const { data: leagueAuctionsData, error: leagueAuctionsError } = await supabase
         .from('league_auctions')
         .select(`
-          auction_id,
-          custom_end_date,
-          auctions(*)
+          *,
+          auction:auction_id(*)
         `)
         .eq('league_id', selectedLeague.id);
 
@@ -497,7 +496,7 @@ export default function BixPrixApp() {
       // Transform league_auctions data to match expected format
       auctionData = (leagueAuctionsData || [])
         .filter(la => {
-          if (!la.auctions) {
+          if (!la.auction) {
             console.warn('⚠️ Missing auction data for league_auction:', la);
             return false;
           }
@@ -505,7 +504,7 @@ export default function BixPrixApp() {
         })
         .map(la => {
           console.log('Processing league auction:', la);
-          const auction = la.auctions;
+          const auction = la.auction;
           console.log('Extracted auction:', auction);
           console.log('Image URL from auction:', auction?.image_url);
           // Use custom end date if provided, otherwise use auction's original end date
