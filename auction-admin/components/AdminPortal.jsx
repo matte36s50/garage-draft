@@ -476,6 +476,58 @@ const AdminPortal = () => {
     try {
       const { supabase } = await import('@/lib/supabase');
 
+      // Fetch the auction to validate its end date
+      const { data: auction, error: fetchError } = await supabase
+        .from('auctions')
+        .select('*')
+        .eq('auction_id', auctionId)
+        .single();
+
+      if (fetchError || !auction) {
+        alert('Error: Could not find auction');
+        return;
+      }
+
+      // Determine if this is a Bring a Trailer auction or a manually added auction
+      const isBaTAuction = !auctionId.startsWith('manual_');
+      const now = Math.floor(Date.now() / 1000);
+
+      if (isBaTAuction) {
+        // For Bring a Trailer auctions: enforce 4-5 day window
+        const fourDaysInSeconds = 4 * 24 * 60 * 60;
+        const fiveDaysInSeconds = 5 * 24 * 60 * 60;
+        const minEndTime = now + fourDaysInSeconds;
+        const maxEndTime = now + fiveDaysInSeconds;
+
+        if (!auction.timestamp_end) {
+          alert('Error: This Bring a Trailer auction does not have an end date set');
+          return;
+        }
+
+        if (auction.timestamp_end < minEndTime) {
+          alert('Error: This Bring a Trailer auction ends in less than 4 days. Only auctions in the 4-5 day window can be added.');
+          return;
+        }
+
+        if (auction.timestamp_end > maxEndTime) {
+          alert('Error: This Bring a Trailer auction ends in more than 5 days. Only auctions in the 4-5 day window can be added.');
+          return;
+        }
+      } else {
+        // For manually added auctions: validate the end date is in the future
+        const endDateToUse = customEndDate || auction.timestamp_end;
+
+        if (!endDateToUse) {
+          alert('Error: This auction does not have an end date set. Please specify a custom end date.');
+          return;
+        }
+
+        if (endDateToUse <= now) {
+          alert('Error: This auction has already ended. Cannot add auctions with past end dates.');
+          return;
+        }
+      }
+
       const leagueAuction = {
         league_id: leagueId,
         auction_id: auctionId,
