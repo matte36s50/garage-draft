@@ -51,6 +51,38 @@ const AdminPortal = () => {
     loadAllData();
   }, []);
 
+  // Helper function to format relative time
+  const formatRelativeTime = (timestampSeconds) => {
+    if (!timestampSeconds) return 'No end date';
+
+    const now = Math.floor(Date.now() / 1000);
+    const diff = timestampSeconds - now;
+    const absDiff = Math.abs(diff);
+
+    const days = Math.floor(absDiff / (24 * 60 * 60));
+    const hours = Math.floor((absDiff % (24 * 60 * 60)) / (60 * 60));
+
+    if (diff > 0) {
+      // Future
+      if (days > 0) {
+        return `Ends in ${days}d ${hours}h`;
+      } else if (hours > 0) {
+        return `Ends in ${hours}h`;
+      } else {
+        return 'Ending soon';
+      }
+    } else {
+      // Past
+      if (days > 0) {
+        return `Ended ${days}d ago`;
+      } else if (hours > 0) {
+        return `Ended ${hours}h ago`;
+      } else {
+        return 'Just ended';
+      }
+    }
+  };
+
   const loadAllData = async () => {
     setLoading(true);
     
@@ -484,6 +516,32 @@ const AdminPortal = () => {
       const { error } = await supabase.from('leagues').delete().eq('id', id);
       if (!error) loadAllData();
       else alert('Error: ' + error.message);
+    } catch (error) {
+      alert('Failed: ' + error.message);
+    }
+  };
+
+  const handleToggleAuctionType = async (leagueId, currentValue) => {
+    const newValue = !currentValue;
+    const confirmMsg = newValue
+      ? 'Switch to manual auction selection? You will need to manually add auctions for this league.'
+      : 'Switch to automatic auctions (4-5 day window)? Any manually selected auctions will be ignored.';
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase
+        .from('leagues')
+        .update({ use_manual_auctions: newValue })
+        .eq('id', leagueId);
+
+      if (!error) {
+        loadAllData();
+        alert(`League switched to ${newValue ? 'manual' : 'automatic'} auction selection!`);
+      } else {
+        alert('Error: ' + error.message);
+      }
     } catch (error) {
       alert('Failed: ' + error.message);
     }
@@ -1051,6 +1109,10 @@ const AdminPortal = () => {
                           } text-white`}>
                             {league.is_public ? 'Public' : 'Private'}
                           </span>
+                          <button onClick={() => handleToggleAuctionType(league.id, league.use_manual_auctions)}
+                            className={`${league.use_manual_auctions ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700'} text-white px-3 py-1 rounded text-sm flex items-center gap-1 justify-center`}>
+                            {league.use_manual_auctions ? '⚡ Switch to Auto' : '✨ Switch to Manual'}
+                          </button>
                           {league.use_manual_auctions && (
                             <button onClick={() => openAuctionManager(league.id)}
                               className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1">
@@ -1213,7 +1275,7 @@ const AdminPortal = () => {
               <div className="flex-1 overflow-hidden grid grid-cols-2 gap-4 p-6 min-h-0">
                 {/* Available Auctions */}
                 <div className="flex flex-col min-h-0">
-                  <h3 className="text-lg font-bold text-white mb-3 flex-shrink-0">
+                  <h3 className="text-lg font-bold text-white mb-1 flex-shrink-0">
                     Available Auctions ({
                       allAuctions.filter(a => {
                         const searchLower = auctionSearchTerm.toLowerCase();
@@ -1227,6 +1289,9 @@ const AdminPortal = () => {
                       }).length
                     })
                   </h3>
+                  <p className="text-slate-400 text-xs mb-3 flex-shrink-0">
+                    Only showing auctions with future end dates, sorted by soonest first
+                  </p>
                   <div className="flex-1 overflow-y-auto space-y-2 pr-2 min-h-0">
                     {allAuctions
                       .filter(a => {
@@ -1238,6 +1303,12 @@ const AdminPortal = () => {
                         const matchesModel = !auctionFilter.model || a.model?.toLowerCase().includes(modelLower);
                         const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
                         return matchesSearch && matchesMake && matchesModel && notAlreadyAdded;
+                      })
+                      .sort((a, b) => {
+                        // Sort by end date - soonest first
+                        const aEnd = a.timestamp_end || 0;
+                        const bEnd = b.timestamp_end || 0;
+                        return aEnd - bEnd;
                       })
                       .slice(0, 50)
                       .map(auction => (
@@ -1254,8 +1325,19 @@ const AdminPortal = () => {
                                 </div>
                               )}
                               {auction.timestamp_end && (
-                                <div className="text-blue-400 text-xs mt-1">
-                                  Original end: {new Date(auction.timestamp_end * 1000).toLocaleString()}
+                                <div className={`text-xs mt-1 font-medium ${
+                                  auction.timestamp_end < Math.floor(Date.now() / 1000)
+                                    ? 'text-red-400'
+                                    : auction.timestamp_end < Math.floor(Date.now() / 1000) + (2 * 24 * 60 * 60)
+                                    ? 'text-yellow-400'
+                                    : 'text-blue-400'
+                                }`}>
+                                  {formatRelativeTime(auction.timestamp_end)}
+                                </div>
+                              )}
+                              {auction.auction_id?.startsWith('manual_') && (
+                                <div className="text-purple-400 text-xs mt-1 font-medium">
+                                  ✨ Manual auction
                                 </div>
                               )}
                             </div>
