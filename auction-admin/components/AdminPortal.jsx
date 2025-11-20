@@ -148,10 +148,12 @@ const AdminPortal = () => {
         .order('total_score', { ascending: false });
       setLeagueMembers(memberData || []);
 
-      // Load ALL auctions (no time filter) for manual selection
+      // Load auctions for manual selection (exclude already ended auctions)
+      const nowForManual = Math.floor(Date.now() / 1000);
       const { data: allAuctionsData } = await supabase
         .from('auctions')
         .select('*')
+        .gte('timestamp_end', nowForManual)  // Only show auctions that haven't ended yet
         .order('inserted_at', { ascending: false })
         .limit(500);
       setAllAuctions(allAuctionsData || []);
@@ -161,7 +163,7 @@ const AdminPortal = () => {
         .from('league_auctions')
         .select(`
           *,
-          auction:auction_id(*)
+          auctions!league_auctions_auction_id_fkey(*)
         `);
 
       // Group by league_id
@@ -1298,10 +1300,10 @@ const AdminPortal = () => {
                         <div className="flex justify-between items-start gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="text-white font-medium truncate">
-                              {la.auction?.title || 'Unknown'}
+                              {la.auctions?.title || 'Unknown'}
                             </div>
                             <div className="text-slate-400 text-xs mt-1">
-                              {la.auction?.year} {la.auction?.make} {la.auction?.model}
+                              {la.auctions?.year} {la.auctions?.make} {la.auctions?.model}
                             </div>
                             {la.custom_end_date ? (
                               <div className="text-purple-300 text-xs mt-1">
@@ -1309,7 +1311,7 @@ const AdminPortal = () => {
                               </div>
                             ) : (
                               <div className="text-blue-400 text-xs mt-1">
-                                Original end: {la.auction?.timestamp_end ? new Date(la.auction.timestamp_end * 1000).toLocaleString() : 'Not set'}
+                                Original end: {la.auctions?.timestamp_end ? new Date(la.auctions.timestamp_end * 1000).toLocaleString() : 'Not set'}
                               </div>
                             )}
                           </div>

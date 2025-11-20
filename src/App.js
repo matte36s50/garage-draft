@@ -485,7 +485,7 @@ export default function BixPrixApp() {
         .from('league_auctions')
         .select(`
           *,
-          auction:auction_id(*)
+          auctions!league_auctions_auction_id_fkey(*)
         `)
         .eq('league_id', selectedLeague.id);
 
@@ -496,7 +496,7 @@ export default function BixPrixApp() {
       // Transform league_auctions data to match expected format
       auctionData = (leagueAuctionsData || [])
         .filter(la => {
-          if (!la.auction) {
+          if (!la.auctions) {
             console.warn('⚠️ Missing auction data for league_auction:', la);
             return false;
           }
@@ -504,7 +504,7 @@ export default function BixPrixApp() {
         })
         .map(la => {
           console.log('Processing league auction:', la);
-          const auction = la.auction;
+          const auction = la.auctions;
           console.log('Extracted auction:', auction);
           console.log('Image URL from auction:', auction?.image_url);
           // Use custom end date if provided, otherwise use auction's original end date
