@@ -616,12 +616,12 @@ export default function BixPrixApp() {
       setBudget(g.remaining_budget)
       const { data: cars, error: ce } = await supabase
         .from('garage_cars')
-        .select(`*, auctions!garage_cars_auction_id_fkey(*)`)
+        .select(`*, auction:auction_id(*)`)
         .eq('garage_id', g.id)
-      
+
       if (!ce && cars) {
         const garageCars = cars.map((it) => {
-          const auction = it.auctions
+          const auction = it.auction
           const imageUrl = auction?.image_url || getDefaultCarImage(auction?.make)
           
           return {
