@@ -564,8 +564,26 @@ const AdminPortal = () => {
         return;
       }
 
+      // Fetch the league to check if it's a manual league
+      const { data: league, error: leagueError } = await supabase
+        .from('leagues')
+        .select('use_manual_auctions')
+        .eq('id', leagueId)
+        .single();
+
+      if (leagueError || !league) {
+        alert('Error: Could not find league');
+        return;
+      }
+
       // Determine if this is a Bring a Trailer auction or a manually added auction
       const isBaTAuction = !auctionId.startsWith('manual_');
+
+      // PREVENT BaT auctions from being added to manual leagues
+      if (league.use_manual_auctions && isBaTAuction) {
+        alert('Error: This league only accepts manually-created auctions. Bring a Trailer auctions cannot be added to manual leagues.');
+        return;
+      }
       const now = Math.floor(Date.now() / 1000);
 
       if (isBaTAuction) {
@@ -1046,7 +1064,7 @@ const AdminPortal = () => {
                     </select>
                     <p className="text-slate-500 text-xs mt-1">
                       {newLeague.use_manual_auctions
-                        ? '✨ You can manually select specific auctions for this league (e.g., all Porsches, all red cars)'
+                        ? '✨ Manual leagues can only use manually-created auctions. You cannot add BaT auctions to manual leagues.'
                         : '⚡ League will show all BAT auctions in 4-5 day window'}
                     </p>
                   </div>
@@ -1229,7 +1247,10 @@ const AdminPortal = () => {
                       Manage Auctions - {leagues.find(l => l.id === managingLeagueId)?.name}
                     </h2>
                     <p className="text-slate-400 text-sm">
-                      Search and select specific auctions for this league. You can filter by make, model, or search by title.
+                      {leagues.find(l => l.id === managingLeagueId)?.use_manual_auctions
+                        ? '✨ This is a manual league - only manually-created auctions can be added (no BaT auctions).'
+                        : 'Search and select specific auctions for this league. You can filter by make, model, or search by title.'
+                      }
                     </p>
                   </div>
                   <button
@@ -1285,12 +1306,21 @@ const AdminPortal = () => {
                         const matchesMake = !auctionFilter.make || a.make?.toLowerCase().includes(makeLower);
                         const matchesModel = !auctionFilter.model || a.model?.toLowerCase().includes(modelLower);
                         const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
-                        return matchesSearch && matchesMake && matchesModel && notAlreadyAdded;
+
+                        // For manual leagues, only show manual auctions
+                        const currentLeague = leagues.find(l => l.id === managingLeagueId);
+                        const isManualAuction = a.auction_id?.startsWith('manual_');
+                        const matchesLeagueType = !currentLeague?.use_manual_auctions || isManualAuction;
+
+                        return matchesSearch && matchesMake && matchesModel && notAlreadyAdded && matchesLeagueType;
                       }).length
                     })
                   </h3>
                   <p className="text-slate-400 text-xs mb-3 flex-shrink-0">
-                    Only showing auctions with future end dates, sorted by soonest first
+                    {leagues.find(l => l.id === managingLeagueId)?.use_manual_auctions
+                      ? 'Only showing manually-created auctions (manual leagues cannot use BaT auctions)'
+                      : 'Only showing auctions with future end dates, sorted by soonest first'
+                    }
                   </p>
                   <div className="flex-1 overflow-y-auto space-y-2 pr-2 min-h-0">
                     {allAuctions
@@ -1302,7 +1332,13 @@ const AdminPortal = () => {
                         const matchesMake = !auctionFilter.make || a.make?.toLowerCase().includes(makeLower);
                         const matchesModel = !auctionFilter.model || a.model?.toLowerCase().includes(modelLower);
                         const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
-                        return matchesSearch && matchesMake && matchesModel && notAlreadyAdded;
+
+                        // For manual leagues, only show manual auctions
+                        const currentLeague = leagues.find(l => l.id === managingLeagueId);
+                        const isManualAuction = a.auction_id?.startsWith('manual_');
+                        const matchesLeagueType = !currentLeague?.use_manual_auctions || isManualAuction;
+
+                        return matchesSearch && matchesMake && matchesModel && notAlreadyAdded && matchesLeagueType;
                       })
                       .sort((a, b) => {
                         // Sort by end date - soonest first
