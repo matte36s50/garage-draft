@@ -90,66 +90,36 @@ const AdminPortal = () => {
       const { supabase } = await import('@/lib/supabase');
 
       // ============================================
-      // Load auctions for display in the Auctions tab
-      // BaT auctions: ONLY show those with 4-5 days left
-      // Manual auctions: Show any auction regardless of end date
+      // FIXED: Only show auctions in DRAFT WINDOW (4-5 days before end)
       // ============================================
       const now = Math.floor(Date.now() / 1000);
       const fourDaysInSeconds = 4 * 24 * 60 * 60;
       const fiveDaysInSeconds = 5 * 24 * 60 * 60;
+
       const minEndTime = now + fourDaysInSeconds;
       const maxEndTime = now + fiveDaysInSeconds;
 
-      console.log('=== AUCTION FILTERING DEBUG ===');
-      console.log('Current time:', new Date(now * 1000).toISOString());
-      console.log('Min end time (4 days):', new Date(minEndTime * 1000).toISOString());
-      console.log('Max end time (5 days):', new Date(maxEndTime * 1000).toISOString());
+      console.log('Draft window filter:', {
+        now: new Date(now * 1000).toLocaleString(),
+        minEndTime: new Date(minEndTime * 1000).toLocaleString(),
+        maxEndTime: new Date(maxEndTime * 1000).toLocaleString()
+      });
 
-      // Fetch all active auctions that have price_at_48h and haven't sold yet
-      const { data: allAuctionData, error: auctionError } = await supabase
+      const { data: auctionData, error: auctionError } = await supabase
         .from('auctions')
         .select('*')
-        .not('price_at_48h', 'is', null)  // Must have day 2 price
-        .is('final_price', null)           // Must still be active (not sold)
+        .gte('timestamp_end', minEndTime)
+        .lte('timestamp_end', maxEndTime)
+        .not('price_at_48h', 'is', null)
+        .is('final_price', null)
         .order('timestamp_end', { ascending: true });
 
       if (auctionError) {
         console.error('Error loading auctions:', auctionError);
       }
 
-      console.log(`Fetched ${allAuctionData?.length || 0} total active auctions from DB`);
-
-      // Filter to only show:
-      // - BaT auctions (not starting with 'manual_') with 4-5 days left
-      // - Manual auctions (starting with 'manual_') regardless of end date
-      const filteredAuctions = (allAuctionData || []).filter(auction => {
-        const isManualAuction = auction.auction_id?.startsWith('manual_');
-
-        if (isManualAuction) {
-          // Manual auctions: show all
-          return true;
-        } else {
-          // BaT auctions: only show if they have 4-5 days left
-          if (!auction.timestamp_end) {
-            console.log(`Filtered out (no end date): ${auction.auction_id}`);
-            return false;
-          }
-
-          const inWindow = auction.timestamp_end >= minEndTime && auction.timestamp_end <= maxEndTime;
-
-          if (!inWindow) {
-            const daysUntilEnd = (auction.timestamp_end - now) / (24 * 60 * 60);
-            console.log(`Filtered out (${daysUntilEnd.toFixed(2)} days): ${auction.auction_id} - ${auction.title}`);
-          }
-
-          return inWindow;
-        }
-      });
-
-      console.log(`Showing ${filteredAuctions.length} auctions after filtering (${allAuctionData?.length || 0} total)`);
-      console.log('=== END DEBUG ===');
-
-      setAuctions(filteredAuctions);
+      setAuctions(auctionData || []);
+      console.log(`Loaded ${auctionData?.length || 0} auctions in draft window (4-5 days before end)`);
       
       const { data: userData } = await supabase
         .from('users')
@@ -167,11 +137,13 @@ const AdminPortal = () => {
         .order('created_at', { ascending: false });
       setLeagues(leagueData || []);
       
-      // Load auctions for bonus car dropdown (same filtering as main display)
-      console.log('Loading bonus car options...');
+      // Load auctions for bonus car dropdown (SAME 4-5 day window as draft cars)
+      console.log('Loading bonus car options (draft window only)...');
       const { data: bonusAuctionData, error: bonusError } = await supabase
         .from('auctions')
         .select('*')
+        .gte('timestamp_end', minEndTime)    // Must end at least 4 days from now
+        .lte('timestamp_end', maxEndTime)    // Must end within 5 days from now
         .not('price_at_48h', 'is', null)     // Must have day 2 price
         .is('final_price', null)              // Must still be active (not sold)
         .order('timestamp_end', { ascending: false })
@@ -181,18 +153,8 @@ const AdminPortal = () => {
         console.error('Error loading bonus auctions:', bonusError);
         setAllAuctionsForBonus([]);
       } else {
-        // Apply same filtering: BaT auctions must have 4-5 days left, manual auctions can be any time
-        const filteredBonusAuctions = (bonusAuctionData || []).filter(auction => {
-          const isManualAuction = auction.auction_id?.startsWith('manual_');
-          if (isManualAuction) {
-            return true;
-          } else {
-            if (!auction.timestamp_end) return false;
-            return auction.timestamp_end >= minEndTime && auction.timestamp_end <= maxEndTime;
-          }
-        });
-        setAllAuctionsForBonus(filteredBonusAuctions);
-        console.log(`Loaded ${filteredBonusAuctions.length} auctions for bonus selection (${bonusAuctionData?.length || 0} total active)`);
+        setAllAuctionsForBonus(bonusAuctionData || []);
+        console.log(`Loaded ${bonusAuctionData?.length || 0} active auctions in draft window for bonus selection`);
       }
       
       const { data: garageData } = await supabase
@@ -590,18 +552,6 @@ const AdminPortal = () => {
     try {
       const { supabase } = await import('@/lib/supabase');
 
-      // Fetch the league to check if it uses manual auction selection
-      const { data: league, error: leagueError } = await supabase
-        .from('leagues')
-        .select('use_manual_auctions')
-        .eq('id', leagueId)
-        .single();
-
-      if (leagueError || !league) {
-        alert('Error: Could not find league');
-        return;
-      }
-
       // Fetch the auction to validate its end date
       const { data: auction, error: fetchError } = await supabase
         .from('auctions')
@@ -619,28 +569,25 @@ const AdminPortal = () => {
       const now = Math.floor(Date.now() / 1000);
 
       if (isBaTAuction) {
-        // For Bring a Trailer auctions: only enforce 4-5 day window for automatic leagues
-        // Manual leagues can add any auction at any time
-        if (!league.use_manual_auctions) {
-          const fourDaysInSeconds = 4 * 24 * 60 * 60;
-          const fiveDaysInSeconds = 5 * 24 * 60 * 60;
-          const minEndTime = now + fourDaysInSeconds;
-          const maxEndTime = now + fiveDaysInSeconds;
+        // For Bring a Trailer auctions: enforce 4-5 day window
+        const fourDaysInSeconds = 4 * 24 * 60 * 60;
+        const fiveDaysInSeconds = 5 * 24 * 60 * 60;
+        const minEndTime = now + fourDaysInSeconds;
+        const maxEndTime = now + fiveDaysInSeconds;
 
-          if (!auction.timestamp_end) {
-            alert('Error: This Bring a Trailer auction does not have an end date set');
-            return;
-          }
+        if (!auction.timestamp_end) {
+          alert('Error: This Bring a Trailer auction does not have an end date set');
+          return;
+        }
 
-          if (auction.timestamp_end < minEndTime) {
-            alert('Error: This Bring a Trailer auction ends in less than 4 days. Only auctions in the 4-5 day window can be added.');
-            return;
-          }
+        if (auction.timestamp_end < minEndTime) {
+          alert('Error: This Bring a Trailer auction ends in less than 4 days. Only auctions in the 4-5 day window can be added.');
+          return;
+        }
 
-          if (auction.timestamp_end > maxEndTime) {
-            alert('Error: This Bring a Trailer auction ends in more than 5 days. Only auctions in the 4-5 day window can be added.');
-            return;
-          }
+        if (auction.timestamp_end > maxEndTime) {
+          alert('Error: This Bring a Trailer auction ends in more than 5 days. Only auctions in the 4-5 day window can be added.');
+          return;
         }
       } else {
         // For manually added auctions: validate the end date is in the future
@@ -893,12 +840,12 @@ const AdminPortal = () => {
               {filteredAuctions.length === 0 ? (
                 <div className="bg-slate-800 p-8 rounded-lg border border-slate-700 text-center">
                   <div className="text-slate-400 text-lg">
-                    {searchTerm ? 'No auctions match your search' : 'No BaT auctions in 4-5 day window'}
+                    {searchTerm ? 'No auctions match your search' : 'No auctions in draft window (4-5 days before end)'}
                   </div>
                   <p className="text-slate-500 text-sm mt-2">
                     {searchTerm
                       ? 'Try a different search term'
-                      : 'BaT auctions appear here when they have 4-5 days remaining. Manual auctions always show. Check browser console for filtering debug info.'}
+                      : 'Auctions appear here when they are 4-5 days from ending and have a day 2 price'}
                   </p>
                 </div>
               ) : (
@@ -911,18 +858,6 @@ const AdminPortal = () => {
                           <span>{auction.year}</span>
                           <span>•</span>
                           <span>{auction.make} {auction.model}</span>
-                          {auction.timestamp_end && (
-                            <>
-                              <span>•</span>
-                              <span className="font-semibold text-blue-400">{formatRelativeTime(auction.timestamp_end)}</span>
-                            </>
-                          )}
-                          {auction.auction_id?.startsWith('manual_') && (
-                            <>
-                              <span>•</span>
-                              <span className="text-purple-400 font-semibold">✨ Manual</span>
-                            </>
-                          )}
                         </div>
                         <div className="flex gap-4 mt-2">
                           {auction.price_at_48h && (
@@ -1085,7 +1020,7 @@ const AdminPortal = () => {
                       })}
                     </select>
                     <p className="text-slate-500 text-xs mt-1">
-                      💡 {allAuctionsForBonus.length} auctions in draft window (BaT: 4-5 days, Manual: any time)
+                      💡 {allAuctionsForBonus.length} active auctions in draft window (4-5 days from ending)
                       <br />
                       ⚡ Bonus car will end at same time as other draft cars
                     </p>
