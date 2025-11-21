@@ -100,7 +100,10 @@ const AdminPortal = () => {
       const minEndTime = now + fourDaysInSeconds;
       const maxEndTime = now + fiveDaysInSeconds;
 
-      console.log('Loading auctions for admin display');
+      console.log('=== AUCTION FILTERING DEBUG ===');
+      console.log('Current time:', new Date(now * 1000).toISOString());
+      console.log('Min end time (4 days):', new Date(minEndTime * 1000).toISOString());
+      console.log('Max end time (5 days):', new Date(maxEndTime * 1000).toISOString());
 
       // Fetch all active auctions that have price_at_48h and haven't sold yet
       const { data: allAuctionData, error: auctionError } = await supabase
@@ -114,6 +117,8 @@ const AdminPortal = () => {
         console.error('Error loading auctions:', auctionError);
       }
 
+      console.log(`Fetched ${allAuctionData?.length || 0} total active auctions from DB`);
+
       // Filter to only show:
       // - BaT auctions (not starting with 'manual_') with 4-5 days left
       // - Manual auctions (starting with 'manual_') regardless of end date
@@ -125,13 +130,26 @@ const AdminPortal = () => {
           return true;
         } else {
           // BaT auctions: only show if they have 4-5 days left
-          if (!auction.timestamp_end) return false;
-          return auction.timestamp_end >= minEndTime && auction.timestamp_end <= maxEndTime;
+          if (!auction.timestamp_end) {
+            console.log(`Filtered out (no end date): ${auction.auction_id}`);
+            return false;
+          }
+
+          const inWindow = auction.timestamp_end >= minEndTime && auction.timestamp_end <= maxEndTime;
+
+          if (!inWindow) {
+            const daysUntilEnd = (auction.timestamp_end - now) / (24 * 60 * 60);
+            console.log(`Filtered out (${daysUntilEnd.toFixed(2)} days): ${auction.auction_id} - ${auction.title}`);
+          }
+
+          return inWindow;
         }
       });
 
+      console.log(`Showing ${filteredAuctions.length} auctions after filtering (${allAuctionData?.length || 0} total)`);
+      console.log('=== END DEBUG ===');
+
       setAuctions(filteredAuctions);
-      console.log(`Loaded ${filteredAuctions.length} auctions for display (${allAuctionData?.length || 0} total active)`);
       
       const { data: userData } = await supabase
         .from('users')
@@ -875,12 +893,12 @@ const AdminPortal = () => {
               {filteredAuctions.length === 0 ? (
                 <div className="bg-slate-800 p-8 rounded-lg border border-slate-700 text-center">
                   <div className="text-slate-400 text-lg">
-                    {searchTerm ? 'No auctions match your search' : 'No auctions in draft window (4-5 days before end)'}
+                    {searchTerm ? 'No auctions match your search' : 'No BaT auctions in 4-5 day window'}
                   </div>
                   <p className="text-slate-500 text-sm mt-2">
-                    {searchTerm 
-                      ? 'Try a different search term' 
-                      : 'Auctions appear here when they are 4-5 days from ending and have a day 2 price'}
+                    {searchTerm
+                      ? 'Try a different search term'
+                      : 'BaT auctions appear here when they have 4-5 days remaining. Manual auctions always show. Check browser console for filtering debug info.'}
                   </p>
                 </div>
               ) : (
@@ -893,6 +911,18 @@ const AdminPortal = () => {
                           <span>{auction.year}</span>
                           <span>•</span>
                           <span>{auction.make} {auction.model}</span>
+                          {auction.timestamp_end && (
+                            <>
+                              <span>•</span>
+                              <span className="font-semibold text-blue-400">{formatRelativeTime(auction.timestamp_end)}</span>
+                            </>
+                          )}
+                          {auction.auction_id?.startsWith('manual_') && (
+                            <>
+                              <span>•</span>
+                              <span className="text-purple-400 font-semibold">✨ Manual</span>
+                            </>
+                          )}
                         </div>
                         <div className="flex gap-4 mt-2">
                           {auction.price_at_48h && (
@@ -1055,7 +1085,7 @@ const AdminPortal = () => {
                       })}
                     </select>
                     <p className="text-slate-500 text-xs mt-1">
-                      💡 {allAuctionsForBonus.length} auctions available (BaT: 4-5 days left, Manual: any time)
+                      💡 {allAuctionsForBonus.length} auctions in draft window (BaT: 4-5 days, Manual: any time)
                       <br />
                       ⚡ Bonus car will end at same time as other draft cars
                     </p>
