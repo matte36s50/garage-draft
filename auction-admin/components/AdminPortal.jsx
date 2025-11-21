@@ -38,6 +38,7 @@ const AdminPortal = () => {
   const [managingLeagueId, setManagingLeagueId] = useState(null);
   const [leagueAuctions, setLeagueAuctions] = useState({});
   const [allAuctions, setAllAuctions] = useState([]);
+  const [manualAuctions, setManualAuctions] = useState([]); // Separate list for manual auctions
   const [auctionSearchTerm, setAuctionSearchTerm] = useState('');
   const [auctionFilter, setAuctionFilter] = useState({ make: '', model: '', year: '' });
   const [addingAuctionId, setAddingAuctionId] = useState(null);
@@ -182,13 +183,24 @@ const AdminPortal = () => {
 
       // Load auctions for manual selection (exclude already ended auctions)
       const nowForManual = Math.floor(Date.now() / 1000);
-      const { data: allAuctionsData } = await supabase
+
+      // Load BaT auctions (exclude manual auctions)
+      const { data: batAuctionsData } = await supabase
         .from('auctions')
         .select('*')
         .gte('timestamp_end', nowForManual)  // Only show auctions that haven't ended yet
+        .not('auction_id', 'like', 'manual_%')  // Exclude manual auctions
         .order('inserted_at', { ascending: false })
         .limit(500);
-      setAllAuctions(allAuctionsData || []);
+      setAllAuctions(batAuctionsData || []);
+
+      // Load manual auctions separately
+      const { data: manualAuctionsData } = await supabase
+        .from('auctions')
+        .select('*')
+        .like('auction_id', 'manual_%')  // Only manual auctions
+        .order('inserted_at', { ascending: false });
+      setManualAuctions(manualAuctionsData || []);
 
       // Load league-specific auctions
       const { data: leagueAuctionsData } = await supabase
@@ -854,6 +866,14 @@ const AdminPortal = () => {
               </div>
             )}
 
+            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+              <Car size={24} />
+              Bring a Trailer Auctions
+              <span className="text-sm font-normal text-slate-400 ml-2">
+                (in draft window: 4-5 days before end)
+              </span>
+            </h2>
+
             <div className="space-y-4">
               {filteredAuctions.length === 0 ? (
                 <div className="bg-slate-800 p-8 rounded-lg border border-slate-700 text-center">
@@ -917,6 +937,94 @@ const AdminPortal = () => {
                   </div>
                 ))
               )}
+            </div>
+
+            {/* MANUAL AUCTIONS SECTION */}
+            <div className="mt-10 pt-10 border-t border-slate-700">
+              <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+                <Car size={24} className="text-purple-500" />
+                Manual Auctions
+                <span className="text-sm font-normal text-slate-400 ml-2">
+                  ({manualAuctions.length} total)
+                </span>
+              </h2>
+              <p className="text-slate-400 text-sm mb-6">
+                Auctions you've manually created. These can only be added to manual leagues.
+              </p>
+
+              <div className="space-y-4">
+                {manualAuctions.length === 0 ? (
+                  <div className="bg-slate-800 p-8 rounded-lg border border-slate-700 text-center">
+                    <div className="text-slate-400 text-lg">No manual auctions yet</div>
+                    <p className="text-slate-500 text-sm mt-2">
+                      Click "Add Auction" above to create a manual auction
+                    </p>
+                  </div>
+                ) : (
+                  manualAuctions
+                    .filter(auction => {
+                      const searchLower = searchTerm.toLowerCase();
+                      return (
+                        auction.title?.toLowerCase().includes(searchLower) ||
+                        auction.make?.toLowerCase().includes(searchLower) ||
+                        auction.model?.toLowerCase().includes(searchLower) ||
+                        auction.year?.toString().includes(searchLower)
+                      );
+                    })
+                    .map(auction => (
+                      <div key={auction.id} className="bg-slate-800 p-6 rounded-lg border border-purple-500/30">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3 className="text-xl font-bold text-white">{auction.title}</h3>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                                ✨ Manual
+                              </span>
+                            </div>
+                            <div className="flex gap-4 mt-2 text-slate-400 text-sm">
+                              <span>{auction.year}</span>
+                              <span>•</span>
+                              <span>{auction.make} {auction.model}</span>
+                            </div>
+                            <div className="flex gap-4 mt-2">
+                              {auction.price_at_48h && (
+                                <div>
+                                  <div className="text-slate-400 text-xs">48h Price</div>
+                                  <div className="text-white font-semibold">${auction.price_at_48h?.toLocaleString()}</div>
+                                </div>
+                              )}
+                              {auction.final_price && (
+                                <div>
+                                  <div className="text-slate-400 text-xs">Final Price</div>
+                                  <div className="text-green-400 font-semibold">${auction.final_price?.toLocaleString()}</div>
+                                </div>
+                              )}
+                              {auction.timestamp_end && (
+                                <div>
+                                  <div className="text-slate-400 text-xs">End Date</div>
+                                  <div className="text-white font-semibold">
+                                    {new Date(auction.timestamp_end * 1000).toLocaleDateString()}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2 items-end">
+                            <span className="text-xs text-purple-400">{auction.auction_id}</span>
+                            {auction.url && (
+                              <a href={auction.url} target="_blank" rel="noopener noreferrer"
+                                className="text-blue-400 hover:text-blue-300 text-sm">View Auction →</a>
+                            )}
+                            <button onClick={() => handleDeleteAuction(auction.id)}
+                              className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1">
+                              <Trash2 size={14} /> Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1298,22 +1406,20 @@ const AdminPortal = () => {
                 <div className="flex flex-col min-h-0">
                   <h3 className="text-lg font-bold text-white mb-1 flex-shrink-0">
                     Available Auctions ({
-                      allAuctions.filter(a => {
-                        const searchLower = auctionSearchTerm.toLowerCase();
-                        const makeLower = auctionFilter.make.toLowerCase();
-                        const modelLower = auctionFilter.model.toLowerCase();
-                        const matchesSearch = !auctionSearchTerm || a.title?.toLowerCase().includes(searchLower);
-                        const matchesMake = !auctionFilter.make || a.make?.toLowerCase().includes(makeLower);
-                        const matchesModel = !auctionFilter.model || a.model?.toLowerCase().includes(modelLower);
-                        const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
-
-                        // For manual leagues, only show manual auctions
+                      (() => {
                         const currentLeague = leagues.find(l => l.id === managingLeagueId);
-                        const isManualAuction = a.auction_id?.startsWith('manual_');
-                        const matchesLeagueType = !currentLeague?.use_manual_auctions || isManualAuction;
-
-                        return matchesSearch && matchesMake && matchesModel && notAlreadyAdded && matchesLeagueType;
-                      }).length
+                        const auctionsList = currentLeague?.use_manual_auctions ? manualAuctions : allAuctions;
+                        return auctionsList.filter(a => {
+                          const searchLower = auctionSearchTerm.toLowerCase();
+                          const makeLower = auctionFilter.make.toLowerCase();
+                          const modelLower = auctionFilter.model.toLowerCase();
+                          const matchesSearch = !auctionSearchTerm || a.title?.toLowerCase().includes(searchLower);
+                          const matchesMake = !auctionFilter.make || a.make?.toLowerCase().includes(makeLower);
+                          const matchesModel = !auctionFilter.model || a.model?.toLowerCase().includes(modelLower);
+                          const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
+                          return matchesSearch && matchesMake && matchesModel && notAlreadyAdded;
+                        }).length;
+                      })()
                     })
                   </h3>
                   <p className="text-slate-400 text-xs mb-3 flex-shrink-0">
@@ -1323,23 +1429,21 @@ const AdminPortal = () => {
                     }
                   </p>
                   <div className="flex-1 overflow-y-auto space-y-2 pr-2 min-h-0">
-                    {allAuctions
-                      .filter(a => {
-                        const searchLower = auctionSearchTerm.toLowerCase();
-                        const makeLower = auctionFilter.make.toLowerCase();
-                        const modelLower = auctionFilter.model.toLowerCase();
-                        const matchesSearch = !auctionSearchTerm || a.title?.toLowerCase().includes(searchLower);
-                        const matchesMake = !auctionFilter.make || a.make?.toLowerCase().includes(makeLower);
-                        const matchesModel = !auctionFilter.model || a.model?.toLowerCase().includes(modelLower);
-                        const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
-
-                        // For manual leagues, only show manual auctions
-                        const currentLeague = leagues.find(l => l.id === managingLeagueId);
-                        const isManualAuction = a.auction_id?.startsWith('manual_');
-                        const matchesLeagueType = !currentLeague?.use_manual_auctions || isManualAuction;
-
-                        return matchesSearch && matchesMake && matchesModel && notAlreadyAdded && matchesLeagueType;
-                      })
+                    {(() => {
+                      const currentLeague = leagues.find(l => l.id === managingLeagueId);
+                      const auctionsList = currentLeague?.use_manual_auctions ? manualAuctions : allAuctions;
+                      return auctionsList
+                        .filter(a => {
+                          const searchLower = auctionSearchTerm.toLowerCase();
+                          const makeLower = auctionFilter.make.toLowerCase();
+                          const modelLower = auctionFilter.model.toLowerCase();
+                          const matchesSearch = !auctionSearchTerm || a.title?.toLowerCase().includes(searchLower);
+                          const matchesMake = !auctionFilter.make || a.make?.toLowerCase().includes(makeLower);
+                          const matchesModel = !auctionFilter.model || a.model?.toLowerCase().includes(modelLower);
+                          const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
+                          return matchesSearch && matchesMake && matchesModel && notAlreadyAdded;
+                        });
+                    })()
                       .sort((a, b) => {
                         // Sort by end date - soonest first
                         const aEnd = a.timestamp_end || 0;
