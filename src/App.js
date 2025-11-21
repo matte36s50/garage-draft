@@ -1441,7 +1441,7 @@ export default function BixPrixApp() {
                     <div className="flex gap-1 flex-shrink-0">
                       {a.manually_added && (
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-purple-500/15 text-purple-700 border border-purple-500/30">
-                          <Target size={12}/> Manual
+                          <Target size={12}/> Bonus League
                         </span>
                       )}
                       {a.trending && (
