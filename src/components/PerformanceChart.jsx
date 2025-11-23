@@ -69,10 +69,10 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-bpCream rounded-lg p-6 border border-bpNavy/10">
         <div className="animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-1/4 mb-4"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
+          <div className="h-6 bg-bpNavy/10 rounded w-1/4 mb-4"></div>
+          <div className="h-64 bg-bpNavy/10 rounded"></div>
         </div>
       </div>
     );
@@ -80,9 +80,9 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
 
   if (chartData.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-bold mb-4">Performance Over Time</h3>
-        <div className="text-center py-12 text-gray-500">
+      <div className="bg-bpCream rounded-lg p-6 border border-bpNavy/10">
+        <h3 className="text-lg font-bold mb-4 text-bpRed">Performance Over Time</h3>
+        <div className="text-center py-12 text-bpGray">
           <p>Performance data will appear as the week progresses</p>
         </div>
       </div>
@@ -92,42 +92,42 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
   const latestData = chartData[chartData.length - 1] || {};
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h3 className="text-lg font-bold mb-4">Performance Over Time</h3>
+    <div className="bg-bpCream rounded-lg p-6 border border-bpNavy/10">
+      <h3 className="text-lg font-bold mb-4 text-bpRed">Performance Over Time</h3>
 
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#0F1A2B20" />
           <XAxis
             dataKey="timestamp"
             tickFormatter={(ts) => format(new Date(ts), 'MMM d, h:mm a')}
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: 12, fill: '#111111' }}
           />
           <YAxis
-            label={{ value: '% Gain', angle: -90, position: 'insideLeft' }}
-            tick={{ fontSize: 12 }}
+            label={{ value: '% Gain', angle: -90, position: 'insideLeft', fill: '#111111' }}
+            tick={{ fontSize: 12, fill: '#111111' }}
             tickFormatter={(value) => `${value.toFixed(1)}%`}
           />
           <Tooltip
             labelFormatter={(ts) => format(new Date(ts), 'MMM d, yyyy h:mm a')}
             formatter={(value) => [`${Number(value).toFixed(2)}%`, '']}
-            contentStyle={{ backgroundColor: 'white', border: '1px solid #ccc' }}
+            contentStyle={{ backgroundColor: '#FAF6EE', border: '1px solid #0F1A2B30', borderRadius: '8px' }}
           />
           <Legend />
 
           <Line
             type="monotone"
             dataKey="yourGain"
-            stroke="#2563eb"
+            stroke="#D64541"
             strokeWidth={3}
             name="You"
-            dot={{ r: 3, fill: '#2563eb' }}
+            dot={{ r: 3, fill: '#D64541' }}
             activeDot={{ r: 5 }}
           />
           <Line
             type="monotone"
             dataKey="top1"
-            stroke="#dc2626"
+            stroke="#C2A14D"
             strokeWidth={2}
             name={topUsers[0]?.username || "1st Place"}
             strokeDasharray="5 5"
@@ -136,7 +136,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
           <Line
             type="monotone"
             dataKey="top2"
-            stroke="#f59e0b"
+            stroke="#0F1A2B"
             strokeWidth={2}
             name={topUsers[1]?.username || "2nd Place"}
             strokeDasharray="5 5"
@@ -145,7 +145,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
           <Line
             type="monotone"
             dataKey="top3"
-            stroke="#10b981"
+            stroke="#B0B3B8"
             strokeWidth={2}
             name={topUsers[2]?.username || "3rd Place"}
             strokeDasharray="5 5"
@@ -155,23 +155,23 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
       </ResponsiveContainer>
 
       <div className="mt-6 grid grid-cols-3 gap-4">
-        <div className="text-center p-4 bg-blue-50 rounded-lg">
-          <div className="text-2xl font-bold text-blue-600">
+        <div className="text-center p-4 bg-bpRed/10 rounded-lg">
+          <div className="text-2xl font-bold text-bpRed">
             {latestData.yourGain?.toFixed(2) || '0.00'}%
           </div>
-          <div className="text-sm text-gray-600 mt-1">Your Gain</div>
+          <div className="text-sm text-bpInk/70 mt-1">Your Gain</div>
         </div>
-        <div className="text-center p-4 bg-gray-50 rounded-lg">
-          <div className="text-2xl font-bold text-gray-700">
+        <div className="text-center p-4 bg-bpNavy/5 rounded-lg">
+          <div className="text-2xl font-bold text-bpInk">
             {((latestData.top1 || 0) - (latestData.yourGain || 0)).toFixed(2)}%
           </div>
-          <div className="text-sm text-gray-600 mt-1">Behind Leader</div>
+          <div className="text-sm text-bpInk/70 mt-1">Behind Leader</div>
         </div>
-        <div className="text-center p-4 bg-green-50 rounded-lg">
-          <div className="text-2xl font-bold text-green-600">
+        <div className="text-center p-4 bg-bpGold/10 rounded-lg">
+          <div className="text-2xl font-bold text-bpGold">
             #{calculateRank(latestData)}
           </div>
-          <div className="text-sm text-gray-600 mt-1">Current Rank</div>
+          <div className="text-sm text-bpInk/70 mt-1">Current Rank</div>
         </div>
       </div>
     </div>
