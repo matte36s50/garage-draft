@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
+import Dashboard from './components/Dashboard'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
@@ -144,19 +145,25 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
           <BrandLogo />
           <nav className="hidden sm:flex items-center gap-6 text-sm">
-            <button 
+            <button
+              className={`hover:text-bpCream/90 transition ${currentScreen === 'dashboard' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
+              onClick={() => onNavigate && onNavigate('dashboard')}
+            >
+              Dashboard
+            </button>
+            <button
               className={`hover:text-bpCream/90 transition ${currentScreen === 'garage' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
               onClick={() => onNavigate && onNavigate('garage')}
             >
               Garage
             </button>
-            <button 
+            <button
               className={`hover:text-bpCream/90 transition ${currentScreen === 'cars' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
               onClick={() => onNavigate && onNavigate('cars')}
             >
               Auctions
             </button>
-            <button 
+            <button
               className={`hover:text-bpCream/90 transition ${currentScreen === 'leaderboard' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
               onClick={() => onNavigate && onNavigate('leaderboard')}
             >
@@ -165,7 +172,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
           </nav>
           
           <div className="flex items-center gap-4">
-            {(currentScreen === 'garage' || currentScreen === 'cars' || currentScreen === 'leaderboard') && lastUpdated && (
+            {(currentScreen === 'dashboard' || currentScreen === 'garage' || currentScreen === 'cars' || currentScreen === 'leaderboard') && lastUpdated && (
               <ConnectionStatus 
                 lastUpdated={lastUpdated}
                 connectionStatus={connectionStatus}
@@ -2188,6 +2195,16 @@ export default function BixPrixApp() {
   if (currentScreen === 'landing') return <LandingScreen onGetStarted={() => setCurrentScreen('login')} />
   if (!user) return <LoginScreen />
   if (currentScreen === 'leagues') return <LeaguesScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
+  if (currentScreen === 'dashboard') return (
+    <Dashboard
+      supabase={supabase}
+      user={user}
+      leagues={leagues}
+      selectedLeague={selectedLeague}
+      onLeagueChange={updateSelectedLeague}
+      onNavigate={setCurrentScreen}
+    />
+  )
   if (currentScreen === 'cars') return <CarsScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
   if (currentScreen === 'garage') return <GarageScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
   if (currentScreen === 'leaderboard') return <LeaderboardScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
