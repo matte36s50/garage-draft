@@ -13,8 +13,8 @@ export default function StatsCards({ stats }) {
       ),
       trend: stats?.rankChange,
       trendLabel: stats?.rankChange > 0 ? 'Moved up' : stats?.rankChange < 0 ? 'Moved down' : 'No change',
-      bgColor: 'bg-blue-50',
-      iconColor: 'text-blue-600'
+      bgColor: 'bg-bpCream/10',
+      iconColor: 'text-bpCream'
     },
     {
       title: 'Total Gain',
@@ -29,8 +29,8 @@ export default function StatsCards({ stats }) {
         ? stats.totalGain - stats.leagueAvg
         : undefined,
       trendLabel: 'vs Average',
-      bgColor: 'bg-green-50',
-      iconColor: 'text-green-600'
+      bgColor: 'bg-emerald-500/20',
+      iconColor: 'text-emerald-400'
     },
     {
       title: 'Behind Leader',
@@ -41,8 +41,8 @@ export default function StatsCards({ stats }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
         </svg>
       ),
-      bgColor: 'bg-yellow-50',
-      iconColor: 'text-yellow-600'
+      bgColor: 'bg-bpGold/20',
+      iconColor: 'text-bpGold'
     },
     {
       title: 'Budget Used',
@@ -54,8 +54,8 @@ export default function StatsCards({ stats }) {
         </svg>
       ),
       progress: stats?.budgetUsed !== undefined ? (stats.budgetUsed / 175000) * 100 : 0,
-      bgColor: 'bg-purple-50',
-      iconColor: 'text-purple-600'
+      bgColor: 'bg-bpRed/20',
+      iconColor: 'text-bpRed'
     }
   ];
 
@@ -70,10 +70,10 @@ export default function StatsCards({ stats }) {
 
 function StatCard({ card, index }) {
   const getTrendColor = (trend) => {
-    if (trend === undefined || trend === null) return 'text-gray-600';
-    if (trend > 0) return 'text-green-600';
-    if (trend < 0) return 'text-red-600';
-    return 'text-gray-600';
+    if (trend === undefined || trend === null) return 'text-bpGray';
+    if (trend > 0) return 'text-emerald-400';
+    if (trend < 0) return 'text-red-400';
+    return 'text-bpGray';
   };
 
   const getTrendIcon = (trend) => {
@@ -104,21 +104,21 @@ function StatCard({ card, index }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
-      className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow"
+      className="bg-bpCream rounded-lg p-6 hover:shadow-lg transition-shadow border border-bpNavy/10"
     >
       <div className="flex items-center justify-between mb-2">
-        <div className="text-sm text-gray-600 font-medium">{card.title}</div>
+        <div className="text-sm text-bpNavy/70 font-medium">{card.title}</div>
         <div className={`${card.bgColor} ${card.iconColor} p-2 rounded-lg`}>
           {card.icon}
         </div>
       </div>
 
-      <div className="text-3xl font-bold text-gray-900 mb-1">
+      <div className="text-3xl font-bold text-bpInk mb-1">
         {card.value}
       </div>
 
       <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-500">{card.subtitle}</div>
+        <div className="text-sm text-bpGray">{card.subtitle}</div>
 
         {card.trend !== undefined && (
           <div className={`text-xs font-semibold flex items-center gap-1 ${getTrendColor(card.trend)}`}>
@@ -134,13 +134,13 @@ function StatCard({ card, index }) {
 
       {card.progress !== undefined && (
         <div className="mt-3">
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full bg-bpNavy/10 rounded-full h-2">
             <div
-              className="bg-purple-600 h-2 rounded-full transition-all duration-500"
+              className="bg-bpRed h-2 rounded-full transition-all duration-500"
               style={{ width: `${Math.min(card.progress, 100)}%` }}
             />
           </div>
-          <div className="text-xs text-gray-500 mt-1 text-right">
+          <div className="text-xs text-bpGray mt-1 text-right">
             {card.progress.toFixed(0)}%
           </div>
         </div>

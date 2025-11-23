@@ -9,9 +9,20 @@ const supabase = createClient(
 
 export async function GET(request) {
   // Verify cron secret for security (optional but recommended)
+  // Support both Authorization header and query parameter for external cron services
   const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { searchParams } = new URL(request.url);
+  const secretParam = searchParams.get('secret');
+
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (cronSecret) {
+    const isValidHeader = authHeader === `Bearer ${cronSecret}`;
+    const isValidParam = secretParam === cronSecret;
+
+    if (!isValidHeader && !isValidParam) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
   }
 
   try {
