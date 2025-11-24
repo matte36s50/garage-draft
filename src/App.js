@@ -1095,13 +1095,21 @@ export default function BixPrixApp() {
     const [username, setUsername] = useState('')
 
     const signUp = async () => {
-      const { data, error } = await supabase.auth.signUp({ 
-        email, 
-        password, 
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
         options: { data: { username }}
       })
       if (error) return alert('Error signing up: '+error.message)
-      if (data.user) alert('Check your email for verification link!')
+      // If session exists, user is auto-confirmed (email verification disabled)
+      // Log them in directly
+      if (data.session) {
+        setUser(data.user)
+        setCurrentScreen('leagues')
+      } else if (data.user && !data.session) {
+        // Email verification is required - inform user
+        alert('Check your email for verification link!')
+      }
     }
     
     const signIn = async () => {
