@@ -2205,14 +2205,25 @@ export default function BixPrixApp() {
   if (!user) return <LoginScreen />
   if (currentScreen === 'leagues') return <LeaguesScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
   if (currentScreen === 'dashboard') return (
-    <Dashboard
-      supabase={supabase}
-      user={user}
-      leagues={leagues}
-      selectedLeague={selectedLeague}
-      onLeagueChange={updateSelectedLeague}
+    <Shell
+      onSignOut={() => supabase.auth.signOut()}
       onNavigate={setCurrentScreen}
-    />
+      currentScreen={currentScreen}
+      lastUpdated={lastUpdated}
+      connectionStatus={connectionStatus}
+      recentUpdates={recentUpdates}
+      selectedLeague={selectedLeague}
+      onManualRefresh={manualRefresh}
+    >
+      <Dashboard
+        supabase={supabase}
+        user={user}
+        leagues={leagues}
+        selectedLeague={selectedLeague}
+        onLeagueChange={updateSelectedLeague}
+        onNavigate={setCurrentScreen}
+      />
+    </Shell>
   )
   if (currentScreen === 'cars') return <CarsScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
   if (currentScreen === 'garage') return <GarageScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
