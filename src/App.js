@@ -184,7 +184,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
             {onSignOut && (
               <button
                 onClick={onSignOut}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-bpCream text-sm"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-bpRed hover:bg-bpRed/90 text-white text-sm font-medium transition"
               >
                 <LogOut size={16} />
                 <span className="hidden sm:inline">Sign out</span>
