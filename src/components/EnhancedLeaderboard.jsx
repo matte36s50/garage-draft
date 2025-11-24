@@ -58,7 +58,7 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
             rankChange: member.rank_change || 0,
             totalSpent,
             carCount,
-            qualifies: totalSpent >= 200000
+            qualifies: totalSpent >= 100000
           };
         })
       );
@@ -170,7 +170,7 @@ function LeaderboardRow({ member, index, isCurrentUser }) {
             </span>
           )}
           {!member.qualifies && (
-            <span className="text-xs bg-bpGold text-bpNavy px-2 py-1 rounded" title="Below $200K minimum spend">
+            <span className="text-xs bg-bpGold text-bpNavy px-2 py-1 rounded" title="Below $100K minimum spend">
               DQ
             </span>
           )}
