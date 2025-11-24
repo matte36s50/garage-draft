@@ -254,7 +254,7 @@ export default function BixPrixApp() {
   const [user, setUser] = useState(null)
   const [selectedLeague, setSelectedLeague] = useState(null)
   const [garage, setGarage] = useState([])
-  const [budget, setBudget] = useState(175000)
+  const [budget, setBudget] = useState(200000)
   const [auctions, setAuctions] = useState([])
   const [leagues, setLeagues] = useState([])
   const [loading, setLoading] = useState(false)
@@ -649,7 +649,7 @@ export default function BixPrixApp() {
       }
     } else {
       setUserGarageId(null)
-      setBudget(175000)
+      setBudget(200000)
       setGarage([])
     }
   }
@@ -683,7 +683,7 @@ export default function BixPrixApp() {
       
       const { data: g, error: ge } = await supabase
         .from('garages')
-        .insert([{ user_id: user.id, league_id: league.id, remaining_budget: 175000 }])
+        .insert([{ user_id: user.id, league_id: league.id, remaining_budget: 200000 }])
         .select()
         .single()
       
@@ -950,7 +950,7 @@ export default function BixPrixApp() {
               </div>
               <h3 className="text-xl font-bold text-bpInk mb-3">2. Build Your Garage</h3>
               <p className="text-bpInk/70">
-                Draft 7 cars with a $175,000 budget. Spend at least $200K to qualify! Lock in your prices on day 2 of each auction. Plus predict the bonus car!
+                Draft 7 cars with a $200,000 budget. Spend at least $100K to qualify! Lock in your prices on day 2 of each auction. Plus predict the bonus car!
               </p>
             </Card>
 
@@ -979,7 +979,7 @@ export default function BixPrixApp() {
                 <ul className="space-y-2 text-bpInk/80 text-sm">
                   <li className="flex items-start gap-2">
                     <span className="text-bpNavy font-bold">•</span>
-                    <span><strong>$175,000 budget</strong> - Must spend at least $200K to qualify</span>
+                    <span><strong>$200,000 budget</strong> - Must spend at least $100K to qualify</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-bpNavy font-bold">•</span>
@@ -1309,7 +1309,7 @@ export default function BixPrixApp() {
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
           <div>
             <h2 className="text-2xl font-extrabold tracking-tight">Available Cars</h2>
-            <p className="text-sm text-bpCream/70">Budget: ${budget.toLocaleString()} · Garage: {garage.length}/7 · <span className="text-bpGold">Min spend $200K to qualify</span></p>
+            <p className="text-sm text-bpCream/70">Budget: ${budget.toLocaleString()} · Garage: {garage.length}/7 · <span className="text-bpGold">Min spend $100K to qualify</span></p>
             
             {!canPick && (
               <div className="mt-2 p-2 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
