@@ -26,11 +26,10 @@ export async function GET(request) {
   }
 
   try {
-    // Get all active leagues
+    // Get all leagues (regardless of status - we want to track performance for all)
     const { data: leagues, error: leaguesError } = await supabase
       .from('leagues')
-      .select('id, name')
-      .eq('status', 'active');
+      .select('id, name');
 
     if (leaguesError) throw leaguesError;
 
