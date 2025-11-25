@@ -8,6 +8,23 @@ const supabase = createClient(
 );
 
 export async function GET(request) {
+  /**
+   * HYBRID APPROACH - CRON JOB PURPOSE:
+   *
+   * This cron job runs periodically to:
+   * 1. Calculate and store scores in league_members.total_score (for historical tracking)
+   * 2. Update ranks and rank_change (to track position changes over time)
+   * 3. Create performance_history snapshots (for the performance chart)
+   *
+   * The Dashboard now calculates scores in REAL-TIME using the same logic,
+   * so users don't need to wait for this cron job to see their current stats.
+   *
+   * This job provides the historical data needed for:
+   * - Performance chart (time-series data)
+   * - Rank change tracking (up/down arrows)
+   * - Database backup of scores
+   */
+
   // Verify cron secret for security (optional but recommended)
   // Support both Authorization header and query parameter for external cron services
   const authHeader = request.headers.get('authorization');
