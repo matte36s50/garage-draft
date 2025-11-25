@@ -684,7 +684,7 @@ export default function BixPrixApp() {
       
       const { data: g, error: ge } = await supabase
         .from('garages')
-        .insert([{ user_id: user.id, league_id: league.id, remaining_budget: 200000 }])
+        .insert([{ user_id: user.id, league_id: league.id, remaining_budget: league.spending_limit || 200000 }])
         .select()
         .single()
       
@@ -951,7 +951,7 @@ export default function BixPrixApp() {
               </div>
               <h3 className="text-xl font-bold text-bpInk mb-3">2. Build Your Garage</h3>
               <p className="text-bpInk/70">
-                Draft 7 cars with a $200,000 budget. Spend at least $100K to qualify! Lock in your prices on day 2 of each auction. Plus predict the bonus car!
+                Draft 7 cars within your league's budget. Spend at least 50% of your budget to qualify! Lock in your prices on day 2 of each auction. Plus predict the bonus car!
               </p>
             </Card>
 
@@ -980,7 +980,7 @@ export default function BixPrixApp() {
                 <ul className="space-y-2 text-bpInk/80 text-sm">
                   <li className="flex items-start gap-2">
                     <span className="text-bpNavy font-bold">•</span>
-                    <span><strong>$200,000 budget</strong> - Must spend at least $100K to qualify</span>
+                    <span><strong>League budget</strong> - Each league sets its own spending limit. Must spend at least 50% to qualify</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-bpNavy font-bold">•</span>
@@ -1204,7 +1204,17 @@ export default function BixPrixApp() {
                 <div className="mt-3 p-2 rounded bg-bpInk/5 text-sm text-bpInk/80">
                   ⏰ {draftStatus.message}
                 </div>
-                
+
+                <div className="mt-3 p-3 rounded bg-bpGold/10 border-2 border-bpGold/30">
+                  <div className="flex items-center justify-center gap-2 text-bpGold font-bold">
+                    <DollarSign size={20}/>
+                    <span className="text-lg">${(l.spending_limit || 200000).toLocaleString()} Budget</span>
+                  </div>
+                  <p className="text-xs text-center text-bpInk/70 mt-1">
+                    Maximum spending limit for this league
+                  </p>
+                </div>
+
                 <div className="mt-4 flex items-center justify-between text-sm text-bpInk/75">
                   <span className="flex items-center gap-2"><Users size={16}/> {l.playerCount} players</span>
                   <span className="flex items-center gap-2"><Trophy size={16}/> {l.status || 'Open'}</span>
@@ -1318,7 +1328,9 @@ export default function BixPrixApp() {
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
           <div>
             <h2 className="text-2xl font-extrabold tracking-tight">Available Cars</h2>
-            <p className="text-sm text-bpCream/70">Budget: ${budget.toLocaleString()} · Garage: {garage.length}/7 · <span className="text-bpGold">Min spend $100K to qualify</span></p>
+            <p className="text-sm text-bpCream/70">
+              Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()} · Garage: {garage.length}/7 · <span className="text-bpGold">Min spend ${((selectedLeague?.spending_limit || 200000) / 2 / 1000).toFixed(0)}K to qualify</span>
+            </p>
             
             {!canPick && (
               <div className="mt-2 p-2 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
@@ -1528,7 +1540,7 @@ export default function BixPrixApp() {
         onManualRefresh={manualRefresh}
       >
         <h2 className="text-2xl font-extrabold tracking-tight mb-3">My Garage</h2>
-        <p className="text-sm text-bpCream/70 mb-5">Budget: ${budget.toLocaleString()} · {garage.length}/7 cars</p>
+        <p className="text-sm text-bpCream/70 mb-5">Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()} · {garage.length}/7 cars</p>
         
         {!canModify && (
           <div className="mb-4 p-3 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">

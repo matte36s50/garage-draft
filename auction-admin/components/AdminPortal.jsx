@@ -30,7 +30,8 @@ const AdminPortal = () => {
     draft_ends_at: '',
     is_public: true,
     bonus_auction_id: '',
-    use_manual_auctions: false
+    use_manual_auctions: false,
+    spending_limit: 200000
   });
 
   // State for managing league auctions
@@ -486,6 +487,7 @@ const AdminPortal = () => {
         draft_ends_at: endDate.toISOString(),
         is_public: newLeague.is_public,
         use_manual_auctions: newLeague.use_manual_auctions,
+        spending_limit: newLeague.spending_limit || 200000,
         status: 'draft',
         snapshot_created: false
       };
@@ -510,7 +512,8 @@ const AdminPortal = () => {
           draft_ends_at: '',
           is_public: true,
           bonus_auction_id: '',
-          use_manual_auctions: false
+          use_manual_auctions: false,
+          spending_limit: 200000
         });
         setShowAddLeague(false);
       }
@@ -1174,6 +1177,26 @@ const AdminPortal = () => {
                       {newLeague.use_manual_auctions
                         ? '✨ Manual leagues can only use manually-created auctions. You cannot add BaT auctions to manual leagues.'
                         : '⚡ League will show all BAT auctions in 4-5 day window'}
+                    </p>
+                  </div>
+
+                  <div className="bg-blue-900/20 border border-blue-500/50 rounded p-4">
+                    <label className="text-blue-300 font-semibold text-sm mb-2 block">💰 Spending Limit *</label>
+                    <input
+                      type="number"
+                      placeholder="200000"
+                      value={newLeague.spending_limit}
+                      onChange={(e) => setNewLeague({...newLeague, spending_limit: parseInt(e.target.value) || 200000})}
+                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full text-lg font-bold"
+                      min="50000"
+                      max="1000000"
+                      step="10000"
+                    />
+                    <p className="text-blue-200 text-sm mt-2">
+                      🎯 This is the maximum budget each player gets to spend on cars in this league.
+                    </p>
+                    <p className="text-slate-400 text-xs mt-1">
+                      Default: $200,000 · Range: $50K - $1M
                     </p>
                   </div>
                 </div>
