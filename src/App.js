@@ -685,13 +685,20 @@ export default function BixPrixApp() {
 
   const joinLeague = async (league) => {
     if (!user) return
-    
+
     const draftStatus = getDraftStatus(league)
     if (draftStatus.status !== 'open') {
       alert(`Cannot join league: ${draftStatus.message}`)
       return
     }
-    
+
+    // Enforce minimum spending limit of $100,000
+    const leagueSpendingLimit = league.spending_limit || 200000
+    if (leagueSpendingLimit < 100000) {
+      alert('Cannot join league: This league has a spending limit below the required minimum of $100,000.')
+      return
+    }
+
     try {
       const { data: existing } = await supabase
         .from('league_members')
@@ -699,7 +706,7 @@ export default function BixPrixApp() {
         .eq('league_id', league.id)
         .eq('user_id', user.id)
         .maybeSingle()
-      
+
       if (existing) {
         updateSelectedLeague(league)
         await fetchUserGarage(league.id)
@@ -712,21 +719,21 @@ export default function BixPrixApp() {
       
       const { data: g, error: ge } = await supabase
         .from('garages')
-        .insert([{ user_id: user.id, league_id: league.id, remaining_budget: league.spending_limit || 200000 }])
+        .insert([{ user_id: user.id, league_id: league.id, remaining_budget: leagueSpendingLimit }])
         .select()
         .single()
-      
+
       if (ge) { alert('Error creating garage: '+ge.message); return }
-      
+
       const { error: me } = await supabase
         .from('league_members')
         .insert([{ league_id: league.id, user_id: user.id, total_score: 0 }])
-      
+
       if (me) { alert('Error joining league: '+me.message); return }
-      
+
       updateSelectedLeague(league)
       setUserGarageId(g.id)
-      setBudget(175000)
+      setBudget(leagueSpendingLimit)
       setGarage([])
 
       await fetchAuctions()

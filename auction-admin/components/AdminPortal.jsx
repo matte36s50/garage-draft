@@ -450,22 +450,29 @@ const AdminPortal = () => {
   // ========== LEAGUE FUNCTIONS ==========
   const handleAddLeague = async () => {
     const trimmedName = newLeague.name?.trim();
-    
+
     if (!trimmedName || !newLeague.draft_starts_at || !newLeague.draft_ends_at) {
       alert('Please fill in league name and draft dates');
       return;
     }
-    
+
     const startDate = new Date(newLeague.draft_starts_at);
     const endDate = new Date(newLeague.draft_ends_at);
-    
+
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       alert('Invalid date format. Please select valid dates.');
       return;
     }
-    
+
     if (endDate <= startDate) {
       alert('Draft end date must be after draft start date');
+      return;
+    }
+
+    // Enforce minimum spending limit of $100,000
+    const spendingLimit = newLeague.spending_limit || 200000;
+    if (spendingLimit < 100000) {
+      alert('Spending limit must be at least $100,000');
       return;
     }
     
@@ -487,7 +494,7 @@ const AdminPortal = () => {
         draft_ends_at: endDate.toISOString(),
         is_public: newLeague.is_public,
         use_manual_auctions: newLeague.use_manual_auctions,
-        spending_limit: newLeague.spending_limit || 200000,
+        spending_limit: spendingLimit,
         status: 'draft',
         snapshot_created: false
       };
@@ -1188,7 +1195,7 @@ const AdminPortal = () => {
                       value={newLeague.spending_limit}
                       onChange={(e) => setNewLeague({...newLeague, spending_limit: parseInt(e.target.value) || 200000})}
                       className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full text-lg font-bold"
-                      min="50000"
+                      min="100000"
                       max="1000000"
                       step="10000"
                     />
@@ -1196,7 +1203,7 @@ const AdminPortal = () => {
                       🎯 This is the maximum budget each player gets to spend on cars in this league.
                     </p>
                     <p className="text-slate-400 text-xs mt-1">
-                      Default: $200,000 · Range: $50K - $1M
+                      Default: $200,000 · Range: $100K - $1M · Minimum: $100K
                     </p>
                   </div>
                 </div>
