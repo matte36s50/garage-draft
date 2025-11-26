@@ -10,6 +10,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
   const [loading, setLoading] = useState(true);
   const [recalculating, setRecalculating] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState('');
+  const [leagueEndTime, setLeagueEndTime] = useState(null);
 
   useEffect(() => {
     if (selectedLeague && user) {
@@ -76,14 +77,60 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
     setRecalculating(false);
   }
 
-  // Calculate time remaining until draft ends
+  // Fetch the end time of the last auction in the league
+  async function fetchLeagueEndTime() {
+    if (!selectedLeague?.id) {
+      setLeagueEndTime(null);
+      return;
+    }
+
+    try {
+      // Get all auctions for this league from league_auctions table
+      const { data: leagueAuctions, error } = await supabase
+        .from('league_auctions')
+        .select('auction_id, auctions(timestamp_end)')
+        .eq('league_id', selectedLeague.id);
+
+      if (error) {
+        console.error('Error fetching league auctions:', error);
+        return;
+      }
+
+      if (!leagueAuctions || leagueAuctions.length === 0) {
+        setLeagueEndTime(null);
+        return;
+      }
+
+      // Find the auction with the maximum timestamp_end
+      let maxEndTime = 0;
+      leagueAuctions.forEach(la => {
+        if (la.auctions?.timestamp_end) {
+          const endTime = la.auctions.timestamp_end;
+          if (endTime > maxEndTime) {
+            maxEndTime = endTime;
+          }
+        }
+      });
+
+      if (maxEndTime > 0) {
+        // Convert Unix timestamp (seconds) to Date object
+        setLeagueEndTime(new Date(maxEndTime * 1000));
+      } else {
+        setLeagueEndTime(null);
+      }
+    } catch (error) {
+      console.error('Error fetching league end time:', error);
+    }
+  }
+
+  // Calculate time remaining until league ends
   const calculateTimeLeft = (endTime) => {
     if (!endTime) return null;
     const now = new Date();
     const end = new Date(endTime);
     const diff = +end - +now;
 
-    if (diff <= 0) return { ended: true, text: 'Draft Ended' };
+    if (diff <= 0) return { ended: true, text: 'League Ended' };
 
     const days = Math.floor(diff / 86400000);
     const hours = Math.floor((diff % 86400000) / 3600000);
@@ -101,15 +148,22 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
     return { ended: false, text, days, hours, minutes };
   };
 
+  // Fetch league end time when league changes
+  useEffect(() => {
+    if (selectedLeague) {
+      fetchLeagueEndTime();
+    }
+  }, [selectedLeague]);
+
   // Update time remaining every minute
   useEffect(() => {
-    if (!selectedLeague?.draft_ends_at) {
+    if (!leagueEndTime) {
       setTimeRemaining(null);
       return;
     }
 
     const updateTime = () => {
-      const result = calculateTimeLeft(selectedLeague.draft_ends_at);
+      const result = calculateTimeLeft(leagueEndTime);
       setTimeRemaining(result);
     };
 
@@ -117,7 +171,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
     const interval = setInterval(updateTime, 60000); // Update every minute
 
     return () => clearInterval(interval);
-  }, [selectedLeague]);
+  }, [leagueEndTime]);
 
   if (loading && !userStats) {
     return (
@@ -236,18 +290,18 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
                       ? 'text-orange-300'
                       : 'text-blue-300'
                   }`}>
-                    {timeRemaining.ended ? 'Draft Period Closed' : 'Draft Time Remaining'}
+                    {timeRemaining.ended ? 'League Ended' : 'League Time Remaining'}
                   </h3>
                   <p className="text-bpCream text-xl font-bold">
                     {timeRemaining.text}
                   </p>
                 </div>
               </div>
-              {!timeRemaining.ended && (
+              {!timeRemaining.ended && leagueEndTime && (
                 <div className="text-right">
-                  <p className="text-sm text-bpGray">Draft closes at</p>
+                  <p className="text-sm text-bpGray">Last auction ends at</p>
                   <p className="text-bpCream font-medium">
-                    {new Date(selectedLeague.draft_ends_at).toLocaleString('en-US', {
+                    {leagueEndTime.toLocaleString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       hour: 'numeric',
