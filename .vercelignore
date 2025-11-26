@@ -1,0 +1,29 @@
+# Ignore the admin portal when deploying the main app
+auction-admin/
+
+# Ignore Python scripts
+*.py
+
+# Ignore test files
+*.test.js
+*.test.jsx
+**/__tests__/
+
+# Ignore documentation
+CODEBASE_OVERVIEW.md
+MANUAL_AUCTION_SELECTION.md
+format test.txt
+
+# Ignore SQL migration files
+*.sql
+
+# Ignore node_modules (handled by Vercel)
+node_modules/
+
+# Ignore build artifacts (handled by Vercel)
+build/
+.next/
+
+# Ignore git
+.git/
+.gitignore
