@@ -16,6 +16,8 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
 
   async function fetchPerformanceData() {
     try {
+      console.log('[Performance Chart] Fetching data for league:', leagueId, 'user:', userId);
+
       // Get all performance history for this league
       const { data: history, error } = await supabase
         .from('performance_history')
@@ -25,11 +27,26 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
 
       if (error) throw error;
 
+      console.log('[Performance Chart] History data:', {
+        count: history?.length || 0,
+        sample: history?.[0]
+      });
+
       // If there's no historical data, create a current snapshot using real-time calculations
       if (!history || history.length === 0) {
+        console.log('[Performance Chart] No history found, calculating real-time snapshot');
+
         // Calculate current league stats
         const leagueStats = await calculateLeagueStats(supabase, leagueId);
         const userScore = await calculateUserScore(supabase, userId, leagueId);
+
+        console.log('[Performance Chart] Real-time calculations:', {
+          userScore: userScore.totalPercentGain,
+          leagueStats: leagueStats.scores.slice(0, 3).map(u => ({
+            username: u.username,
+            score: u.totalScore
+          }))
+        });
 
         // Create a single data point with current time
         const now = new Date().toISOString();
@@ -43,6 +60,8 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
         topThree.forEach((user, index) => {
           currentPoint[`top${index + 1}`] = user.totalScore;
         });
+
+        console.log('[Performance Chart] Current point data:', currentPoint);
 
         setChartData([currentPoint]);
         setTopUsers(topThree.map(u => ({
