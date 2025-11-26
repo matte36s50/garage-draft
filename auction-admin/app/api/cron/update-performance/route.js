@@ -86,20 +86,32 @@ export async function GET(request) {
         // Calculate scores for each member and update league_members
         const scoreUpdates = await Promise.all(
           (members || []).map(async (member) => {
-            // Get garage cars with auction data
-            const { data: garageCars } = await supabase
-              .from('garage_cars')
-              .select(`
-                purchase_price,
-                auctions!garage_cars_auction_id_fkey (
-                  auction_id,
-                  current_bid,
-                  final_price,
-                  timestamp_end
-                )
-              `)
+            // First, get the user's garage for this league
+            const { data: garage } = await supabase
+              .from('garages')
+              .select('id')
+              .eq('user_id', member.user_id)
               .eq('league_id', league.id)
-              .eq('user_id', member.user_id);
+              .maybeSingle();
+
+            let garageCars = [];
+            if (garage) {
+              // Get garage cars with auction data
+              const { data: cars } = await supabase
+                .from('garage_cars')
+                .select(`
+                  purchase_price,
+                  auctions!garage_cars_auction_id_fkey (
+                    auction_id,
+                    current_bid,
+                    final_price,
+                    timestamp_end
+                  )
+                `)
+                .eq('garage_id', garage.id);
+
+              garageCars = cars || [];
+            }
 
             let totalPercentGain = 0;
             let totalSpent = 0;
