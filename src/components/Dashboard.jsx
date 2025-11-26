@@ -9,6 +9,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
   const [userStats, setUserStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [recalculating, setRecalculating] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState('');
 
   useEffect(() => {
     if (selectedLeague && user) {
@@ -74,6 +75,49 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
     await fetchDashboardStats();
     setRecalculating(false);
   }
+
+  // Calculate time remaining until draft ends
+  const calculateTimeLeft = (endTime) => {
+    if (!endTime) return null;
+    const now = new Date();
+    const end = new Date(endTime);
+    const diff = +end - +now;
+
+    if (diff <= 0) return { ended: true, text: 'Draft Ended' };
+
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    const minutes = Math.floor((diff % 3600000) / 60000);
+
+    let text = '';
+    if (days > 0) {
+      text = `${days} day${days !== 1 ? 's' : ''}, ${hours} hour${hours !== 1 ? 's' : ''}`;
+    } else if (hours > 0) {
+      text = `${hours} hour${hours !== 1 ? 's' : ''}, ${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    } else {
+      text = `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    }
+
+    return { ended: false, text, days, hours, minutes };
+  };
+
+  // Update time remaining every minute
+  useEffect(() => {
+    if (!selectedLeague?.draft_ends_at) {
+      setTimeRemaining(null);
+      return;
+    }
+
+    const updateTime = () => {
+      const result = calculateTimeLeft(selectedLeague.draft_ends_at);
+      setTimeRemaining(result);
+    };
+
+    updateTime(); // Initial update
+    const interval = setInterval(updateTime, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, [selectedLeague]);
 
   if (loading && !userStats) {
     return (
@@ -161,6 +205,61 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
             </button>
           </div>
         </div>
+
+        {/* Time Remaining Banner */}
+        {timeRemaining && (
+          <div className={`mb-6 rounded-lg p-4 border-2 ${
+            timeRemaining.ended
+              ? 'bg-red-900/20 border-red-500'
+              : timeRemaining.days === 0 && timeRemaining.hours < 6
+              ? 'bg-orange-900/20 border-orange-500'
+              : 'bg-blue-900/20 border-blue-500'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0">
+                  <svg className={`w-8 h-8 ${
+                    timeRemaining.ended
+                      ? 'text-red-400'
+                      : timeRemaining.days === 0 && timeRemaining.hours < 6
+                      ? 'text-orange-400'
+                      : 'text-blue-400'
+                  }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className={`text-lg font-bold ${
+                    timeRemaining.ended
+                      ? 'text-red-300'
+                      : timeRemaining.days === 0 && timeRemaining.hours < 6
+                      ? 'text-orange-300'
+                      : 'text-blue-300'
+                  }`}>
+                    {timeRemaining.ended ? 'Draft Period Closed' : 'Draft Time Remaining'}
+                  </h3>
+                  <p className="text-bpCream text-xl font-bold">
+                    {timeRemaining.text}
+                  </p>
+                </div>
+              </div>
+              {!timeRemaining.ended && (
+                <div className="text-right">
+                  <p className="text-sm text-bpGray">Draft closes at</p>
+                  <p className="text-bpCream font-medium">
+                    {new Date(selectedLeague.draft_ends_at).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true
+                    })}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* League Tabs */}
         {leagues.length > 1 && (
