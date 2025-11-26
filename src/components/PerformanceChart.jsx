@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
+import { calculateUserScore, calculateLeagueStats } from '../utils/scoreCalculation';
 
 export default function PerformanceChart({ supabase, leagueId, userId }) {
   const [chartData, setChartData] = useState([]);
@@ -24,42 +25,69 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
 
       if (error) throw error;
 
-      // Get top 3 users by current rank
-      const { data: topUsersData } = await supabase
-        .from('league_members')
-        .select('user_id, users(username)')
-        .eq('league_id', leagueId)
-        .order('total_score', { ascending: false })
-        .limit(3);
+      // If there's no historical data, create a current snapshot using real-time calculations
+      if (!history || history.length === 0) {
+        // Calculate current league stats
+        const leagueStats = await calculateLeagueStats(supabase, leagueId);
+        const userScore = await calculateUserScore(supabase, userId, leagueId);
 
-      // Format data for charting
-      const timestamps = [...new Set(history?.map(h => h.timestamp) || [])].sort();
+        // Create a single data point with current time
+        const now = new Date().toISOString();
+        const currentPoint = {
+          timestamp: now,
+          yourGain: userScore.totalPercentGain
+        };
 
-      const formattedData = timestamps.map(timestamp => {
-        const point = { timestamp };
-
-        // Get user's data at this timestamp
-        const userPoint = history?.find(h =>
-          h.timestamp === timestamp && h.user_id === userId
-        );
-        point.yourGain = userPoint?.cumulative_gain || 0;
-
-        // Get top 3 users' data
-        topUsersData?.forEach((user, index) => {
-          const userHistory = history?.find(h =>
-            h.timestamp === timestamp && h.user_id === user.user_id
-          );
-          point[`top${index + 1}`] = userHistory?.cumulative_gain || 0;
+        // Add top 3 players' scores
+        const topThree = leagueStats.scores.slice(0, 3);
+        topThree.forEach((user, index) => {
+          currentPoint[`top${index + 1}`] = user.totalScore;
         });
 
-        return point;
-      });
+        setChartData([currentPoint]);
+        setTopUsers(topThree.map(u => ({
+          userId: u.userId,
+          username: u.username
+        })));
+      } else {
+        // Use historical data if available
+        // Get top 3 users by current rank
+        const { data: topUsersData } = await supabase
+          .from('league_members')
+          .select('user_id, users(username)')
+          .eq('league_id', leagueId)
+          .order('total_score', { ascending: false })
+          .limit(3);
 
-      setChartData(formattedData);
-      setTopUsers(topUsersData?.map(u => ({
-        userId: u.user_id,
-        username: u.users?.username
-      })) || []);
+        // Format data for charting
+        const timestamps = [...new Set(history.map(h => h.timestamp))].sort();
+
+        const formattedData = timestamps.map(timestamp => {
+          const point = { timestamp };
+
+          // Get user's data at this timestamp
+          const userPoint = history.find(h =>
+            h.timestamp === timestamp && h.user_id === userId
+          );
+          point.yourGain = userPoint?.cumulative_gain || 0;
+
+          // Get top 3 users' data
+          topUsersData?.forEach((user, index) => {
+            const userHistory = history.find(h =>
+              h.timestamp === timestamp && h.user_id === user.user_id
+            );
+            point[`top${index + 1}`] = userHistory?.cumulative_gain || 0;
+          });
+
+          return point;
+        });
+
+        setChartData(formattedData);
+        setTopUsers(topUsersData?.map(u => ({
+          userId: u.user_id,
+          username: u.users?.username
+        })) || []);
+      }
     } catch (error) {
       console.error('Failed to fetch performance data:', error);
     } finally {

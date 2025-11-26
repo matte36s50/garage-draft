@@ -1,6 +1,39 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
+/**
+ * PERFORMANCE TRACKING API ENDPOINT
+ *
+ * ⚠️ IMPORTANT: This endpoint is OPTIONAL for dashboard functionality!
+ *
+ * The dashboard works perfectly fine WITHOUT this endpoint running periodically:
+ * ✅ Leaderboard shows real-time scores
+ * ✅ All metrics display current data
+ * ✅ Performance chart shows current snapshot
+ *
+ * This endpoint provides ENHANCED features when run periodically:
+ * 📊 Performance chart with time-series data (trends over time)
+ * 📈 Rank change indicators (up/down arrows on leaderboard)
+ * 💾 Historical score backups in database
+ *
+ * HOW TO USE (since Vercel Cron isn't available):
+ *
+ * Option 1: Manual Trigger
+ * - Call this endpoint manually whenever you want to capture a snapshot
+ * - URL: https://your-domain.vercel.app/api/cron/update-performance
+ * - Add ?secret=YOUR_CRON_SECRET if you set CRON_SECRET env variable
+ *
+ * Option 2: External Cron Service (Recommended for automation)
+ * - Use a free service like cron-job.org, EasyCron, or GitHub Actions
+ * - Schedule: Every hour (0 * * * *) or as desired
+ * - URL: https://your-domain.vercel.app/api/cron/update-performance?secret=YOUR_SECRET
+ * - Set CRON_SECRET in Vercel environment variables for security
+ *
+ * Option 3: Accept Limitations
+ * - Simply don't run this endpoint
+ * - Dashboard will work fine, just without historical trends
+ */
+
 // Create supabase client with service role key for cron job
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -8,22 +41,6 @@ const supabase = createClient(
 );
 
 export async function GET(request) {
-  /**
-   * HYBRID APPROACH - CRON JOB PURPOSE:
-   *
-   * This cron job runs periodically to:
-   * 1. Calculate and store scores in league_members.total_score (for historical tracking)
-   * 2. Update ranks and rank_change (to track position changes over time)
-   * 3. Create performance_history snapshots (for the performance chart)
-   *
-   * The Dashboard now calculates scores in REAL-TIME using the same logic,
-   * so users don't need to wait for this cron job to see their current stats.
-   *
-   * This job provides the historical data needed for:
-   * - Performance chart (time-series data)
-   * - Rank change tracking (up/down arrows)
-   * - Database backup of scores
-   */
 
   // Verify cron secret for security (optional but recommended)
   // Support both Authorization header and query parameter for external cron services
