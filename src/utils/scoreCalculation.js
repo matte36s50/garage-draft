@@ -38,10 +38,15 @@ export async function calculateUserScore(supabase, userId, leagueId) {
     let totalSpent = 0;
     const carsData = [];
 
+    console.log(`[Score Calc] Found ${garageCars?.length || 0} garage cars for user ${userId} in league ${leagueId}`);
+
     if (garageCars && garageCars.length > 0) {
-      garageCars.forEach(car => {
+      garageCars.forEach((car, index) => {
         const auction = car.auctions;
-        if (!auction) return;
+        if (!auction) {
+          console.log(`[Score Calc] Car ${index}: No auction data found`);
+          return;
+        }
 
         const purchasePrice = parseFloat(car.purchase_price);
         const currentPrice = auction.final_price
@@ -56,10 +61,20 @@ export async function calculateUserScore(supabase, userId, leagueId) {
 
         if (reserveNotMet) {
           effectivePrice = currentPrice * 0.25;
+          console.log(`[Score Calc] Car ${index}: Reserve not met, applying 25% penalty`);
         }
 
         const percentGain = ((effectivePrice - purchasePrice) / purchasePrice) * 100;
         const dollarGain = effectivePrice - purchasePrice;
+
+        console.log(`[Score Calc] Car ${index} (${auction.title}):`, {
+          purchasePrice,
+          currentPrice,
+          effectivePrice,
+          percentGain: percentGain.toFixed(2) + '%',
+          dollarGain,
+          reserveNotMet
+        });
 
         totalPercentGain += percentGain;
         totalDollarGain += dollarGain;
@@ -83,6 +98,7 @@ export async function calculateUserScore(supabase, userId, leagueId) {
     // Get bonus car score
     const bonusScore = await calculateBonusCarScore(supabase, userId, leagueId);
     if (bonusScore) {
+      console.log(`[Score Calc] Bonus car score: +${bonusScore.bonusPoints} points`);
       totalPercentGain += bonusScore.bonusPoints;
     }
 
@@ -92,6 +108,13 @@ export async function calculateUserScore(supabase, userId, leagueId) {
 
     // Sort cars by percent gain to find best performer
     carsData.sort((a, b) => b.percentGain - a.percentGain);
+
+    console.log(`[Score Calc] Final results:`, {
+      totalPercentGain: totalPercentGain.toFixed(2) + '%',
+      totalDollarGain: totalDollarGain.toFixed(2),
+      carsCount,
+      avgPercentPerCar: avgPercentPerCar.toFixed(2) + '%'
+    });
 
     return {
       totalPercentGain: parseFloat(totalPercentGain.toFixed(2)),

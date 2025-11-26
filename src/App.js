@@ -203,15 +203,6 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
           </nav>
 
           <div className="flex items-center gap-4">
-            {(currentScreen === 'dashboard' || currentScreen === 'garage' || currentScreen === 'cars' || currentScreen === 'leaderboard') && lastUpdated && (
-              <ConnectionStatus
-                lastUpdated={lastUpdated}
-                connectionStatus={connectionStatus}
-                onRefresh={handleRefresh}
-                isRefreshing={isManualRefreshing}
-              />
-            )}
-
             {onSignOut && (
               <button
                 onClick={onSignOut}
