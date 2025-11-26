@@ -86,41 +86,79 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
     }
 
     console.log('[League Time] Fetching end time for league:', selectedLeague.id, selectedLeague.name);
+    console.log('[League Time] League type:', selectedLeague.use_manual_auctions ? 'Manual' : 'Auto (4-5 day window)');
 
     try {
-      // Get all auctions for this league from league_auctions table
-      const { data: leagueAuctions, error } = await supabase
-        .from('league_auctions')
-        .select('auction_id, auctions(timestamp_end)')
-        .eq('league_id', selectedLeague.id);
-
-      console.log('[League Time] Query result:', {
-        count: leagueAuctions?.length || 0,
-        error: error?.message,
-        sample: leagueAuctions?.[0]
-      });
-
-      if (error) {
-        console.error('[League Time] Error fetching league auctions:', error);
-        return;
-      }
-
-      if (!leagueAuctions || leagueAuctions.length === 0) {
-        console.warn('[League Time] No auctions found in league_auctions table for league:', selectedLeague.id);
-        setLeagueEndTime(null);
-        return;
-      }
-
-      // Find the auction with the maximum timestamp_end
       let maxEndTime = 0;
-      leagueAuctions.forEach(la => {
-        if (la.auctions?.timestamp_end) {
-          const endTime = la.auctions.timestamp_end;
-          if (endTime > maxEndTime) {
+
+      if (selectedLeague.use_manual_auctions) {
+        // Manual league: Get auctions from league_auctions table
+        const { data: leagueAuctions, error } = await supabase
+          .from('league_auctions')
+          .select('auction_id, custom_end_date, auctions(timestamp_end)')
+          .eq('league_id', selectedLeague.id);
+
+        console.log('[League Time] Manual league - Query result:', {
+          count: leagueAuctions?.length || 0,
+          error: error?.message,
+          sample: leagueAuctions?.[0]
+        });
+
+        if (error) {
+          console.error('[League Time] Error fetching league auctions:', error);
+          return;
+        }
+
+        if (!leagueAuctions || leagueAuctions.length === 0) {
+          console.warn('[League Time] No auctions found in league_auctions table for league:', selectedLeague.id);
+          setLeagueEndTime(null);
+          return;
+        }
+
+        // Find the auction with the maximum end time (use custom_end_date if set, otherwise use auction's timestamp_end)
+        leagueAuctions.forEach(la => {
+          const endTime = la.custom_end_date || la.auctions?.timestamp_end;
+          if (endTime && endTime > maxEndTime) {
             maxEndTime = endTime;
           }
+        });
+      } else {
+        // Auto league: Get auctions from the 4-5 day window
+        const now = Math.floor(Date.now() / 1000);
+        const fourDaysInSeconds = 4 * 24 * 60 * 60;
+        const fiveDaysInSeconds = 5 * 24 * 60 * 60;
+        const minEndTime = now + fourDaysInSeconds;
+        const maxEndTimeWindow = now + fiveDaysInSeconds;
+
+        const { data: auctions, error } = await supabase
+          .from('auctions')
+          .select('timestamp_end')
+          .gte('timestamp_end', minEndTime)
+          .lte('timestamp_end', maxEndTimeWindow)
+          .not('price_at_48h', 'is', null)
+          .is('final_price', null)
+          .order('timestamp_end', { ascending: false })
+          .limit(1);
+
+        console.log('[League Time] Auto league - Query result:', {
+          count: auctions?.length || 0,
+          error: error?.message,
+          maxEndTime: auctions?.[0]?.timestamp_end
+        });
+
+        if (error) {
+          console.error('[League Time] Error fetching auctions:', error);
+          return;
         }
-      });
+
+        if (!auctions || auctions.length === 0) {
+          console.warn('[League Time] No auctions found in 4-5 day window');
+          setLeagueEndTime(null);
+          return;
+        }
+
+        maxEndTime = auctions[0].timestamp_end;
+      }
 
       console.log('[League Time] Max end time found:', maxEndTime, maxEndTime > 0 ? new Date(maxEndTime * 1000) : 'none');
 
@@ -130,7 +168,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
         console.log('[League Time] Setting league end time to:', endDate);
         setLeagueEndTime(endDate);
       } else {
-        console.warn('[League Time] No valid timestamp_end found in auctions');
+        console.warn('[League Time] No valid timestamp_end found');
         setLeagueEndTime(null);
       }
     } catch (error) {
