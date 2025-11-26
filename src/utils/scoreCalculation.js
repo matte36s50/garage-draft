@@ -12,6 +12,30 @@
  */
 export async function calculateUserScore(supabase, userId, leagueId) {
   try {
+    // First, get the user's garage for this league
+    const { data: garage, error: garageError } = await supabase
+      .from('garages')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('league_id', leagueId)
+      .maybeSingle();
+
+    if (garageError) throw garageError;
+    if (!garage) {
+      console.log(`[Score Calc] No garage found for user ${userId} in league ${leagueId}`);
+      return {
+        totalPercentGain: 0,
+        totalDollarGain: 0,
+        bonusScore: null,
+        carsCount: 0,
+        totalSpent: 0,
+        avgPercentPerCar: 0,
+        carsData: [],
+        bestCar: null,
+        worstCar: null
+      };
+    }
+
     // Get garage cars with auction data
     const { data: garageCars, error: carsError } = await supabase
       .from('garage_cars')
@@ -27,8 +51,7 @@ export async function calculateUserScore(supabase, userId, leagueId) {
           image_url
         )
       `)
-      .eq('league_id', leagueId)
-      .eq('user_id', userId);
+      .eq('garage_id', garage.id);
 
     if (carsError) throw carsError;
 
