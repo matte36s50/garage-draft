@@ -185,7 +185,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
 
         {/* Stats Overview */}
         <div className="mb-6">
-          <StatsCards stats={userStats} />
+          <StatsCards stats={userStats} spendingLimit={selectedLeague?.spending_limit || 200000} />
         </div>
 
         {/* Best Performing Car Showcase */}
