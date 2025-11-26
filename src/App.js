@@ -7,6 +7,7 @@ const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
 const supabase = createClient(supabaseUrl, supabaseKey)
 const STORAGE_KEY = 'bixprix_selected_league'
+const SCREEN_STORAGE_KEY = 'bixprix_current_screen'
 
 function saveSelectedLeague(league) {
   if (league) {
@@ -20,6 +21,22 @@ function loadSelectedLeague() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     return stored ? JSON.parse(stored) : null
+  } catch {
+    return null
+  }
+}
+
+function saveCurrentScreen(screen) {
+  if (screen) {
+    localStorage.setItem(SCREEN_STORAGE_KEY, screen)
+  } else {
+    localStorage.removeItem(SCREEN_STORAGE_KEY)
+  }
+}
+
+function loadCurrentScreen() {
+  try {
+    return localStorage.getItem(SCREEN_STORAGE_KEY) || null
   } catch {
     return null
   }
@@ -143,7 +160,15 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
     <div className="min-h-screen bg-bpNavy text-bpCream">
       <header className="sticky top-0 z-40 bg-bpNavy border-b border-white/10">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-          <BrandLogo />
+          <div className="flex items-center gap-4">
+            <BrandLogo />
+            {selectedLeague && (
+              <div className="hidden md:flex items-center gap-2 text-xs px-3 py-1.5 bg-bpGold/10 border border-bpGold/30 rounded-full">
+                <Trophy size={14} className="text-bpGold" />
+                <span className="text-bpCream/90 font-medium">{selectedLeague.name}</span>
+              </div>
+            )}
+          </div>
           <nav className="hidden sm:flex items-center gap-6 text-sm">
             <button
               className={`hover:text-bpCream/90 transition ${currentScreen === 'dashboard' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
@@ -169,18 +194,24 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
             >
               Leaderboard
             </button>
+            <button
+              className={`hover:text-bpCream/90 transition ${currentScreen === 'leagues' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
+              onClick={() => onNavigate && onNavigate('leagues')}
+            >
+              Leagues
+            </button>
           </nav>
-          
+
           <div className="flex items-center gap-4">
             {(currentScreen === 'dashboard' || currentScreen === 'garage' || currentScreen === 'cars' || currentScreen === 'leaderboard') && lastUpdated && (
-              <ConnectionStatus 
+              <ConnectionStatus
                 lastUpdated={lastUpdated}
                 connectionStatus={connectionStatus}
                 onRefresh={handleRefresh}
                 isRefreshing={isManualRefreshing}
               />
             )}
-            
+
             {onSignOut && (
               <button
                 onClick={onSignOut}
@@ -251,7 +282,7 @@ function LightButton({ className = '', children, ...props }) {
 }
 
 export default function BixPrixApp() {
-  const [currentScreen, setCurrentScreen] = useState('landing')
+  const [currentScreen, setCurrentScreen] = useState(() => loadCurrentScreen() || 'landing')
   const [user, setUser] = useState(null)
   const [selectedLeague, setSelectedLeague] = useState(null)
   const [garage, setGarage] = useState([])
@@ -267,6 +298,12 @@ export default function BixPrixApp() {
   const [connectionStatus, setConnectionStatus] = useState('connected')
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [recentUpdates, setRecentUpdates] = useState([])
+
+  const updateCurrentScreen = (screen) => {
+    setCurrentScreen(screen)
+    saveCurrentScreen(screen)
+  }
+
   const updateSelectedLeague = (league) => {
     setSelectedLeague(league)
     saveSelectedLeague(league)
@@ -678,7 +715,7 @@ export default function BixPrixApp() {
         await fetchAuctions()
         await fetchBonusCar(league.id)
         await fetchUserPrediction(league.id)
-        setCurrentScreen('cars')
+        updateCurrentScreen('dashboard')
         return
       }
       
@@ -700,11 +737,11 @@ export default function BixPrixApp() {
       setUserGarageId(g.id)
       setBudget(175000)
       setGarage([])
-      
+
       await fetchAuctions()
       await fetchBonusCar(league.id)
       await fetchUserPrediction(league.id)
-      setCurrentScreen('cars')
+      updateCurrentScreen('dashboard')
       
     } catch (error) {
       console.error('Error joining league:', error)
@@ -763,17 +800,35 @@ export default function BixPrixApp() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session }}) => {
-      if (session) { 
+      if (session) {
         setUser(session.user)
-        setCurrentScreen('leagues')
+        // Smart navigation: go to dashboard if user has a saved league, otherwise leagues
+        const savedLeague = loadSelectedLeague()
+        const savedScreen = loadCurrentScreen()
+        if (savedLeague && savedScreen && savedScreen !== 'landing' && savedScreen !== 'login') {
+          // User has a league and was on a valid screen, restore that screen
+          updateCurrentScreen(savedScreen)
+        } else if (savedLeague) {
+          // User has a league but no saved screen, go to dashboard
+          updateCurrentScreen('dashboard')
+        } else {
+          // No saved league, go to leagues selection
+          updateCurrentScreen('leagues')
+        }
       }
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setUser(session?.user || null)
       if (session) {
-        setCurrentScreen('leagues')
+        // Smart navigation on auth change
+        const savedLeague = loadSelectedLeague()
+        if (savedLeague) {
+          updateCurrentScreen('dashboard')
+        } else {
+          updateCurrentScreen('leagues')
+        }
       } else {
-        setCurrentScreen('landing')
+        updateCurrentScreen('landing')
       }
     })
     return () => subscription.unsubscribe()
@@ -1105,18 +1160,18 @@ export default function BixPrixApp() {
       // Log them in directly
       if (data.session) {
         setUser(data.user)
-        setCurrentScreen('leagues')
+        updateCurrentScreen('leagues')
       } else if (data.user && !data.session) {
         // Email verification is required - inform user
         alert('Check your email for verification link!')
       }
     }
-    
+
     const signIn = async () => {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) return alert('Error signing in: '+error.message)
       setUser(data.user)
-      setCurrentScreen('leagues')
+      updateCurrentScreen('leagues')
     }
 
     return (
@@ -2213,13 +2268,13 @@ export default function BixPrixApp() {
     )
   }
 
-  if (currentScreen === 'landing') return <LandingScreen onGetStarted={() => setCurrentScreen('login')} />
+  if (currentScreen === 'landing') return <LandingScreen onGetStarted={() => updateCurrentScreen('login')} />
   if (!user) return <LoginScreen />
-  if (currentScreen === 'leagues') return <LeaguesScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
+  if (currentScreen === 'leagues') return <LeaguesScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
   if (currentScreen === 'dashboard') return (
     <Shell
       onSignOut={() => supabase.auth.signOut()}
-      onNavigate={setCurrentScreen}
+      onNavigate={updateCurrentScreen}
       currentScreen={currentScreen}
       lastUpdated={lastUpdated}
       connectionStatus={connectionStatus}
@@ -2233,12 +2288,12 @@ export default function BixPrixApp() {
         leagues={leagues}
         selectedLeague={selectedLeague}
         onLeagueChange={updateSelectedLeague}
-        onNavigate={setCurrentScreen}
+        onNavigate={updateCurrentScreen}
       />
     </Shell>
   )
-  if (currentScreen === 'cars') return <CarsScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
-  if (currentScreen === 'garage') return <GarageScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
-  if (currentScreen === 'leaderboard') return <LeaderboardScreen onNavigate={setCurrentScreen} currentScreen={currentScreen} />
+  if (currentScreen === 'cars') return <CarsScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
+  if (currentScreen === 'garage') return <GarageScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
+  if (currentScreen === 'leaderboard') return <LeaderboardScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
   return null
 }
