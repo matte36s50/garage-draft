@@ -80,9 +80,12 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
   // Fetch the end time of the last auction in the league
   async function fetchLeagueEndTime() {
     if (!selectedLeague?.id) {
+      console.log('[League Time] No selected league');
       setLeagueEndTime(null);
       return;
     }
+
+    console.log('[League Time] Fetching end time for league:', selectedLeague.id, selectedLeague.name);
 
     try {
       // Get all auctions for this league from league_auctions table
@@ -91,12 +94,19 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
         .select('auction_id, auctions(timestamp_end)')
         .eq('league_id', selectedLeague.id);
 
+      console.log('[League Time] Query result:', {
+        count: leagueAuctions?.length || 0,
+        error: error?.message,
+        sample: leagueAuctions?.[0]
+      });
+
       if (error) {
-        console.error('Error fetching league auctions:', error);
+        console.error('[League Time] Error fetching league auctions:', error);
         return;
       }
 
       if (!leagueAuctions || leagueAuctions.length === 0) {
+        console.warn('[League Time] No auctions found in league_auctions table for league:', selectedLeague.id);
         setLeagueEndTime(null);
         return;
       }
@@ -112,14 +122,19 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
         }
       });
 
+      console.log('[League Time] Max end time found:', maxEndTime, maxEndTime > 0 ? new Date(maxEndTime * 1000) : 'none');
+
       if (maxEndTime > 0) {
         // Convert Unix timestamp (seconds) to Date object
-        setLeagueEndTime(new Date(maxEndTime * 1000));
+        const endDate = new Date(maxEndTime * 1000);
+        console.log('[League Time] Setting league end time to:', endDate);
+        setLeagueEndTime(endDate);
       } else {
+        console.warn('[League Time] No valid timestamp_end found in auctions');
         setLeagueEndTime(null);
       }
     } catch (error) {
-      console.error('Error fetching league end time:', error);
+      console.error('[League Time] Error fetching league end time:', error);
     }
   }
 
@@ -158,12 +173,14 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
   // Update time remaining every minute
   useEffect(() => {
     if (!leagueEndTime) {
+      console.log('[League Time] No league end time set, hiding time remaining display');
       setTimeRemaining(null);
       return;
     }
 
     const updateTime = () => {
       const result = calculateTimeLeft(leagueEndTime);
+      console.log('[League Time] Updated time remaining:', result);
       setTimeRemaining(result);
     };
 
