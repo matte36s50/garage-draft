@@ -1,13 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+// Helper to create supabase client
+function getSupabaseClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+}
 
 // POST - Log a new activity
 export async function POST(request) {
+  const supabase = getSupabaseClient();
   try {
     const body = await request.json();
     const { leagueId, userId, username, activityType, message, metadata } = body;
@@ -44,6 +48,7 @@ export async function POST(request) {
 
 // GET - Fetch activities for a league
 export async function GET(request) {
+  const supabase = getSupabaseClient();
   try {
     const { searchParams } = new URL(request.url);
     const leagueId = searchParams.get('leagueId');

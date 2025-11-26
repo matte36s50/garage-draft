@@ -34,13 +34,16 @@ import { NextResponse } from 'next/server';
  * - Dashboard will work fine, just without historical trends
  */
 
-// Create supabase client with service role key for cron job
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+// Helper to create supabase client with service role key for cron job
+function getSupabaseClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+}
 
 export async function GET(request) {
+  const supabase = getSupabaseClient();
 
   // Verify cron secret for security (optional but recommended)
   // Support both Authorization header and query parameter for external cron services
