@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import { calculateUserScore } from '../utils/scoreCalculation';
 
 export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId }) {
   const [leaderboard, setLeaderboard] = useState([]);
@@ -17,53 +18,56 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
 
   async function fetchLeaderboard() {
     try {
-      // Get all league members with their stats
+      // Get all league members
       const { data: members, error } = await supabase
         .from('league_members')
         .select(`
           user_id,
-          total_score,
-          rank,
           rank_change,
           users (
             id,
             username
           )
         `)
-        .eq('league_id', leagueId)
-        .order('total_score', { ascending: false });
+        .eq('league_id', leagueId);
 
       if (error) throw error;
 
-      // Get garage info for each member
-      const membersWithGarages = await Promise.all(
-        (members || []).map(async (member, index) => {
-          const { data: garageCars } = await supabase
-            .from('garage_cars')
-            .select('purchase_price')
-            .eq('league_id', leagueId)
-            .eq('user_id', member.user_id);
+      // Get league spending limit for qualification check
+      const { data: league } = await supabase
+        .from('leagues')
+        .select('spending_limit')
+        .eq('id', leagueId)
+        .single();
 
-          const totalSpent = garageCars?.reduce((sum, car) =>
-            sum + (car.purchase_price || 0), 0
-          ) || 0;
+      const spendingLimit = league?.spending_limit || 200000;
+      const minimumSpend = spendingLimit * 0.5; // 50% of spending limit
 
-          const carCount = garageCars?.length || 0;
+      // Calculate real-time scores for each member
+      const membersWithScores = await Promise.all(
+        (members || []).map(async (member) => {
+          const score = await calculateUserScore(supabase, member.user_id, leagueId);
 
           return {
             userId: member.user_id,
             username: member.users?.username || 'Anonymous',
-            totalScore: member.total_score || 0,
-            rank: member.rank || index + 1,
+            totalScore: score.totalPercentGain,
             rankChange: member.rank_change || 0,
-            totalSpent,
-            carCount,
-            qualifies: totalSpent >= 100000
+            totalSpent: score.totalSpent,
+            carCount: score.carsCount,
+            qualifies: score.totalSpent >= minimumSpend
           };
         })
       );
 
-      setLeaderboard(membersWithGarages);
+      // Sort by total score descending and assign ranks
+      membersWithScores.sort((a, b) => b.totalScore - a.totalScore);
+      const rankedMembers = membersWithScores.map((member, index) => ({
+        ...member,
+        rank: index + 1
+      }));
+
+      setLeaderboard(rankedMembers);
     } catch (error) {
       console.error('Failed to fetch leaderboard:', error);
     } finally {
