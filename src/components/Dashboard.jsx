@@ -123,13 +123,14 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
           }
         });
       } else {
-        // Auto league: Get auctions from league_auctions table for this specific league
+        // Auto league: Get auctions from the 4-5 day window for THIS league only
+        // Query league_auctions to get the specific auctions assigned to this league
         const { data: leagueAuctions, error } = await supabase
           .from('league_auctions')
           .select('auction_id, auctions(timestamp_end)')
           .eq('league_id', selectedLeague.id);
 
-        console.log('[League Time] Auto league - Query result:', {
+        console.log('[League Time] Auto league - Query result from league_auctions:', {
           count: leagueAuctions?.length || 0,
           error: error?.message,
           sample: leagueAuctions?.[0]
@@ -140,19 +141,52 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
           return;
         }
 
-        if (!leagueAuctions || leagueAuctions.length === 0) {
-          console.warn('[League Time] No auctions found in league_auctions table for league:', selectedLeague.id);
-          setLeagueEndTime(null);
-          return;
-        }
+        if (leagueAuctions && leagueAuctions.length > 0) {
+          // League has specific auctions assigned - use those
+          leagueAuctions.forEach(la => {
+            const endTime = la.auctions?.timestamp_end;
+            if (endTime && endTime > maxEndTime) {
+              maxEndTime = endTime;
+            }
+          });
+        } else {
+          // No specific auctions assigned - fall back to 4-5 day window
+          console.log('[League Time] No league-specific auctions, falling back to 4-5 day window');
+          const now = Math.floor(Date.now() / 1000);
+          const fourDaysInSeconds = 4 * 24 * 60 * 60;
+          const fiveDaysInSeconds = 5 * 24 * 60 * 60;
+          const minEndTime = now + fourDaysInSeconds;
+          const maxEndTimeWindow = now + fiveDaysInSeconds;
 
-        // Find the auction with the maximum end time
-        leagueAuctions.forEach(la => {
-          const endTime = la.auctions?.timestamp_end;
-          if (endTime && endTime > maxEndTime) {
-            maxEndTime = endTime;
+          const { data: auctions, error: auctionsError } = await supabase
+            .from('auctions')
+            .select('timestamp_end')
+            .gte('timestamp_end', minEndTime)
+            .lte('timestamp_end', maxEndTimeWindow)
+            .not('price_at_48h', 'is', null)
+            .is('final_price', null)
+            .order('timestamp_end', { ascending: false })
+            .limit(1);
+
+          console.log('[League Time] 4-5 day window query result:', {
+            count: auctions?.length || 0,
+            error: auctionsError?.message,
+            maxEndTime: auctions?.[0]?.timestamp_end
+          });
+
+          if (auctionsError) {
+            console.error('[League Time] Error fetching auctions from 4-5 day window:', auctionsError);
+            return;
           }
-        });
+
+          if (auctions && auctions.length > 0) {
+            maxEndTime = auctions[0].timestamp_end;
+          } else {
+            console.warn('[League Time] No auctions found in 4-5 day window');
+            setLeagueEndTime(null);
+            return;
+          }
+        }
       }
 
       console.log('[League Time] Max end time found:', maxEndTime, maxEndTime > 0 ? new Date(maxEndTime * 1000) : 'none');
