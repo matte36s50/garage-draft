@@ -150,13 +150,23 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
             }
           });
         } else {
-          // No specific auctions assigned - fall back to 4-5 day window
-          console.log('[League Time] No league-specific auctions, falling back to 4-5 day window');
-          const now = Math.floor(Date.now() / 1000);
+          // No specific auctions assigned - fall back to 4-5 day window FROM LEAGUE START
+          console.log('[League Time] No league-specific auctions, falling back to 4-5 day window from league start');
+          // Use league's draft start time as the reference point (not current time)
+          // This ensures the window doesn't shift as time passes
+          const leagueStartTime = selectedLeague.draft_starts_at
+            ? Math.floor(new Date(selectedLeague.draft_starts_at).getTime() / 1000)
+            : Math.floor(Date.now() / 1000);
           const fourDaysInSeconds = 4 * 24 * 60 * 60;
           const fiveDaysInSeconds = 5 * 24 * 60 * 60;
-          const minEndTime = now + fourDaysInSeconds;
-          const maxEndTimeWindow = now + fiveDaysInSeconds;
+          const minEndTime = leagueStartTime + fourDaysInSeconds;
+          const maxEndTimeWindow = leagueStartTime + fiveDaysInSeconds;
+
+          console.log('[League Time] Using fixed window from league start:', {
+            leagueStartTime: new Date(leagueStartTime * 1000),
+            minEndTime: new Date(minEndTime * 1000),
+            maxEndTime: new Date(maxEndTimeWindow * 1000)
+          });
 
           const { data: auctions, error: auctionsError } = await supabase
             .from('auctions')
