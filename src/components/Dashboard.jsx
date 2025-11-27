@@ -123,41 +123,36 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
           }
         });
       } else {
-        // Auto league: Get auctions from the 4-5 day window
-        const now = Math.floor(Date.now() / 1000);
-        const fourDaysInSeconds = 4 * 24 * 60 * 60;
-        const fiveDaysInSeconds = 5 * 24 * 60 * 60;
-        const minEndTime = now + fourDaysInSeconds;
-        const maxEndTimeWindow = now + fiveDaysInSeconds;
-
-        const { data: auctions, error } = await supabase
-          .from('auctions')
-          .select('timestamp_end')
-          .gte('timestamp_end', minEndTime)
-          .lte('timestamp_end', maxEndTimeWindow)
-          .not('price_at_48h', 'is', null)
-          .is('final_price', null)
-          .order('timestamp_end', { ascending: false })
-          .limit(1);
+        // Auto league: Get auctions from league_auctions table for this specific league
+        const { data: leagueAuctions, error } = await supabase
+          .from('league_auctions')
+          .select('auction_id, auctions(timestamp_end)')
+          .eq('league_id', selectedLeague.id);
 
         console.log('[League Time] Auto league - Query result:', {
-          count: auctions?.length || 0,
+          count: leagueAuctions?.length || 0,
           error: error?.message,
-          maxEndTime: auctions?.[0]?.timestamp_end
+          sample: leagueAuctions?.[0]
         });
 
         if (error) {
-          console.error('[League Time] Error fetching auctions:', error);
+          console.error('[League Time] Error fetching league auctions:', error);
           return;
         }
 
-        if (!auctions || auctions.length === 0) {
-          console.warn('[League Time] No auctions found in 4-5 day window');
+        if (!leagueAuctions || leagueAuctions.length === 0) {
+          console.warn('[League Time] No auctions found in league_auctions table for league:', selectedLeague.id);
           setLeagueEndTime(null);
           return;
         }
 
-        maxEndTime = auctions[0].timestamp_end;
+        // Find the auction with the maximum end time
+        leagueAuctions.forEach(la => {
+          const endTime = la.auctions?.timestamp_end;
+          if (endTime && endTime > maxEndTime) {
+            maxEndTime = endTime;
+          }
+        });
       }
 
       console.log('[League Time] Max end time found:', maxEndTime, maxEndTime > 0 ? new Date(maxEndTime * 1000) : 'none');
