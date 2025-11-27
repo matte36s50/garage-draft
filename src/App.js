@@ -706,7 +706,7 @@ export default function BixPrixApp() {
         await fetchAuctions()
         await fetchBonusCar(league.id)
         await fetchUserPrediction(league.id)
-        updateCurrentScreen('dashboard')
+        updateCurrentScreen('cars')
         return
       }
       
@@ -732,7 +732,7 @@ export default function BixPrixApp() {
       await fetchAuctions()
       await fetchBonusCar(league.id)
       await fetchUserPrediction(league.id)
-      updateCurrentScreen('dashboard')
+      updateCurrentScreen('cars')
       
     } catch (error) {
       console.error('Error joining league:', error)
