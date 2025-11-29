@@ -81,6 +81,10 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
         // Format data for charting
         const timestamps = [...new Set(history.map(h => h.timestamp))].sort();
 
+        // Track last known values to avoid dropping to zero
+        let lastUserGain = 0;
+        const lastTopGains = [0, 0, 0];
+
         const formattedData = timestamps.map(timestamp => {
           const point = { timestamp };
 
@@ -88,14 +92,23 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
           const userPoint = history.find(h =>
             h.timestamp === timestamp && h.user_id === userId
           );
-          point.yourGain = userPoint?.cumulative_gain || 0;
+          // If user has data at this timestamp, use it and update last known value
+          // Otherwise, carry forward the last known value (don't drop to zero)
+          if (userPoint?.cumulative_gain !== null && userPoint?.cumulative_gain !== undefined) {
+            lastUserGain = userPoint.cumulative_gain;
+          }
+          point.yourGain = lastUserGain;
 
           // Get top 3 users' data
           topUsersData?.forEach((user, index) => {
             const userHistory = history.find(h =>
               h.timestamp === timestamp && h.user_id === user.user_id
             );
-            point[`top${index + 1}`] = userHistory?.cumulative_gain || 0;
+            // Carry forward last known value if no data at this timestamp
+            if (userHistory?.cumulative_gain !== null && userHistory?.cumulative_gain !== undefined) {
+              lastTopGains[index] = userHistory.cumulative_gain;
+            }
+            point[`top${index + 1}`] = lastTopGains[index];
           });
 
           return point;

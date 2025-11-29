@@ -539,9 +539,9 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
                 </p>
               </div>
               <div>
-                <p className="text-xs text-bpGray mb-1">Bonus Points</p>
+                <p className="text-xs text-bpGray mb-1">Potential Bonus (2x if winner)</p>
                 <p className="text-lg font-bold text-bpGold">
-                  +{userStats.bonusScore.bonusPoints} pts
+                  +{(userStats.bonusScore.basePercentGain * 2).toFixed(2)}%
                 </p>
               </div>
             </div>
