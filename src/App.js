@@ -576,8 +576,8 @@ export default function BixPrixApp() {
         .select('*')
         .gte('timestamp_end', minEndTime)      // At least 4 days from now
         .lte('timestamp_end', maxEndTime)      // Within 5 days from now
+        .not('price_at_48h', 'is', null)       // Has baseline price
         .is('final_price', null)                // Not sold yet
-        .not('auction_id', 'like', 'manual_%')  // Exclude manual auctions from auto section
         .order('timestamp_end', { ascending: true })
         .limit(100);
 
