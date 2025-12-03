@@ -112,8 +112,8 @@ const AdminPortal = () => {
         .select('*')
         .gte('timestamp_end', minEndTime)
         .lte('timestamp_end', maxEndTime)
-        .not('price_at_48h', 'is', null)
         .is('final_price', null)
+        .not('auction_id', 'like', 'manual_%')  // Exclude manual auctions from BaT section
         .order('timestamp_end', { ascending: true });
 
       if (auctionError) {
@@ -121,7 +121,7 @@ const AdminPortal = () => {
       }
 
       setAuctions(auctionData || []);
-      console.log(`Loaded ${auctionData?.length || 0} auctions in draft window (4-5 days before end)`);
+      console.log(`Loaded ${auctionData?.length || 0} auctions in draft window (4-5 days before end, excluding manual auctions)`);
       
       const { data: userData } = await supabase
         .from('users')
@@ -146,8 +146,8 @@ const AdminPortal = () => {
         .select('*')
         .gte('timestamp_end', minEndTime)    // Must end at least 4 days from now
         .lte('timestamp_end', maxEndTime)    // Must end within 5 days from now
-        .not('price_at_48h', 'is', null)     // Must have day 2 price
         .is('final_price', null)              // Must still be active (not sold)
+        .not('auction_id', 'like', 'manual_%')  // Exclude manual auctions
         .order('timestamp_end', { ascending: false })
         .limit(200);
 
@@ -886,7 +886,7 @@ const AdminPortal = () => {
                   <p className="text-slate-500 text-sm mt-2">
                     {searchTerm
                       ? 'Try a different search term'
-                      : 'Auctions appear here when they are 4-5 days from ending and have a day 2 price'}
+                      : 'Auctions appear here when they are 4-5 days from ending and have not been sold yet'}
                   </p>
                 </div>
               ) : (
