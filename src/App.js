@@ -289,6 +289,7 @@ export default function BixPrixApp() {
   const [connectionStatus, setConnectionStatus] = useState('connected')
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [recentUpdates, setRecentUpdates] = useState([])
+  const [showPasswordReset, setShowPasswordReset] = useState(false)
 
   const updateCurrentScreen = (screen) => {
     setCurrentScreen(screen)
@@ -808,8 +809,15 @@ export default function BixPrixApp() {
         }
       }
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user || null)
+
+      // Handle password recovery flow
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowPasswordReset(true)
+        return
+      }
+
       if (session) {
         // Smart navigation on auth change
         const savedLeague = loadSelectedLeague()
@@ -1134,11 +1142,96 @@ export default function BixPrixApp() {
     )
   }
 
+  function ResetPasswordScreen() {
+    const [newPassword, setNewPassword] = useState('')
+    const [confirmPassword, setConfirmPassword] = useState('')
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [success, setSuccess] = useState(false)
+
+    const handleResetPassword = async () => {
+      if (newPassword.length < 6) {
+        return alert('Password must be at least 6 characters')
+      }
+      if (newPassword !== confirmPassword) {
+        return alert('Passwords do not match')
+      }
+
+      setIsSubmitting(true)
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      setIsSubmitting(false)
+
+      if (error) {
+        return alert('Error updating password: ' + error.message)
+      }
+
+      setSuccess(true)
+      setTimeout(() => {
+        setShowPasswordReset(false)
+        updateCurrentScreen('leagues')
+      }, 2000)
+    }
+
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-bpNavy to-[#0B1220] flex items-center justify-center px-4">
+        <Card className="w-full max-w-md p-8">
+          <div className="flex items-center justify-center mb-6"><BrandLogo /></div>
+          <h1 className="text-xl font-semibold text-bpInk/80 mb-1 text-center">Set New Password</h1>
+          {success ? (
+            <div className="space-y-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                <p className="text-green-700 font-medium">Password updated!</p>
+                <p className="text-green-600 text-sm mt-1">Redirecting you to the app...</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-bpInk/70 text-center mb-4">
+                Enter your new password below.
+              </p>
+              <input
+                className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+                placeholder="New Password"
+                type="password"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+              />
+              <input
+                className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+                placeholder="Confirm Password"
+                type="password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+              />
+              <PrimaryButton
+                className="w-full"
+                onClick={handleResetPassword}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Updating...' : 'Update Password'}
+              </PrimaryButton>
+            </div>
+          )}
+        </Card>
+      </div>
+    )
+  }
+
   function LoginScreen() {
     const [isSignUp, setIsSignUp] = useState(false)
+    const [isForgotPassword, setIsForgotPassword] = useState(false)
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [username, setUsername] = useState('')
+    const [resetSent, setResetSent] = useState(false)
+
+    const resetPassword = async () => {
+      if (!email) return alert('Please enter your email address')
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/?reset=true'
+      })
+      if (error) return alert('Error sending reset email: ' + error.message)
+      setResetSent(true)
+    }
 
     const signUp = async () => {
       const { data, error } = await supabase.auth.signUp({
@@ -1165,6 +1258,54 @@ export default function BixPrixApp() {
       updateCurrentScreen('leagues')
     }
 
+    // Forgot Password View
+    if (isForgotPassword) {
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-bpNavy to-[#0B1220] flex items-center justify-center px-4">
+          <Card className="w-full max-w-md p-8">
+            <div className="flex items-center justify-center mb-6"><BrandLogo /></div>
+            <h1 className="text-xl font-semibold text-bpInk/80 mb-1 text-center">Reset Password</h1>
+            {resetSent ? (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                  <p className="text-green-700 font-medium">Check your email!</p>
+                  <p className="text-green-600 text-sm mt-1">We sent a password reset link to {email}</p>
+                </div>
+                <OutlineButton
+                  className="w-full text-bpInk"
+                  onClick={() => { setIsForgotPassword(false); setResetSent(false); }}
+                >
+                  Back to Sign In
+                </OutlineButton>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-bpInk/70 text-center mb-4">
+                  Enter your email and we'll send you a link to reset your password.
+                </p>
+                <input
+                  className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+                  placeholder="Email"
+                  type="email"
+                  value={email}
+                  onChange={e=>setEmail(e.target.value)}
+                />
+                <PrimaryButton className="w-full" onClick={resetPassword}>
+                  Send Reset Link
+                </PrimaryButton>
+                <OutlineButton
+                  className="w-full text-bpInk"
+                  onClick={() => setIsForgotPassword(false)}
+                >
+                  Back to Sign In
+                </OutlineButton>
+              </div>
+            )}
+          </Card>
+        </div>
+      )
+    }
+
     return (
       <div className="min-h-screen bg-gradient-to-b from-bpNavy to-[#0B1220] flex items-center justify-center px-4">
         <Card className="w-full max-w-md p-8">
@@ -1173,30 +1314,38 @@ export default function BixPrixApp() {
           <p className="text-sm text-bpInk/70 text-center mb-6">Sign in to draft cars and race the market.</p>
           <div className="space-y-3">
             {isSignUp && (
-              <input 
-                className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" 
-                placeholder="Username" 
-                value={username} 
-                onChange={e=>setUsername(e.target.value)} 
+              <input
+                className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+                placeholder="Username"
+                value={username}
+                onChange={e=>setUsername(e.target.value)}
               />
             )}
-            <input 
-              className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" 
-              placeholder="Email" 
-              type="email" 
-              value={email} 
-              onChange={e=>setEmail(e.target.value)} 
+            <input
+              className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={e=>setEmail(e.target.value)}
             />
-            <input 
-              className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" 
-              placeholder="Password" 
-              type="password" 
-              value={password} 
-              onChange={e=>setPassword(e.target.value)} 
+            <input
+              className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+              placeholder="Password"
+              type="password"
+              value={password}
+              onChange={e=>setPassword(e.target.value)}
             />
             <PrimaryButton className="w-full" onClick={isSignUp ? signUp : signIn}>
               {isSignUp ? 'Create Account' : 'Sign In'}
             </PrimaryButton>
+            {!isSignUp && (
+              <button
+                className="w-full text-sm text-bpInk/60 hover:text-bpInk/80 transition-colors"
+                onClick={() => setIsForgotPassword(true)}
+              >
+                Forgot your password?
+              </button>
+            )}
             <OutlineButton className="w-full text-bpInk" onClick={()=>setIsSignUp(!isSignUp)}>
               {isSignUp ? 'Have an account? Sign in' : 'New here? Create an account'}
             </OutlineButton>
@@ -2259,6 +2408,7 @@ export default function BixPrixApp() {
     )
   }
 
+  if (showPasswordReset) return <ResetPasswordScreen />
   if (currentScreen === 'landing') return <LandingScreen onGetStarted={() => updateCurrentScreen('login')} />
   if (!user) return <LoginScreen />
   if (currentScreen === 'leagues') return <LeaguesScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
