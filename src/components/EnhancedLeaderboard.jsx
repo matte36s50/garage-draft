@@ -55,7 +55,8 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
             rankChange: member.rank_change || 0,
             totalSpent: score.totalSpent,
             carCount: score.carsCount,
-            qualifies: score.totalSpent >= minimumSpend
+            qualifies: score.totalSpent >= minimumSpend,
+            minimumSpend: minimumSpend
           };
         })
       );
@@ -101,6 +102,7 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
             member={member}
             index={index}
             isCurrentUser={member.userId === currentUserId}
+            minimumSpend={member.minimumSpend}
           />
         ))}
       </div>
@@ -114,7 +116,7 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
   );
 }
 
-function LeaderboardRow({ member, index, isCurrentUser }) {
+function LeaderboardRow({ member, index, isCurrentUser, minimumSpend }) {
   const getRankDisplay = (rank) => {
     if (rank === 1) return <span className="text-2xl text-bpGold">1st</span>;
     if (rank === 2) return <span className="text-2xl text-bpGray">2nd</span>;
@@ -174,7 +176,7 @@ function LeaderboardRow({ member, index, isCurrentUser }) {
             </span>
           )}
           {!member.qualifies && (
-            <span className="text-xs bg-bpGold text-bpNavy px-2 py-1 rounded" title="Below $100K minimum spend">
+            <span className="text-xs bg-bpGold text-bpNavy px-2 py-1 rounded" title={`Below $${(minimumSpend / 1000).toFixed(0)}K minimum spend`}>
               DQ
             </span>
           )}

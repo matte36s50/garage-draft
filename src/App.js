@@ -272,6 +272,62 @@ function LightButton({ className = '', children, ...props }) {
   )
 }
 
+function MinimumSpendProgress({ spendingLimit, remainingBudget, variant = 'dark' }) {
+  const totalSpent = spendingLimit - remainingBudget
+  const minimumRequired = spendingLimit * 0.5
+  const progress = Math.min((totalSpent / minimumRequired) * 100, 100)
+  const isQualified = totalSpent >= minimumRequired
+  const amountNeeded = minimumRequired - totalSpent
+
+  // Color based on progress
+  const getProgressColor = () => {
+    if (isQualified) return 'bg-emerald-500'
+    if (progress >= 75) return 'bg-yellow-500'
+    if (progress >= 50) return 'bg-orange-500'
+    return 'bg-red-500'
+  }
+
+  const isDark = variant === 'dark'
+
+  return (
+    <div className={`rounded-lg p-3 ${isDark ? 'bg-white/5 border border-white/10' : 'bg-bpNavy/5 border border-bpNavy/10'}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Target size={16} className={isDark ? 'text-bpGold' : 'text-bpNavy'} />
+          <span className={`text-sm font-semibold ${isDark ? 'text-bpCream' : 'text-bpNavy'}`}>
+            Minimum Spend
+          </span>
+        </div>
+        {isQualified ? (
+          <span className="text-xs bg-emerald-500 text-white px-2 py-1 rounded font-semibold flex items-center gap-1">
+            <CheckCircle size={12} /> Qualified!
+          </span>
+        ) : (
+          <span className={`text-xs ${isDark ? 'text-bpCream/70' : 'text-bpNavy/70'}`}>
+            ${(amountNeeded / 1000).toFixed(0)}K more needed
+          </span>
+        )}
+      </div>
+
+      <div className={`w-full h-2 rounded-full ${isDark ? 'bg-white/10' : 'bg-bpNavy/10'}`}>
+        <div
+          className={`h-2 rounded-full transition-all duration-500 ${getProgressColor()}`}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      <div className="flex justify-between mt-1.5 text-xs">
+        <span className={isDark ? 'text-bpCream/60' : 'text-bpNavy/60'}>
+          ${(totalSpent / 1000).toFixed(0)}K spent
+        </span>
+        <span className={isDark ? 'text-bpCream/60' : 'text-bpNavy/60'}>
+          ${(minimumRequired / 1000).toFixed(0)}K required
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export default function BixPrixApp() {
   const [currentScreen, setCurrentScreen] = useState(() => loadCurrentScreen() || 'landing')
   const [user, setUser] = useState(null)
@@ -777,7 +833,28 @@ export default function BixPrixApp() {
         return
       }
     }
-    
+
+    // Check if removing this car would drop below minimum spend
+    const spendingLimit = selectedLeague?.spending_limit || 200000
+    const minimumRequired = spendingLimit * 0.5
+    const currentSpent = spendingLimit - budget
+    const carPrice = car.purchasePrice || car.currentBid
+    const spentAfterRemoval = currentSpent - carPrice
+
+    if (spentAfterRemoval < minimumRequired && currentSpent >= minimumRequired) {
+      // Currently qualified, but removing would disqualify
+      const confirmed = window.confirm(
+        `Removing this car will drop you below the $${(minimumRequired / 1000).toFixed(0)}K minimum spend and disqualify you from winning. Continue?`
+      )
+      if (!confirmed) return
+    } else if (spentAfterRemoval < minimumRequired) {
+      // Already below minimum, just warn
+      const confirmed = window.confirm(
+        `You'll need to spend at least $${(minimumRequired / 1000).toFixed(0)}K to qualify for prizes. Remove this car anyway?`
+      )
+      if (!confirmed) return
+    }
+
     const { error: re } = await supabase.from('garage_cars').delete().eq('id', car.garageCarId)
     if (re) { alert('Error removing car: '+re.message); return }
     
@@ -1375,9 +1452,9 @@ export default function BixPrixApp() {
           <div>
             <h2 className="text-2xl font-extrabold tracking-tight">Available Cars</h2>
             <p className="text-sm text-bpCream/70">
-              Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()} · Garage: {garage.length}/7 · <span className="text-bpGold">Min spend ${((selectedLeague?.spending_limit || 200000) / 2 / 1000).toFixed(0)}K to qualify</span>
+              Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()} · Garage: {garage.length}/7
             </p>
-            
+
             {!canPick && (
               <div className="mt-2 p-2 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
                 ⚠️ {draftStatus.message} - You cannot modify your garage
@@ -1392,12 +1469,20 @@ export default function BixPrixApp() {
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-bpGray"/>
-              <input 
-                className="pl-9 pr-3 py-2 rounded-md bg-white/5 border border-white/10 text-bpCream placeholder:text-bpGray/70" 
+              <input
+                className="pl-9 pr-3 py-2 rounded-md bg-white/5 border border-white/10 text-bpCream placeholder:text-bpGray/70"
                 placeholder="Search make or model"
               />
             </div>
           </div>
+        </div>
+
+        <div className="mb-4">
+          <MinimumSpendProgress
+            spendingLimit={selectedLeague?.spending_limit || 200000}
+            remainingBudget={budget}
+            variant="dark"
+          />
         </div>
 
         {bonusCar && (
@@ -1586,8 +1671,16 @@ export default function BixPrixApp() {
         onManualRefresh={manualRefresh}
       >
         <h2 className="text-2xl font-extrabold tracking-tight mb-3">My Garage</h2>
-        <p className="text-sm text-bpCream/70 mb-5">Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()} · {garage.length}/7 cars</p>
-        
+        <p className="text-sm text-bpCream/70 mb-3">Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()} · {garage.length}/7 cars</p>
+
+        <div className="mb-5">
+          <MinimumSpendProgress
+            spendingLimit={selectedLeague?.spending_limit || 200000}
+            remainingBudget={budget}
+            variant="dark"
+          />
+        </div>
+
         {!canModify && (
           <div className="mb-4 p-3 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
             🔒 {draftStatus.message} - Your garage is locked
@@ -1694,10 +1787,23 @@ export default function BixPrixApp() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-24">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Car size={18}/>
-                      <span>Empty Slot</span>
-                    </div>
+                    {(() => {
+                      const spendingLimit = selectedLeague?.spending_limit || 200000
+                      const minimumRequired = spendingLimit * 0.5
+                      const totalSpent = spendingLimit - budget
+                      const isQualified = totalSpent >= minimumRequired
+                      return (
+                        <div className="flex flex-col items-center gap-1 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Car size={18}/>
+                            <span>Empty Slot</span>
+                          </div>
+                          {!isQualified && (
+                            <span className="text-xs text-bpGold">Add cars to qualify</span>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
               </Card>
