@@ -737,6 +737,122 @@ GRANT EXECUTE ON FUNCTION get_username TO authenticated;
 GRANT EXECUTE ON FUNCTION format_price TO authenticated;
 
 -- =====================================================
+-- STEP 18: Function to notify reserve not met auctions
+-- This should be called by a cron job after auctions end
+-- =====================================================
+CREATE OR REPLACE FUNCTION notify_reserve_not_met_auctions()
+RETURNS INTEGER AS $$
+DECLARE
+    v_auction RECORD;
+    v_garage_car RECORD;
+    v_message TEXT;
+    v_metadata JSONB;
+    v_car_title TEXT;
+    v_now_unix BIGINT;
+    v_notifications_sent INTEGER := 0;
+    v_username TEXT;
+    v_percent_gain NUMERIC;
+    v_effective_price NUMERIC;
+BEGIN
+    v_now_unix := EXTRACT(EPOCH FROM NOW())::BIGINT;
+
+    -- Find auctions that have ended without a final_price (reserve not met)
+    FOR v_auction IN
+        SELECT *
+        FROM auctions
+        WHERE timestamp_end < v_now_unix  -- Auction has ended
+          AND final_price IS NULL          -- Reserve was not met
+          AND current_bid IS NOT NULL      -- Has a high bid
+    LOOP
+        v_car_title := COALESCE(v_auction.title, v_auction.year || ' ' || v_auction.make || ' ' || v_auction.model);
+
+        -- Find all garage_cars with this auction and notify
+        FOR v_garage_car IN
+            SELECT
+                gc.id,
+                gc.garage_id,
+                gc.purchase_price,
+                g.user_id,
+                g.league_id
+            FROM garage_cars gc
+            JOIN garages g ON g.id = gc.garage_id
+            WHERE gc.auction_id = v_auction.auction_id
+        LOOP
+            -- Check if we already notified
+            IF NOT can_send_notification(v_auction.auction_id, v_garage_car.league_id, 'reserve_not_met', 24) THEN
+                CONTINUE;
+            END IF;
+
+            -- Get username
+            v_username := get_username(v_garage_car.user_id);
+
+            -- Calculate percent gain using 50% of high bid
+            IF v_garage_car.purchase_price > 0 THEN
+                v_effective_price := v_auction.current_bid * 0.5;
+                v_percent_gain := ((v_effective_price - v_garage_car.purchase_price) / v_garage_car.purchase_price) * 100;
+            ELSE
+                v_percent_gain := 0;
+            END IF;
+
+            -- Build message with "High bid" instead of "SOLD"
+            IF v_percent_gain >= 0 THEN
+                v_message := format(
+                    '%s high bid %s! %s gains +%s%% (50%% of high bid)',
+                    v_car_title,
+                    format_price(v_auction.current_bid),
+                    v_username,
+                    ROUND(v_percent_gain)::TEXT
+                );
+            ELSE
+                v_message := format(
+                    '%s high bid %s! %s at %s%% (50%% of high bid)',
+                    v_car_title,
+                    format_price(v_auction.current_bid),
+                    v_username,
+                    ROUND(v_percent_gain)::TEXT
+                );
+            END IF;
+
+            -- Build metadata
+            v_metadata := jsonb_build_object(
+                'auction_id', v_auction.auction_id,
+                'car_title', v_car_title,
+                'high_bid', v_auction.current_bid,
+                'purchase_price', v_garage_car.purchase_price,
+                'percent_gain', ROUND(v_percent_gain, 1),
+                'user_id', v_garage_car.user_id,
+                'username', v_username,
+                'image_url', v_auction.image_url,
+                'reserve_not_met', true
+            );
+
+            -- Post system message
+            PERFORM post_system_message(
+                v_garage_car.league_id,
+                'system_auction_ended',
+                v_message,
+                v_metadata
+            );
+
+            -- Record notification
+            INSERT INTO auction_notifications (auction_id, league_id, notification_type)
+            VALUES (v_auction.auction_id, v_garage_car.league_id, 'reserve_not_met')
+            ON CONFLICT (auction_id, league_id, notification_type)
+            DO UPDATE SET created_at = NOW();
+
+            v_notifications_sent := v_notifications_sent + 1;
+        END LOOP;
+    END LOOP;
+
+    RETURN v_notifications_sent;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant permission for the new function
+GRANT EXECUTE ON FUNCTION notify_reserve_not_met_auctions TO authenticated;
+
+-- =====================================================
 -- DONE!
 -- Run notify_auctions_ending_soon() via cron every 30 mins
+-- Run notify_reserve_not_met_auctions() via cron every hour
 -- =====================================================

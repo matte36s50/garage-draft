@@ -133,7 +133,7 @@ export async function GET(request) {
                 let effectivePrice = currentPrice;
 
                 if (reserveNotMet) {
-                  effectivePrice = currentPrice * 0.25;
+                  effectivePrice = currentPrice * 0.5;
                 }
 
                 const percentGain = ((effectivePrice - purchasePrice) / purchasePrice) * 100;
