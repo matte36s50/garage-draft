@@ -542,7 +542,51 @@ supabase.from('bonus_predictions').upsert(
 
 ---
 
-## 12. POTENTIAL EXTENSIONS & NOTES
+## 12. CRON JOBS (cronjob.org)
+
+### Why cronjob.org Instead of Vercel Cron?
+
+Vercel Cron Jobs require a paid tier (Pro plan). To keep costs down, we use **[cron-job.org](https://cron-job.org)** (free tier) to trigger our scheduled API endpoints.
+
+### Active Cron Jobs
+
+We have **two cron jobs** configured on cronjob.org:
+
+#### 1. Performance Update (`/api/cron/update-performance`)
+- **URL:** `https://your-domain.vercel.app/api/cron/update-performance?secret=YOUR_CRON_SECRET`
+- **Schedule:** Every hour (`0 * * * *`)
+- **Purpose:**
+  - Calculates and updates league member scores
+  - Creates performance history snapshots for charts
+  - Updates rank positions for rank change indicators
+- **Note:** Dashboard works without this, but you won't get historical trend data or rank change arrows
+
+#### 2. Auction Ending Soon Notifications (`/api/cron/notify-ending-soon`)
+- **URL:** `https://your-domain.vercel.app/api/cron/notify-ending-soon?secret=YOUR_CRON_SECRET`
+- **Schedule:** Every 30 minutes (`*/30 * * * *`)
+- **Purpose:**
+  - Checks for auctions ending within 4 hours
+  - Posts system messages to league chats alerting players
+  - Calls the `notify_auctions_ending_soon()` PostgreSQL function
+
+### Security
+
+Both endpoints accept a `secret` query parameter that must match the `CRON_SECRET` environment variable set in Vercel. This prevents unauthorized triggering of the cron jobs.
+
+### Test/Diagnostic Endpoint
+
+There's also a diagnostic endpoint at `/api/cron/test-connection` that can be used to verify the cron setup is working correctly (checks environment variables, database connectivity, table existence, and write permissions).
+
+### cronjob.org Setup Notes
+
+1. Create a free account at [cron-job.org](https://cron-job.org)
+2. Add each cron job with the full URL including the `?secret=` parameter
+3. Set the schedule using cron expressions
+4. Monitor execution history in the cronjob.org dashboard
+
+---
+
+## 13. POTENTIAL EXTENSIONS & NOTES
 
 ### Current Limitations
 - No database schema migration files
