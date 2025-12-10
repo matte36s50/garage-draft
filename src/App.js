@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import Dashboard from './components/Dashboard'
+import LeagueChat from './components/LeagueChat'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
@@ -289,6 +290,7 @@ export default function BixPrixApp() {
   const [connectionStatus, setConnectionStatus] = useState('connected')
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [recentUpdates, setRecentUpdates] = useState([])
+  const [isChatOpen, setIsChatOpen] = useState(false)
 
   const updateCurrentScreen = (screen) => {
     setCurrentScreen(screen)
@@ -1562,6 +1564,16 @@ export default function BixPrixApp() {
             currentPrediction={userPrediction}
           />
         )}
+        {selectedLeague && (
+          <LeagueChat
+            supabase={supabase}
+            leagueId={selectedLeague.id}
+            leagueName={selectedLeague.name}
+            user={user}
+            isOpen={isChatOpen}
+            onToggle={() => setIsChatOpen(!isChatOpen)}
+          />
+        )}
       </Shell>
     )
   }
@@ -1704,6 +1716,16 @@ export default function BixPrixApp() {
             )
           })}
         </div>
+        {selectedLeague && (
+          <LeagueChat
+            supabase={supabase}
+            leagueId={selectedLeague.id}
+            leagueName={selectedLeague.name}
+            user={user}
+            isOpen={isChatOpen}
+            onToggle={() => setIsChatOpen(!isChatOpen)}
+          />
+        )}
       </Shell>
     )
   }
@@ -2255,6 +2277,16 @@ export default function BixPrixApp() {
             </Card>
           </>
         )}
+        {selectedLeague && (
+          <LeagueChat
+            supabase={supabase}
+            leagueId={selectedLeague.id}
+            leagueName={selectedLeague.name}
+            user={user}
+            isOpen={isChatOpen}
+            onToggle={() => setIsChatOpen(!isChatOpen)}
+          />
+        )}
       </Shell>
     )
   }
@@ -2281,6 +2313,16 @@ export default function BixPrixApp() {
         onLeagueChange={updateSelectedLeague}
         onNavigate={updateCurrentScreen}
       />
+      {selectedLeague && (
+        <LeagueChat
+          supabase={supabase}
+          leagueId={selectedLeague.id}
+          leagueName={selectedLeague.name}
+          user={user}
+          isOpen={isChatOpen}
+          onToggle={() => setIsChatOpen(!isChatOpen)}
+        />
+      )}
     </Shell>
   )
   if (currentScreen === 'cars') return <CarsScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
