@@ -2312,6 +2312,9 @@ export default function BixPrixApp() {
         selectedLeague={selectedLeague}
         onLeagueChange={updateSelectedLeague}
         onNavigate={updateCurrentScreen}
+        bonusCar={bonusCar}
+        userPrediction={userPrediction}
+        draftStatus={getDraftStatus(selectedLeague)}
       />
       {selectedLeague && (
         <LeagueChat
