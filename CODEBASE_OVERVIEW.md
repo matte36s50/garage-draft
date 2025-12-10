@@ -248,7 +248,7 @@ Located at `/home/user/garage-draft/auction-admin/`
 If final_price exists:
   percentGain = (final_price - purchase_price) / purchase_price * 100
 Else if reserve_not_met:
-  effectivePrice = current_bid * 0.5  (50% of high bid)
+  effectivePrice = current_bid * 0.25  (25% of high bid)
   percentGain = (effectivePrice - purchase_price) / purchase_price * 100
 Else:
   percentGain = (current_bid - purchase_price) / purchase_price * 100

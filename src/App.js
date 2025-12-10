@@ -1057,7 +1057,7 @@ export default function BixPrixApp() {
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-red-600 font-bold">-</span>
-                    <span><strong>Reserve not met?</strong> You get 50% of the high bid value</span>
+                    <span><strong>Reserve not met?</strong> You get 25% of the high bid value</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-bpGold font-bold">⚡</span>
@@ -1091,8 +1091,8 @@ export default function BixPrixApp() {
                   <div className="text-bpInk/70 space-y-1">
                     <div>Day 2 Price: <strong>$42,000</strong></div>
                     <div>High Bid (No Sale): <strong>$45,000</strong></div>
-                    <div className="text-red-700 font-bold">Score: -46.4%</div>
-                    <div className="text-xs">(50% of $45k = $22.5k)</div>
+                    <div className="text-red-700 font-bold">Score: -73.2%</div>
+                    <div className="text-xs">(25% of $45k = $11.25k)</div>
                   </div>
                 </div>
                 
@@ -1881,7 +1881,7 @@ export default function BixPrixApp() {
             let effectivePrice = currentPrice
             
             if (reserveNotMet) {
-              effectivePrice = currentPrice * 0.5
+              effectivePrice = currentPrice * 0.25
             }
             
             const percentGain = ((effectivePrice - purchasePrice) / purchasePrice) * 100

@@ -786,9 +786,9 @@ BEGIN
             -- Get username
             v_username := get_username(v_garage_car.user_id);
 
-            -- Calculate percent gain using 50% of high bid
+            -- Calculate percent gain using 25% of high bid
             IF v_garage_car.purchase_price > 0 THEN
-                v_effective_price := v_auction.current_bid * 0.5;
+                v_effective_price := v_auction.current_bid * 0.25;
                 v_percent_gain := ((v_effective_price - v_garage_car.purchase_price) / v_garage_car.purchase_price) * 100;
             ELSE
                 v_percent_gain := 0;
@@ -797,7 +797,7 @@ BEGIN
             -- Build message with "High bid" instead of "SOLD"
             IF v_percent_gain >= 0 THEN
                 v_message := format(
-                    '%s high bid %s! %s gains +%s%% (50%% of high bid)',
+                    '%s high bid %s! %s gains +%s%% (25%% of high bid)',
                     v_car_title,
                     format_price(v_auction.current_bid),
                     v_username,
@@ -805,7 +805,7 @@ BEGIN
                 );
             ELSE
                 v_message := format(
-                    '%s high bid %s! %s at %s%% (50%% of high bid)',
+                    '%s high bid %s! %s at %s%% (25%% of high bid)',
                     v_car_title,
                     format_price(v_auction.current_bid),
                     v_username,

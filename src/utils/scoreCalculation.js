@@ -83,8 +83,8 @@ export async function calculateUserScore(supabase, userId, leagueId) {
         let effectivePrice = currentPrice;
 
         if (reserveNotMet) {
-          effectivePrice = currentPrice * 0.5;
-          console.log(`[Score Calc] Car ${index}: Reserve not met, applying 50% of high bid`);
+          effectivePrice = currentPrice * 0.25;
+          console.log(`[Score Calc] Car ${index}: Reserve not met, applying 25% of high bid`);
         }
 
         const percentGain = ((effectivePrice - purchasePrice) / purchasePrice) * 100;
