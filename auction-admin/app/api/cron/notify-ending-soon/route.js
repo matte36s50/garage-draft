@@ -16,7 +16,7 @@ import { NextResponse } from 'next/server';
  *
  * Option 2: External Cron Service (Recommended)
  * - Use a free service like cron-job.org, EasyCron, or GitHub Actions
- * - Schedule: Every 30 minutes (*/30 * * * *)
+ * - Schedule: Every 30 minutes
  * - URL: https://your-domain.vercel.app/api/cron/notify-ending-soon?secret=YOUR_SECRET
  * - Set CRON_SECRET in Vercel environment variables for security
  */
