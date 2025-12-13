@@ -3,9 +3,10 @@ import StatsCards from './StatsCards';
 import PerformanceChart from './PerformanceChart';
 import EnhancedLeaderboard from './EnhancedLeaderboard';
 import ActivityFeed from './ActivityFeed';
+import LeaguePredictions from './LeaguePredictions';
 import { calculateUserScore, calculateLeagueStats } from '../utils/scoreCalculation';
 
-export default function Dashboard({ supabase, user, leagues, selectedLeague, onLeagueChange, onNavigate }) {
+export default function Dashboard({ supabase, user, leagues, selectedLeague, onLeagueChange, onNavigate, bonusCar, userPrediction, draftStatus }) {
   const [userStats, setUserStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [recalculating, setRecalculating] = useState(false);
@@ -545,6 +546,18 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
                 </p>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* League Predictions - Only visible after draft closes and user has predicted */}
+        {draftStatus?.status === 'closed' && userPrediction !== null && (
+          <div className="mb-6">
+            <LeaguePredictions
+              supabase={supabase}
+              leagueId={selectedLeague.id}
+              currentUserId={user.id}
+              bonusCar={bonusCar}
+            />
           </div>
         )}
 
