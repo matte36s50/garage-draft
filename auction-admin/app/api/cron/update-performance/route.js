@@ -75,6 +75,46 @@ export async function GET(request) {
 
     for (const league of leagues || []) {
       try {
+        // Calculate market average for this league (average % increase across all auctions)
+        let marketAverage = 0;
+        const { data: leagueAuctions } = await supabase
+          .from('league_auctions')
+          .select('auction_id, auctions(auction_id, current_bid, final_price, price_at_48h, timestamp_end)')
+          .eq('league_id', league.id);
+
+        if (leagueAuctions && leagueAuctions.length > 0) {
+          const now = Math.floor(Date.now() / 1000);
+          let totalPercentGain = 0;
+          let validCount = 0;
+
+          leagueAuctions.forEach(la => {
+            const auction = la.auctions;
+            if (!auction) return;
+
+            const baselinePrice = parseFloat(auction.price_at_48h);
+            if (!baselinePrice || baselinePrice <= 0) return;
+
+            const currentPrice = auction.final_price
+              ? parseFloat(auction.final_price)
+              : parseFloat(auction.current_bid || baselinePrice);
+
+            const auctionEnded = auction.timestamp_end < now;
+            const reserveNotMet = auctionEnded && !auction.final_price;
+            let effectivePrice = currentPrice;
+            if (reserveNotMet) {
+              effectivePrice = currentPrice * 0.25;
+            }
+
+            const percentGain = ((effectivePrice - baselinePrice) / baselinePrice) * 100;
+            totalPercentGain += percentGain;
+            validCount++;
+          });
+
+          marketAverage = validCount > 0 ? parseFloat((totalPercentGain / validCount).toFixed(2)) : 0;
+        }
+
+        console.log(`[Cron] League ${league.name}: Market average = ${marketAverage}%`);
+
         // Get all members
         const { data: members, error: membersError } = await supabase
           .from('league_members')
@@ -212,6 +252,7 @@ export async function GET(request) {
             total_spent: update.total_spent,
             car_count: update.car_count,
             snapshot: {
+              marketAverage, // Store market average for historical tracking
               cars: update.garage_cars?.map(car => ({
                 purchase_price: car.purchase_price,
                 current_price: car.auctions?.current_bid || car.auctions?.final_price
