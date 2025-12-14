@@ -66,7 +66,7 @@ export async function GET(request) {
     // Get all leagues (regardless of status - we want to track performance for all)
     const { data: leagues, error: leaguesError } = await supabase
       .from('leagues')
-      .select('id, name');
+      .select('id, name, use_manual_auctions, draft_starts_at');
 
     if (leaguesError) throw leaguesError;
 
@@ -77,18 +77,43 @@ export async function GET(request) {
       try {
         // Calculate market average for this league (average % increase across all auctions)
         let marketAverage = 0;
+        let auctions = [];
+
+        // Try to get auctions from league_auctions table first
         const { data: leagueAuctions } = await supabase
           .from('league_auctions')
           .select('auction_id, auctions(auction_id, current_bid, final_price, price_at_48h, timestamp_end)')
           .eq('league_id', league.id);
 
         if (leagueAuctions && leagueAuctions.length > 0) {
+          auctions = leagueAuctions.map(la => la.auctions).filter(Boolean);
+        } else if (!league.use_manual_auctions) {
+          // Fallback for auto leagues: use 4-5 day window from league start
+          const leagueStartTime = league.draft_starts_at
+            ? Math.floor(new Date(league.draft_starts_at).getTime() / 1000)
+            : Math.floor(Date.now() / 1000);
+
+          const fourDaysInSeconds = 4 * 24 * 60 * 60;
+          const fiveDaysInSeconds = 5 * 24 * 60 * 60;
+          const minEndTime = leagueStartTime + fourDaysInSeconds;
+          const maxEndTime = leagueStartTime + fiveDaysInSeconds;
+
+          const { data: windowAuctions } = await supabase
+            .from('auctions')
+            .select('auction_id, current_bid, final_price, price_at_48h, timestamp_end')
+            .gte('timestamp_end', minEndTime)
+            .lte('timestamp_end', maxEndTime)
+            .not('price_at_48h', 'is', null);
+
+          auctions = windowAuctions || [];
+        }
+
+        if (auctions.length > 0) {
           const now = Math.floor(Date.now() / 1000);
           let totalPercentGain = 0;
           let validCount = 0;
 
-          leagueAuctions.forEach(la => {
-            const auction = la.auctions;
+          auctions.forEach(auction => {
             if (!auction) return;
 
             const baselinePrice = parseFloat(auction.price_at_48h);
