@@ -245,7 +245,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
           <div className="text-2xl font-bold text-green-600">
             {(latestData.marketAvg || 0).toFixed(2)}%
           </div>
-          <div className="text-sm text-bpInk/70 mt-1">Market Avg (All Cars)</div>
+          <div className="text-sm text-green-700 mt-1">Market Avg (All Cars)</div>
         </div>
         <div className="text-center p-4 bg-bpNavy/5 rounded-lg">
           <div className="text-2xl font-bold text-bpInk">
