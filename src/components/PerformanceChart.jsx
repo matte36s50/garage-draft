@@ -245,13 +245,13 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
           <div className={`text-2xl font-bold ${((latestData.yourGain || 0) - (latestData.marketAvg || 0)) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
             {((latestData.yourGain || 0) - (latestData.marketAvg || 0)) >= 0 ? '+' : ''}{((latestData.yourGain || 0) - (latestData.marketAvg || 0)).toFixed(2)}%
           </div>
-          <div className="text-sm text-bpInk/70 mt-1">vs Market</div>
+          <div className="text-sm text-bpInk/70 mt-1">vs Market ({(latestData.marketAvg || 0).toFixed(1)}%)</div>
         </div>
         <div className="text-center p-4 bg-bpNavy/5 rounded-lg">
           <div className="text-2xl font-bold text-bpInk">
             {((latestData.top1 || 0) - (latestData.yourGain || 0)).toFixed(2)}%
           </div>
-          <div className="text-sm text-bpInk/70 mt-1">Behind Leader</div>
+          <div className="text-sm text-bpInk/70 mt-1">Behind Leader ({(latestData.top1 || 0).toFixed(1)}%)</div>
         </div>
         <div className="text-center p-4 bg-bpGold/10 rounded-lg">
           <div className="text-2xl font-bold text-bpGold">
