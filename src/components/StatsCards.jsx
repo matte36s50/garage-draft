@@ -19,7 +19,7 @@ export default function StatsCards({ stats, spendingLimit = 200000 }) {
     {
       title: 'Total Gain',
       value: stats?.totalGain !== undefined ? `${stats.totalGain >= 0 ? '+' : ''}${stats.totalGain.toFixed(2)}%` : '0.00%',
-      subtitle: `League Avg: ${stats?.leagueAvg?.toFixed(2) || '0.00'}%`,
+      subtitle: `Player Avg: ${stats?.leagueAvg?.toFixed(2) || '0.00'}%`,
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -28,14 +28,14 @@ export default function StatsCards({ stats, spendingLimit = 200000 }) {
       trend: stats?.totalGain !== undefined && stats?.leagueAvg !== undefined
         ? stats.totalGain - stats.leagueAvg
         : undefined,
-      trendLabel: 'vs Average',
+      trendLabel: 'vs Player Avg',
       bgColor: 'bg-emerald-500/20',
       iconColor: 'text-emerald-400'
     },
     {
       title: 'Behind Leader',
       value: stats?.behindLeader !== undefined ? `${stats.behindLeader.toFixed(2)}%` : '0.00%',
-      subtitle: 'Gap to close',
+      subtitle: stats?.behindLeader === 0 ? "You're in 1st!" : 'Points to 1st place',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
