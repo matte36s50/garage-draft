@@ -256,7 +256,18 @@ export async function calculateBonusCarScore(supabase, userId, leagueId) {
  */
 export async function calculateMarketAverage(supabase, leagueId) {
   try {
-    // Get all auctions assigned to this league
+    // First, get the league info to determine auction selection method
+    const { data: league, error: leagueError } = await supabase
+      .from('leagues')
+      .select('use_manual_auctions, draft_starts_at')
+      .eq('id', leagueId)
+      .single();
+
+    if (leagueError) throw leagueError;
+
+    let auctions = [];
+
+    // Try to get auctions from league_auctions table first
     const { data: leagueAuctions, error: leagueAuctionsError } = await supabase
       .from('league_auctions')
       .select('auction_id, auctions(auction_id, current_bid, final_price, price_at_48h, timestamp_end, title)')
@@ -264,7 +275,37 @@ export async function calculateMarketAverage(supabase, leagueId) {
 
     if (leagueAuctionsError) throw leagueAuctionsError;
 
-    if (!leagueAuctions || leagueAuctions.length === 0) {
+    if (leagueAuctions && leagueAuctions.length > 0) {
+      // Use auctions from league_auctions table
+      auctions = leagueAuctions.map(la => la.auctions).filter(Boolean);
+      console.log(`[Market Avg] Found ${auctions.length} auctions in league_auctions table`);
+    } else if (!league?.use_manual_auctions) {
+      // Fallback for auto leagues: use 4-5 day window from league start
+      console.log(`[Market Avg] No league_auctions found, using 4-5 day window fallback`);
+
+      const leagueStartTime = league?.draft_starts_at
+        ? Math.floor(new Date(league.draft_starts_at).getTime() / 1000)
+        : Math.floor(Date.now() / 1000);
+
+      const fourDaysInSeconds = 4 * 24 * 60 * 60;
+      const fiveDaysInSeconds = 5 * 24 * 60 * 60;
+      const minEndTime = leagueStartTime + fourDaysInSeconds;
+      const maxEndTime = leagueStartTime + fiveDaysInSeconds;
+
+      const { data: windowAuctions, error: windowError } = await supabase
+        .from('auctions')
+        .select('auction_id, current_bid, final_price, price_at_48h, timestamp_end, title')
+        .gte('timestamp_end', minEndTime)
+        .lte('timestamp_end', maxEndTime)
+        .not('price_at_48h', 'is', null);
+
+      if (windowError) throw windowError;
+
+      auctions = windowAuctions || [];
+      console.log(`[Market Avg] Found ${auctions.length} auctions in 4-5 day window`);
+    }
+
+    if (!auctions || auctions.length === 0) {
       console.log(`[Market Avg] No auctions found for league ${leagueId}`);
       return {
         marketAverage: 0,
@@ -278,8 +319,7 @@ export async function calculateMarketAverage(supabase, leagueId) {
     let validAuctionCount = 0;
     const auctionsData = [];
 
-    leagueAuctions.forEach((la) => {
-      const auction = la.auctions;
+    auctions.forEach((auction) => {
       if (!auction) return;
 
       // Use price_at_48h as the baseline (draft price)
