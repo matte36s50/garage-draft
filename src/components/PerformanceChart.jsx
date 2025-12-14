@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
-import { calculateUserScore, calculateLeagueStats } from '../utils/scoreCalculation';
+import { calculateUserScore, calculateLeagueStats, calculateMarketAverage } from '../utils/scoreCalculation';
 
 export default function PerformanceChart({ supabase, leagueId, userId }) {
   const [chartData, setChartData] = useState([]);
   const [topUsers, setTopUsers] = useState([]);
+  const [marketData, setMarketData] = useState({ marketAverage: 0, auctionCount: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,6 +33,11 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
         sample: history?.[0]
       });
 
+      // Calculate current market average (always fetch this for real-time display)
+      const marketAvg = await calculateMarketAverage(supabase, leagueId);
+      setMarketData(marketAvg);
+      console.log('[Performance Chart] Market average:', marketAvg.marketAverage + '%');
+
       // If there's no historical data, create a current snapshot using real-time calculations
       if (!history || history.length === 0) {
         console.log('[Performance Chart] No history found, calculating real-time snapshot');
@@ -52,7 +58,8 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
         const now = new Date().toISOString();
         const currentPoint = {
           timestamp: now,
-          yourGain: userScore.totalPercentGain
+          yourGain: userScore.totalPercentGain,
+          marketAvg: marketAvg.marketAverage
         };
 
         // Add top 3 players' scores
@@ -98,6 +105,10 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
             lastUserGain = userPoint.cumulative_gain;
           }
           point.yourGain = lastUserGain;
+
+          // Add market average (use historical if available in snapshot, otherwise current)
+          const anyPointAtTimestamp = history.find(h => h.timestamp === timestamp);
+          point.marketAvg = anyPointAtTimestamp?.snapshot?.marketAverage ?? marketAvg.marketAverage;
 
           // Get top 3 users' data
           topUsersData?.forEach((user, index) => {
@@ -211,15 +222,30 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
             strokeDasharray="5 5"
             dot={false}
           />
+          <Line
+            type="monotone"
+            dataKey="marketAvg"
+            stroke="#22C55E"
+            strokeWidth={2}
+            name="Market Avg"
+            strokeDasharray="3 3"
+            dot={false}
+          />
         </LineChart>
       </ResponsiveContainer>
 
-      <div className="mt-6 grid grid-cols-3 gap-4">
+      <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="text-center p-4 bg-bpRed/10 rounded-lg">
           <div className="text-2xl font-bold text-bpRed">
             {latestData.yourGain?.toFixed(2) || '0.00'}%
           </div>
           <div className="text-sm text-bpInk/70 mt-1">Your Gain</div>
+        </div>
+        <div className="text-center p-4 bg-green-500/10 rounded-lg">
+          <div className={`text-2xl font-bold ${((latestData.yourGain || 0) - (latestData.marketAvg || 0)) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+            {((latestData.yourGain || 0) - (latestData.marketAvg || 0)) >= 0 ? '+' : ''}{((latestData.yourGain || 0) - (latestData.marketAvg || 0)).toFixed(2)}%
+          </div>
+          <div className="text-sm text-bpInk/70 mt-1">vs Market</div>
         </div>
         <div className="text-center p-4 bg-bpNavy/5 rounded-lg">
           <div className="text-2xl font-bold text-bpInk">

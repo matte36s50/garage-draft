@@ -248,6 +248,103 @@ export async function calculateBonusCarScore(supabase, userId, leagueId) {
 }
 
 /**
+ * Calculate the market average - the average % increase across ALL auctions in a league
+ * This represents how the overall market is performing, independent of user picks
+ * @param {Object} supabase - Supabase client
+ * @param {string} leagueId - League ID
+ * @returns {Object} Market average data
+ */
+export async function calculateMarketAverage(supabase, leagueId) {
+  try {
+    // Get all auctions assigned to this league
+    const { data: leagueAuctions, error: leagueAuctionsError } = await supabase
+      .from('league_auctions')
+      .select('auction_id, auctions(auction_id, current_bid, final_price, price_at_48h, timestamp_end, title)')
+      .eq('league_id', leagueId);
+
+    if (leagueAuctionsError) throw leagueAuctionsError;
+
+    if (!leagueAuctions || leagueAuctions.length === 0) {
+      console.log(`[Market Avg] No auctions found for league ${leagueId}`);
+      return {
+        marketAverage: 0,
+        auctionCount: 0,
+        auctionsData: []
+      };
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    let totalPercentGain = 0;
+    let validAuctionCount = 0;
+    const auctionsData = [];
+
+    leagueAuctions.forEach((la) => {
+      const auction = la.auctions;
+      if (!auction) return;
+
+      // Use price_at_48h as the baseline (draft price)
+      const baselinePrice = parseFloat(auction.price_at_48h);
+      if (!baselinePrice || baselinePrice <= 0) {
+        console.log(`[Market Avg] Skipping auction ${auction.auction_id}: no valid price_at_48h`);
+        return;
+      }
+
+      // Get current/final price
+      const currentPrice = auction.final_price
+        ? parseFloat(auction.final_price)
+        : parseFloat(auction.current_bid || baselinePrice);
+
+      // Check if auction ended without meeting reserve
+      const auctionEnded = auction.timestamp_end < now;
+      const reserveNotMet = auctionEnded && !auction.final_price;
+
+      let effectivePrice = currentPrice;
+      if (reserveNotMet) {
+        effectivePrice = currentPrice * 0.25; // 75% penalty for reserve not met
+      }
+
+      // Calculate percent gain from baseline
+      const percentGain = ((effectivePrice - baselinePrice) / baselinePrice) * 100;
+
+      totalPercentGain += percentGain;
+      validAuctionCount++;
+
+      auctionsData.push({
+        auctionId: auction.auction_id,
+        title: auction.title,
+        baselinePrice,
+        currentPrice: effectivePrice,
+        percentGain: parseFloat(percentGain.toFixed(2)),
+        reserveNotMet
+      });
+    });
+
+    const marketAverage = validAuctionCount > 0
+      ? parseFloat((totalPercentGain / validAuctionCount).toFixed(2))
+      : 0;
+
+    console.log(`[Market Avg] League ${leagueId}:`, {
+      auctionCount: validAuctionCount,
+      marketAverage: marketAverage + '%'
+    });
+
+    return {
+      marketAverage,
+      auctionCount: validAuctionCount,
+      auctionsData
+    };
+
+  } catch (error) {
+    console.error(`Error calculating market average for league ${leagueId}:`, error);
+    return {
+      marketAverage: 0,
+      auctionCount: 0,
+      auctionsData: []
+    };
+  }
+}
+
+/**
  * Calculate league-wide statistics
  * @param {Object} supabase - Supabase client
  * @param {string} leagueId - League ID
