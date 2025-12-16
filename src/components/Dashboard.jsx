@@ -94,9 +94,10 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
 
       if (selectedLeague.use_manual_auctions) {
         // Manual league: Get auctions from league_auctions table
+        // Include final_price to filter out completed auctions
         const { data: leagueAuctions, error } = await supabase
           .from('league_auctions')
-          .select('auction_id, custom_end_date, auctions(timestamp_end)')
+          .select('auction_id, custom_end_date, auctions(timestamp_end, final_price)')
           .eq('league_id', selectedLeague.id);
 
         console.log('[League Time] Manual league - Query result:', {
@@ -116,19 +117,35 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
           return;
         }
 
-        // Find the auction with the maximum end time (use custom_end_date if set, otherwise use auction's timestamp_end)
-        leagueAuctions.forEach(la => {
-          const endTime = la.custom_end_date || la.auctions?.timestamp_end;
-          if (endTime && endTime > maxEndTime) {
-            maxEndTime = endTime;
-          }
-        });
+        // Find the auction with the maximum end time among ACTIVE auctions only
+        // (use custom_end_date if set, otherwise use auction's timestamp_end)
+        // Only consider auctions where final_price is null (auction hasn't completed)
+        const activeAuctions = leagueAuctions.filter(la => la.auctions?.final_price === null);
+
+        if (activeAuctions.length > 0) {
+          activeAuctions.forEach(la => {
+            const endTime = la.custom_end_date || la.auctions?.timestamp_end;
+            if (endTime && endTime > maxEndTime) {
+              maxEndTime = endTime;
+            }
+          });
+        } else {
+          // All auctions have completed - find the max end time from all auctions
+          // to show when the league actually ended
+          leagueAuctions.forEach(la => {
+            const endTime = la.custom_end_date || la.auctions?.timestamp_end;
+            if (endTime && endTime > maxEndTime) {
+              maxEndTime = endTime;
+            }
+          });
+        }
       } else {
         // Auto league: Get auctions from the 4-5 day window for THIS league only
         // Query league_auctions to get the specific auctions assigned to this league
+        // Include final_price to filter out completed auctions
         const { data: leagueAuctions, error } = await supabase
           .from('league_auctions')
-          .select('auction_id, auctions(timestamp_end)')
+          .select('auction_id, auctions(timestamp_end, final_price)')
           .eq('league_id', selectedLeague.id);
 
         console.log('[League Time] Auto league - Query result from league_auctions:', {
@@ -144,12 +161,25 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
 
         if (leagueAuctions && leagueAuctions.length > 0) {
           // League has specific auctions assigned - use those
-          leagueAuctions.forEach(la => {
-            const endTime = la.auctions?.timestamp_end;
-            if (endTime && endTime > maxEndTime) {
-              maxEndTime = endTime;
-            }
-          });
+          // Only consider auctions where final_price is null (auction hasn't completed)
+          const activeAuctions = leagueAuctions.filter(la => la.auctions?.final_price === null);
+
+          if (activeAuctions.length > 0) {
+            activeAuctions.forEach(la => {
+              const endTime = la.auctions?.timestamp_end;
+              if (endTime && endTime > maxEndTime) {
+                maxEndTime = endTime;
+              }
+            });
+          } else {
+            // All auctions have completed - find the max end time from all auctions
+            leagueAuctions.forEach(la => {
+              const endTime = la.auctions?.timestamp_end;
+              if (endTime && endTime > maxEndTime) {
+                maxEndTime = endTime;
+              }
+            });
+          }
         } else {
           // No specific auctions assigned - fall back to 4-5 day window FROM LEAGUE START
           console.log('[League Time] No league-specific auctions, falling back to 4-5 day window from league start');
