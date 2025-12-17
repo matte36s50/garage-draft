@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Search, RefreshCw, Users, Trophy, Car, DollarSign, Upload, Download } from 'lucide-react';
+import { Plus, Trash2, Search, RefreshCw, Users, Trophy, Car, DollarSign, Upload, Download, CheckCircle } from 'lucide-react';
 
 const AdminPortal = () => {
   const [activeTab, setActiveTab] = useState('auctions');
@@ -48,6 +48,11 @@ const AdminPortal = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLeague, setSelectedLeague] = useState(null);
   const [csvImporting, setCsvImporting] = useState(false);
+
+  // State for finalize tab - ended auctions without final prices
+  const [endedAuctions, setEndedAuctions] = useState([]);
+  const [finalPriceInputs, setFinalPriceInputs] = useState({});
+  const [updatingAuctionId, setUpdatingAuctionId] = useState(null);
 
   useEffect(() => {
     loadAllData();
@@ -220,11 +225,99 @@ const AdminPortal = () => {
       setLeagueAuctions(grouped);
 
       console.log('Data loaded successfully');
+
+      // Load ended auctions without final prices
+      await loadEndedAuctions();
     } catch (error) {
       console.error('Error loading data:', error);
       alert('Failed to load data: ' + error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Load auctions that have ended but don't have final prices yet
+  const loadEndedAuctions = async () => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const now = Math.floor(Date.now() / 1000);
+
+      const { data, error } = await supabase
+        .from('auctions')
+        .select('*')
+        .lt('timestamp_end', now)  // Auction has ended
+        .is('final_price', null)   // No final price set yet
+        .order('timestamp_end', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      setEndedAuctions(data || []);
+    } catch (error) {
+      console.error('Error loading ended auctions:', error);
+    }
+  };
+
+  // Update final price for an auction
+  const handleUpdateFinalPrice = async (auctionId) => {
+    const finalPrice = finalPriceInputs[auctionId];
+    if (!finalPrice || parseFloat(finalPrice) <= 0) {
+      alert('Please enter a valid final price');
+      return;
+    }
+
+    setUpdatingAuctionId(auctionId);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+
+      const { error } = await supabase
+        .from('auctions')
+        .update({ final_price: parseFloat(finalPrice) })
+        .eq('auction_id', auctionId);
+
+      if (error) throw error;
+
+      // Remove from ended auctions list
+      setEndedAuctions(prev => prev.filter(a => a.auction_id !== auctionId));
+      // Clear the input
+      setFinalPriceInputs(prev => {
+        const newInputs = { ...prev };
+        delete newInputs[auctionId];
+        return newInputs;
+      });
+
+      alert(`Final price updated to $${parseFloat(finalPrice).toLocaleString()}`);
+    } catch (error) {
+      console.error('Error updating final price:', error);
+      alert('Failed to update final price: ' + error.message);
+    } finally {
+      setUpdatingAuctionId(null);
+    }
+  };
+
+  // Mark auction as reserve not met (no sale)
+  const handleMarkReserveNotMet = async (auctionId) => {
+    if (!confirm('Mark this auction as "Reserve Not Met"? This means the car did not sell.')) {
+      return;
+    }
+
+    setUpdatingAuctionId(auctionId);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+
+      // We'll set final_price to a special value (0) to indicate reserve not met
+      // Or we could add a new field. For now, leave final_price as null
+      // and the system already handles this (reserveNotMet = ended && !final_price)
+
+      // Remove from ended auctions list since it's "handled"
+      // Actually, we should probably keep it with null final_price
+      // The scoring system already handles this case
+
+      alert('Auction will be scored as "Reserve Not Met" (75% penalty applied)');
+      setEndedAuctions(prev => prev.filter(a => a.auction_id !== auctionId));
+    } catch (error) {
+      console.error('Error marking reserve not met:', error);
+    } finally {
+      setUpdatingAuctionId(null);
     }
   };
 
@@ -777,17 +870,28 @@ const AdminPortal = () => {
 
         {/* TABS */}
         <div className="flex gap-2 mb-6 border-b border-slate-700">
-          {['auctions', 'users', 'leagues', 'garages'].map(tab => (
+          {['auctions', 'finalize', 'users', 'leagues', 'garages'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-6 py-3 font-semibold capitalize transition-all ${
-                activeTab === tab 
-                  ? 'bg-blue-600 text-white rounded-t-lg' 
+                activeTab === tab
+                  ? 'bg-blue-600 text-white rounded-t-lg'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800 rounded-t-lg'
               }`}
             >
-              {tab}
+              {tab === 'finalize' ? (
+                <span className="flex items-center gap-2">
+                  Finalize
+                  {endedAuctions.length > 0 && (
+                    <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                      {endedAuctions.length}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                tab
+              )}
             </button>
           ))}
         </div>
@@ -1032,10 +1136,119 @@ const AdminPortal = () => {
           </div>
         )}
 
+        {/* FINALIZE TAB - Enter final prices for ended auctions */}
+        {activeTab === 'finalize' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <CheckCircle size={24} className="text-green-500" />
+                  Finalize Auction Results
+                </h2>
+                <p className="text-slate-400 text-sm mt-1">
+                  Enter final sale prices for auctions that have ended. Leave empty to mark as "Reserve Not Met".
+                </p>
+              </div>
+              <button
+                onClick={loadEndedAuctions}
+                className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded flex items-center gap-2"
+              >
+                <RefreshCw size={18} /> Refresh
+              </button>
+            </div>
+
+            {endedAuctions.length === 0 ? (
+              <div className="bg-slate-800 p-8 rounded-lg border border-slate-700 text-center">
+                <CheckCircle size={48} className="mx-auto text-green-500 mb-4" />
+                <div className="text-slate-400 text-lg">All caught up!</div>
+                <p className="text-slate-500 text-sm mt-2">
+                  No ended auctions need final prices at this time.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {endedAuctions.map(auction => (
+                  <div key={auction.auction_id} className="bg-slate-800 p-6 rounded-lg border border-slate-700">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h3 className="text-xl font-bold text-white">{auction.title}</h3>
+                        <div className="flex gap-4 mt-2 text-slate-400 text-sm">
+                          <span>{auction.year}</span>
+                          <span>•</span>
+                          <span>{auction.make} {auction.model}</span>
+                          <span>•</span>
+                          <span className="text-orange-400">{formatRelativeTime(auction.timestamp_end)}</span>
+                        </div>
+                        <div className="flex gap-6 mt-3">
+                          {auction.price_at_48h && (
+                            <div>
+                              <div className="text-slate-400 text-xs">Draft Price (48h)</div>
+                              <div className="text-white font-semibold">${auction.price_at_48h?.toLocaleString()}</div>
+                            </div>
+                          )}
+                          {auction.current_bid && (
+                            <div>
+                              <div className="text-slate-400 text-xs">Last Bid</div>
+                              <div className="text-yellow-400 font-semibold">${parseFloat(auction.current_bid)?.toLocaleString()}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2 items-end">
+                        <span className="text-xs text-slate-500">{auction.auction_id}</span>
+                        {auction.url && (
+                          <a href={auction.url} target="_blank" rel="noopener noreferrer"
+                            className="text-blue-400 hover:text-blue-300 text-sm">View on BaT →</a>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-slate-700">
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <label className="text-slate-400 text-sm mb-1 block">Final Sale Price ($)</label>
+                          <input
+                            type="number"
+                            placeholder="Enter final price..."
+                            value={finalPriceInputs[auction.auction_id] || ''}
+                            onChange={(e) => setFinalPriceInputs(prev => ({
+                              ...prev,
+                              [auction.auction_id]: e.target.value
+                            }))}
+                            className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full"
+                            disabled={updatingAuctionId === auction.auction_id}
+                          />
+                        </div>
+                        <div className="flex gap-2 pt-6">
+                          <button
+                            onClick={() => handleUpdateFinalPrice(auction.auction_id)}
+                            disabled={updatingAuctionId === auction.auction_id || !finalPriceInputs[auction.auction_id]}
+                            className="bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded flex items-center gap-2"
+                          >
+                            <CheckCircle size={18} />
+                            {updatingAuctionId === auction.auction_id ? 'Saving...' : 'Set Final Price'}
+                          </button>
+                          <button
+                            onClick={() => handleMarkReserveNotMet(auction.auction_id)}
+                            disabled={updatingAuctionId === auction.auction_id}
+                            className="bg-orange-600 hover:bg-orange-700 disabled:bg-slate-600 text-white px-4 py-2 rounded"
+                          >
+                            Reserve Not Met
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* USERS TAB */}
         {activeTab === 'users' && (
           <div>
-            <button onClick={() => setShowAddUser(!showAddUser)} 
+            <button onClick={() => setShowAddUser(!showAddUser)}
               className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex items-center gap-2 mb-6">
               <Plus size={20} /> Add User
             </button>

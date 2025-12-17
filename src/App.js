@@ -661,7 +661,9 @@ export default function BixPrixApp() {
         const garageCars = cars.map((it) => {
           const auction = it.auctions
           const imageUrl = auction?.image_url || getDefaultCarImage(auction?.make)
-          
+          const now = Math.floor(Date.now() / 1000)
+          const auctionEnded = auction?.timestamp_end ? auction.timestamp_end < now : false
+
           return {
             garageCarId: it.id,
             id: auction?.auction_id || it.auction_id,
@@ -670,10 +672,14 @@ export default function BixPrixApp() {
             model: auction?.model || '',
             year: auction?.year || '',
             currentBid: parseFloat(auction?.current_bid) || it.purchase_price,
+            finalPrice: auction?.final_price ? parseFloat(auction.final_price) : null,
             purchasePrice: it.purchase_price,
             auctionUrl: auction?.url || '#',
             imageUrl: imageUrl,
             timeLeft: calculateTimeLeft(auction?.timestamp_end ? new Date(auction.timestamp_end * 1000) : null),
+            timestampEnd: auction?.timestamp_end || null,
+            auctionEnded: auctionEnded,
+            reserveNotMet: auctionEnded && !auction?.final_price,
           }
         })
         setGarage(garageCars)
@@ -874,22 +880,29 @@ export default function BixPrixApp() {
           console.log('📊 Auction updated:', payload.new.auction_id)
           setLastUpdated(new Date())
           
-          setAuctions(prev => prev.map(car => 
-            car.id === payload.new.auction_id
-              ? {
-                  ...car,
-                  currentBid: parseFloat(payload.new.current_bid),
-                  finalPrice: payload.new.final_price,
-                  timeLeft: calculateTimeLeft(new Date(payload.new.timestamp_end * 1000))
-                }
-              : car
-          ))
+          setAuctions(prev => prev.map(car => {
+            if (car.id === payload.new.auction_id) {
+              const now = Math.floor(Date.now() / 1000)
+              const auctionEnded = payload.new.timestamp_end < now
+              return {
+                ...car,
+                currentBid: parseFloat(payload.new.current_bid),
+                finalPrice: payload.new.final_price ? parseFloat(payload.new.final_price) : null,
+                timeLeft: calculateTimeLeft(new Date(payload.new.timestamp_end * 1000)),
+                auctionEnded: auctionEnded,
+                reserveNotMet: auctionEnded && !payload.new.final_price,
+              }
+            }
+            return car
+          }))
 
           setGarage(prev => prev.map(car => {
             if (car.id === payload.new.auction_id) {
               const oldBid = car.currentBid
               const newBid = parseFloat(payload.new.current_bid)
-              
+              const now = Math.floor(Date.now() / 1000)
+              const auctionEnded = payload.new.timestamp_end < now
+
               if (newBid > oldBid) {
                 const increase = newBid - oldBid
                 addRecentUpdate({
@@ -899,12 +912,14 @@ export default function BixPrixApp() {
                   carId: car.id
                 })
               }
-              
+
               return {
                 ...car,
                 currentBid: newBid,
-                finalPrice: payload.new.final_price,
-                timeLeft: calculateTimeLeft(new Date(payload.new.timestamp_end * 1000))
+                finalPrice: payload.new.final_price ? parseFloat(payload.new.final_price) : null,
+                timeLeft: calculateTimeLeft(new Date(payload.new.timestamp_end * 1000)),
+                auctionEnded: auctionEnded,
+                reserveNotMet: auctionEnded && !payload.new.final_price,
               }
             }
             return car
@@ -1688,11 +1703,19 @@ export default function BixPrixApp() {
                       </a>
                       <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
                         <div>Draft: ${(car.purchasePrice || car.currentBid).toLocaleString()}</div>
-                        <div>Current: ${car.currentBid.toLocaleString()}</div>
-                        <div className={`${gain(car.purchasePrice || car.currentBid, car.currentBid) >= 0 ? 'text-green-700' : 'text-bpRed'}`}>
-                          Gain: {gain(car.purchasePrice || car.currentBid, car.currentBid) >= 0 ? '+' : ''}{gain(car.purchasePrice || car.currentBid, car.currentBid)}%
+                        {car.auctionEnded ? (
+                          car.finalPrice ? (
+                            <div className="text-green-700 font-semibold">Final: ${car.finalPrice.toLocaleString()}</div>
+                          ) : (
+                            <div className="text-bpRed">Reserve Not Met</div>
+                          )
+                        ) : (
+                          <div>Current: ${car.currentBid.toLocaleString()}</div>
+                        )}
+                        <div className={`${gain(car.purchasePrice || car.currentBid, car.finalPrice || car.currentBid) >= 0 ? 'text-green-700' : 'text-bpRed'}`}>
+                          Gain: {gain(car.purchasePrice || car.currentBid, car.finalPrice || car.currentBid) >= 0 ? '+' : ''}{gain(car.purchasePrice || car.currentBid, car.finalPrice || car.currentBid)}%
                         </div>
-                        <div>{car.timeLeft} left</div>
+                        <div>{car.auctionEnded ? 'Ended' : `${car.timeLeft} left`}</div>
                       </div>
                       {canModify && (
                         <LightButton className="mt-3 text-sm" onClick={()=> removeFromGarage(car)}>
