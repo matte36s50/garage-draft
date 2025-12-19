@@ -306,12 +306,31 @@ export async function GET(request) {
       }
     }
 
+    // Check and auto-complete leagues where all auctions have ended
+    let completedLeagues = null;
+    try {
+      const { data: completionResult, error: completionError } = await supabase
+        .rpc('check_and_complete_leagues');
+
+      if (completionError) {
+        console.error('Error checking league completion:', completionError);
+      } else {
+        completedLeagues = completionResult;
+        if (completionResult?.leagues_completed > 0) {
+          console.log(`Auto-completed ${completionResult.leagues_completed} leagues`);
+        }
+      }
+    } catch (completionErr) {
+      console.error('League completion check failed:', completionErr);
+    }
+
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
       leagues: leagues?.length || 0,
       totalSnapshots: totalUpdated,
-      results
+      results,
+      leagueCompletion: completedLeagues
     });
 
   } catch (error) {

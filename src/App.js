@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard, History } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import Dashboard from './components/Dashboard'
 import LeagueChat from './components/LeagueChat'
+import UserHistory from './components/UserHistory'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
@@ -201,6 +202,12 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
             >
               Leagues
             </button>
+            <button
+              className={`hover:text-bpCream/90 transition ${currentScreen === 'history' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
+              onClick={() => onNavigate && onNavigate('history')}
+            >
+              History
+            </button>
           </nav>
 
           <div className="flex items-center gap-4">
@@ -219,11 +226,59 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
         <div className="h-0.5 bg-bpRed/80" />
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-5xl px-4 py-6 pb-24 sm:pb-6">{children}</main>
 
       {recentUpdates && <RecentUpdates updates={recentUpdates} />}
 
-      <footer className="border-t border-white/10 mt-10">
+      {/* Mobile Bottom Navigation */}
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-bpNavy border-t border-white/10 safe-area-pb">
+        <div className="flex items-center justify-around py-2">
+          <button
+            className={`flex flex-col items-center gap-1 px-3 py-1 ${currentScreen === 'dashboard' ? 'text-bpGold' : 'text-bpGray'}`}
+            onClick={() => onNavigate && onNavigate('dashboard')}
+          >
+            <LayoutDashboard size={20} />
+            <span className="text-[10px]">Dashboard</span>
+          </button>
+          <button
+            className={`flex flex-col items-center gap-1 px-3 py-1 ${currentScreen === 'garage' ? 'text-bpGold' : 'text-bpGray'}`}
+            onClick={() => onNavigate && onNavigate('garage')}
+          >
+            <Car size={20} />
+            <span className="text-[10px]">Garage</span>
+          </button>
+          <button
+            className={`flex flex-col items-center gap-1 px-3 py-1 ${currentScreen === 'cars' ? 'text-bpGold' : 'text-bpGray'}`}
+            onClick={() => onNavigate && onNavigate('cars')}
+          >
+            <DollarSign size={20} />
+            <span className="text-[10px]">Auctions</span>
+          </button>
+          <button
+            className={`flex flex-col items-center gap-1 px-3 py-1 ${currentScreen === 'leaderboard' ? 'text-bpGold' : 'text-bpGray'}`}
+            onClick={() => onNavigate && onNavigate('leaderboard')}
+          >
+            <Trophy size={20} />
+            <span className="text-[10px]">Ranks</span>
+          </button>
+          <button
+            className={`flex flex-col items-center gap-1 px-3 py-1 ${currentScreen === 'leagues' ? 'text-bpGold' : 'text-bpGray'}`}
+            onClick={() => onNavigate && onNavigate('leagues')}
+          >
+            <Users size={20} />
+            <span className="text-[10px]">Leagues</span>
+          </button>
+          <button
+            className={`flex flex-col items-center gap-1 px-3 py-1 ${currentScreen === 'history' ? 'text-bpGold' : 'text-bpGray'}`}
+            onClick={() => onNavigate && onNavigate('history')}
+          >
+            <History size={20} />
+            <span className="text-[10px]">History</span>
+          </button>
+        </div>
+      </nav>
+
+      <footer className="border-t border-white/10 mt-10 hidden sm:block">
         <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-bpGray">
           © {new Date().getFullYear()} BixPrix — Race the Market.
         </div>
@@ -2354,5 +2409,17 @@ export default function BixPrixApp() {
   if (currentScreen === 'cars') return <CarsScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
   if (currentScreen === 'garage') return <GarageScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
   if (currentScreen === 'leaderboard') return <LeaderboardScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
+  if (currentScreen === 'history') return (
+    <Shell
+      onSignOut={() => supabase.auth.signOut()}
+      onNavigate={updateCurrentScreen}
+      currentScreen={currentScreen}
+      lastUpdated={lastUpdated}
+      connectionStatus={connectionStatus}
+      selectedLeague={selectedLeague}
+    >
+      <UserHistory supabase={supabase} user={user} />
+    </Shell>
+  )
   return null
 }
