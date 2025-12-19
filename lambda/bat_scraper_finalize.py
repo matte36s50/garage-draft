@@ -214,7 +214,7 @@ def get_auctions_to_finalize():
         "select": "*",
         "final_price": "is.null",
         "timestamp_end": f"lt.{cutoff_epoch}",
-        "limit": "50",  # Reduced batch size for faster runs
+        "limit": "100",
         "order": "timestamp_end.desc",  # Process most recent first
     }
 
@@ -280,8 +280,7 @@ def mark_auction_withdrawn(auction_id: str) -> bool:
         "Content-Type": "application/json",
         "Prefer": "return=minimal",
     }
-    # Using 0 as a marker for withdrawn/no-sale
-    # Alternative: Add a 'status' column to the auctions table
+    # Using 0 as a marker for withdrawn
     data = {"final_price": 0}
 
     try:
@@ -292,6 +291,32 @@ def mark_auction_withdrawn(auction_id: str) -> bool:
         return False
     except Exception as e:
         print(f"   ❌ Error marking withdrawn: {str(e)}")
+        return False
+
+
+def update_high_bid(auction_id: str, high_bid: int) -> bool:
+    """
+    Update the current_bid for a reserve-not-met auction.
+    Leave final_price as NULL so the 25% penalty is applied in scoring.
+    """
+    url = f"{SUPABASE_URL}/rest/v1/auctions"
+    params = {"auction_id": f"eq.{auction_id}"}
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    data = {"current_bid": high_bid}
+
+    try:
+        resp = requests.patch(url, headers=headers, params=params, json=data, timeout=20)
+        if resp.status_code in (200, 204):
+            print(f"   ⚠️ Updated high bid: ${high_bid:,} (reserve not met)")
+            return True
+        return False
+    except Exception as e:
+        print(f"   ❌ Error updating high bid: {str(e)}")
         return False
 
 
@@ -344,9 +369,10 @@ def lambda_handler(event, context):
             else:
                 stats["failed"] += 1
                 errors.append(f"{title}: DB update failed")
-        elif status == "no_sale":
-            # Reserve not met - mark with 0
-            mark_auction_withdrawn(auction_id)
+        elif status == "no_sale" and price:
+            # Reserve not met - update current_bid with high bid
+            # Leave final_price NULL so 25% penalty applies in scoring
+            update_high_bid(auction_id, price)
             stats["no_sale"] += 1
         else:
             stats["failed"] += 1

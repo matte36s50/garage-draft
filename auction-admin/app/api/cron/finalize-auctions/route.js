@@ -218,7 +218,7 @@ export async function GET(request) {
       .is('final_price', null)           // No final price yet
       .not('url', 'is', null)            // Has a URL to scrape
       .order('timestamp_end', { ascending: false })
-      .limit(50);  // Process in batches
+      .limit(100);
 
     if (fetchError) {
       console.error('Error fetching auctions:', fetchError);
@@ -308,15 +308,16 @@ export async function GET(request) {
         continue;
       }
 
-      // Handle reserve not met
+      // Handle reserve not met - update current_bid but leave final_price NULL
+      // This way the 25% penalty is correctly applied in scoring
       if (status === 'no_sale') {
-        // Mark with final_price = 0 so it won't be retried
+        // Update current_bid with the high bid so scoring can use it
         await supabase
           .from('auctions')
-          .update({ final_price: 0 })
+          .update({ current_bid: price })
           .eq('auction_id', auction.auction_id);
 
-        console.log(`   ⚠️ Reserve not met - marked with $0`);
+        console.log(`   ⚠️ Reserve not met - updated current_bid to ${price.toLocaleString()}`);
         results.noSale.push({
           id: auction.auction_id,
           title: auction.title,
