@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Search, RefreshCw, Users, Trophy, Car, DollarSign, Upload, Download, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, Search, RefreshCw, Users, Trophy, Car, DollarSign, Upload, Download, CheckCircle, Play, Zap } from 'lucide-react';
 
 const AdminPortal = () => {
   const [activeTab, setActiveTab] = useState('auctions');
@@ -53,6 +53,8 @@ const AdminPortal = () => {
   const [endedAuctions, setEndedAuctions] = useState([]);
   const [finalPriceInputs, setFinalPriceInputs] = useState({});
   const [updatingAuctionId, setUpdatingAuctionId] = useState(null);
+  const [runningAutoFinalizer, setRunningAutoFinalizer] = useState(false);
+  const [autoFinalizerResult, setAutoFinalizerResult] = useState(null);
 
   useEffect(() => {
     loadAllData();
@@ -291,6 +293,43 @@ const AdminPortal = () => {
       alert('Failed to update final price: ' + error.message);
     } finally {
       setUpdatingAuctionId(null);
+    }
+  };
+
+  // Run the automatic BaT scraper to fetch final prices
+  const handleRunAutoFinalizer = async () => {
+    setRunningAutoFinalizer(true);
+    setAutoFinalizerResult(null);
+
+    try {
+      const response = await fetch('/api/cron/finalize-auctions', {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setAutoFinalizerResult({
+          success: true,
+          message: `Processed ${result.processed} auctions: ${result.successful} updated, ${result.failed} failed`,
+          details: result
+        });
+
+        // Reload the ended auctions list
+        await loadEndedAuctions();
+      } else {
+        setAutoFinalizerResult({
+          success: false,
+          message: result.error || 'Failed to run finalizer'
+        });
+      }
+    } catch (error) {
+      setAutoFinalizerResult({
+        success: false,
+        message: 'Network error: ' + error.message
+      });
+    } finally {
+      setRunningAutoFinalizer(false);
     }
   };
 
@@ -1146,16 +1185,67 @@ const AdminPortal = () => {
                   Finalize Auction Results
                 </h2>
                 <p className="text-slate-400 text-sm mt-1">
-                  Enter final sale prices for auctions that have ended. Leave empty to mark as "Reserve Not Met".
+                  Auto-scrape final prices from BaT, or manually enter them below.
                 </p>
               </div>
-              <button
-                onClick={loadEndedAuctions}
-                className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded flex items-center gap-2"
-              >
-                <RefreshCw size={18} /> Refresh
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRunAutoFinalizer}
+                  disabled={runningAutoFinalizer}
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-wait text-white px-4 py-2 rounded flex items-center gap-2"
+                >
+                  {runningAutoFinalizer ? (
+                    <>
+                      <RefreshCw size={18} className="animate-spin" /> Scraping BaT...
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={18} /> Auto-Scrape from BaT
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={loadEndedAuctions}
+                  className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded flex items-center gap-2"
+                >
+                  <RefreshCw size={18} /> Refresh
+                </button>
+              </div>
             </div>
+
+            {/* Auto-finalizer result message */}
+            {autoFinalizerResult && (
+              <div className={`mb-6 p-4 rounded-lg border ${
+                autoFinalizerResult.success
+                  ? 'bg-green-900/30 border-green-700 text-green-300'
+                  : 'bg-red-900/30 border-red-700 text-red-300'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {autoFinalizerResult.success ? <CheckCircle size={20} /> : <Trash2 size={20} />}
+                  <span className="font-semibold">{autoFinalizerResult.message}</span>
+                </div>
+                {autoFinalizerResult.details?.results?.successful?.length > 0 && (
+                  <div className="mt-2 text-sm">
+                    <div className="text-green-400">Updated:</div>
+                    <ul className="ml-4 list-disc">
+                      {autoFinalizerResult.details.results.successful.map(a => (
+                        <li key={a.id}>{a.title?.slice(0, 50)} - ${a.finalPrice?.toLocaleString()}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {autoFinalizerResult.details?.results?.failed?.length > 0 && (
+                  <div className="mt-2 text-sm">
+                    <div className="text-red-400">Failed:</div>
+                    <ul className="ml-4 list-disc">
+                      {autoFinalizerResult.details.results.failed.map(a => (
+                        <li key={a.id}>{a.title?.slice(0, 50)} - {a.error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
 
             {endedAuctions.length === 0 ? (
               <div className="bg-slate-800 p-8 rounded-lg border border-slate-700 text-center">
