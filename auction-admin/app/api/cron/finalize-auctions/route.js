@@ -184,9 +184,7 @@ async function scrapeAuctionPrice(url) {
 }
 
 export async function GET(request) {
-  const supabase = getSupabaseClient();
-
-  // Verify cron secret for security
+  // Verify cron secret for security (only for GET - external cron calls)
   const authHeader = request.headers.get('authorization');
   const { searchParams } = new URL(request.url);
   const secretParam = searchParams.get('secret');
@@ -200,6 +198,17 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
   }
+
+  return runFinalizer();
+}
+
+// POST doesn't require auth - called from admin UI which is already protected
+export async function POST(request) {
+  return runFinalizer();
+}
+
+async function runFinalizer() {
+  const supabase = getSupabaseClient();
 
   console.log('=' .repeat(50));
   console.log('🚀 Auction Finalizer - Starting');
@@ -382,9 +391,4 @@ export async function GET(request) {
     console.error('Cron job error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
-
-// Support POST for manual triggers
-export async function POST(request) {
-  return GET(request);
 }
