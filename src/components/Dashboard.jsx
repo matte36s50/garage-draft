@@ -41,9 +41,9 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
         .eq('user_id', user.id)
         .maybeSingle();
 
-      // Calculate how far behind the leader
+      // Calculate how far behind the leader (now in dollars)
       const behindLeader = leagueStats.leader
-        ? (leagueStats.leader.totalScore - userScore.totalPercentGain)
+        ? (leagueStats.leader.totalScore - userScore.totalScore)
         : 0;
 
       setUserStats({
@@ -51,6 +51,10 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
         username: user.user_metadata?.username || user.email?.split('@')[0] || 'Player',
         rank: userRank,
         rankChange: userMember?.rank_change || 0,
+        // NEW: Primary score is total dollar value
+        totalScore: userScore.totalScore,
+        totalFinalValue: userScore.totalFinalValue,
+        // KEPT: For backward compatibility
         totalGain: userScore.totalPercentGain,
         totalDollarGain: userScore.totalDollarGain,
         leagueAvg: leagueStats.leagueAvg,
@@ -63,7 +67,10 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
         bestCar: userScore.bestCar,
         worstCar: userScore.worstCar,
         bonusScore: userScore.bonusScore,
-        carsData: userScore.carsData
+        carsData: userScore.carsData,
+        // NEW: Roster completion status
+        isRosterComplete: userScore.isRosterComplete,
+        pendingCount: userScore.pendingCount
       });
     } catch (error) {
       console.error('Failed to fetch dashboard stats:', error);
@@ -501,9 +508,25 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
                     <p className="text-xl font-semibold text-bpCream mb-1">
                       {userStats.bestCar.title}
                     </p>
-                    {userStats.bestCar.reserveNotMet && (
+                    {/* Show car status */}
+                    {userStats.bestCar.status === 'reserve_not_met' && (
                       <p className="text-sm text-orange-400 mb-2">
-                        ⚠️ Reserve not met (25% penalty applied)
+                        Reserve Not Met (25% of high bid)
+                      </p>
+                    )}
+                    {userStats.bestCar.status === 'withdrawn' && (
+                      <p className="text-sm text-red-400 mb-2">
+                        Withdrawn ($0)
+                      </p>
+                    )}
+                    {userStats.bestCar.status === 'pending' && (
+                      <p className="text-sm text-blue-400 mb-2">
+                        Auction In Progress
+                      </p>
+                    )}
+                    {userStats.bestCar.status === 'sold' && (
+                      <p className="text-sm text-green-400 mb-2">
+                        Sold!
                       </p>
                     )}
                   </div>
@@ -511,27 +534,36 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <p className="text-xs text-bpGray mb-1">Purchase Price</p>
+                    <p className="text-xs text-bpGray mb-1">Draft Price</p>
                     <p className="text-lg font-bold text-bpCream">
                       ${userStats.bestCar.purchasePrice.toLocaleString()}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-bpGray mb-1">Current Value</p>
+                    <p className="text-xs text-bpGray mb-1">Final Value</p>
                     <p className="text-lg font-bold text-bpCream">
-                      ${userStats.bestCar.currentPrice.toLocaleString()}
+                      ${Math.round(userStats.bestCar.finalValue).toLocaleString()}
+                      {userStats.bestCar.status === 'reserve_not_met' && ' (RNM)'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-bpGray mb-1">Gain</p>
-                    <p className={`text-lg font-bold ${userStats.bestCar.percentGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {userStats.bestCar.percentGain >= 0 ? '+' : ''}{userStats.bestCar.percentGain.toFixed(2)}%
+                    <p className="text-xs text-bpGray mb-1">Status</p>
+                    <p className={`text-lg font-bold ${
+                      userStats.bestCar.status === 'sold' ? 'text-green-400' :
+                      userStats.bestCar.status === 'pending' ? 'text-blue-400' :
+                      userStats.bestCar.status === 'reserve_not_met' ? 'text-orange-400' :
+                      'text-red-400'
+                    }`}>
+                      {userStats.bestCar.status === 'sold' ? 'Sold' :
+                       userStats.bestCar.status === 'pending' ? 'Pending' :
+                       userStats.bestCar.status === 'reserve_not_met' ? 'RNM' :
+                       'Withdrawn'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-bpGray mb-1">Profit</p>
+                    <p className="text-xs text-bpGray mb-1">Gain/Loss</p>
                     <p className={`text-lg font-bold ${userStats.bestCar.dollarGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {userStats.bestCar.dollarGain >= 0 ? '+' : ''}${userStats.bestCar.dollarGain.toLocaleString()}
+                      {userStats.bestCar.dollarGain >= 0 ? '+' : ''}${Math.round(userStats.bestCar.dollarGain).toLocaleString()}
                     </p>
                   </div>
                 </div>

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { calculateUserScore } from '../utils/scoreCalculation';
 
+const MAX_GARAGE_CARS = 7;
+
 export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId }) {
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,16 +35,6 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
 
       if (error) throw error;
 
-      // Get league spending limit for qualification check
-      const { data: league } = await supabase
-        .from('leagues')
-        .select('spending_limit')
-        .eq('id', leagueId)
-        .single();
-
-      const spendingLimit = league?.spending_limit || 200000;
-      const minimumSpend = spendingLimit * 0.5; // 50% of spending limit
-
       // Calculate real-time scores for each member
       const membersWithScores = await Promise.all(
         (members || []).map(async (member) => {
@@ -51,17 +43,27 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
           return {
             userId: member.user_id,
             username: member.users?.username || 'Anonymous',
-            totalScore: score.totalPercentGain,
+            totalScore: score.totalScore,            // NEW: Total dollar value
+            totalFinalValue: score.totalFinalValue,  // NEW: Same as totalScore
+            totalDollarGain: score.totalDollarGain,  // Profit/loss
             rankChange: member.rank_change || 0,
             totalSpent: score.totalSpent,
             carCount: score.carsCount,
-            qualifies: score.totalSpent >= minimumSpend
+            isRosterComplete: score.isRosterComplete, // NEW: 7 cars = complete
+            pendingCount: score.pendingCount          // NEW: Cars still at auction
           };
         })
       );
 
-      // Sort by total score descending and assign ranks
-      membersWithScores.sort((a, b) => b.totalScore - a.totalScore);
+      // Sort: complete rosters first, then by total score (total dollar value)
+      membersWithScores.sort((a, b) => {
+        // Complete rosters rank above incomplete
+        if (a.isRosterComplete && !b.isRosterComplete) return -1;
+        if (!a.isRosterComplete && b.isRosterComplete) return 1;
+        // Then by total score descending
+        return b.totalScore - a.totalScore;
+      });
+
       const rankedMembers = membersWithScores.map((member, index) => ({
         ...member,
         rank: index + 1
@@ -146,6 +148,11 @@ function LeaderboardRow({ member, index, isCurrentUser }) {
     return 'text-bpGray';
   };
 
+  // Format dollar amount with commas
+  const formatDollar = (amount) => {
+    return '$' + Math.round(amount).toLocaleString();
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -173,21 +180,25 @@ function LeaderboardRow({ member, index, isCurrentUser }) {
               YOU
             </span>
           )}
-          {!member.qualifies && (
-            <span className="text-xs bg-bpGold text-bpNavy px-2 py-1 rounded" title="Below $100K minimum spend">
-              DQ
+          {!member.isRosterComplete && (
+            <span className="text-xs bg-orange-500 text-white px-2 py-1 rounded" title="Incomplete roster">
+              {member.carCount}/{MAX_GARAGE_CARS}
             </span>
           )}
         </div>
         <div className="text-xs text-bpGray">
-          {member.carCount} cars | ${(member.totalSpent / 1000).toFixed(0)}K spent
+          {member.carCount}/{MAX_GARAGE_CARS} cars | {formatDollar(member.totalSpent)} spent
+          {member.pendingCount > 0 && ` | ${member.pendingCount} pending`}
         </div>
       </div>
 
-      {/* Score */}
+      {/* Score - Now shows total dollar value */}
       <div className="text-right">
-        <div className={`text-xl font-bold ${member.totalScore >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-          {member.totalScore >= 0 ? '+' : ''}{member.totalScore.toFixed(2)}%
+        <div className="text-xl font-bold text-bpInk">
+          {formatDollar(member.totalScore)}
+        </div>
+        <div className="text-xs text-bpGray">
+          {member.totalDollarGain >= 0 ? '+' : ''}{formatDollar(member.totalDollarGain)} gain
         </div>
         <div className={`text-xs font-semibold flex items-center justify-end gap-1 ${getTrendColor(member.rankChange)}`}>
           {getRankChangeIcon(member.rankChange)}

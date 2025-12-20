@@ -149,6 +149,7 @@ export async function GET(request) {
         if (membersError) throw membersError;
 
         // Calculate scores for each member and update league_members
+        // NEW SCORING: Total dollar value instead of percentage gain
         const scoreUpdates = await Promise.all(
           (members || []).map(async (member) => {
             // First, get the user's garage for this league
@@ -178,7 +179,7 @@ export async function GET(request) {
               garageCars = cars || [];
             }
 
-            let totalPercentGain = 0;
+            let totalFinalValue = 0;
             let totalSpent = 0;
 
             if (garageCars && garageCars.length > 0) {
@@ -187,27 +188,38 @@ export async function GET(request) {
                 if (!auction) return;
 
                 const purchasePrice = parseFloat(car.purchase_price);
-                const currentPrice = auction.final_price
-                  ? parseFloat(auction.final_price)
-                  : parseFloat(auction.current_bid || purchasePrice);
+                const currentBid = parseFloat(auction.current_bid || purchasePrice);
+                const finalPrice = auction.final_price !== null ? parseFloat(auction.final_price) : null;
 
                 const now = Math.floor(Date.now() / 1000);
                 const auctionEnded = auction.timestamp_end < now;
-                const reserveNotMet = auctionEnded && !auction.final_price;
 
-                let effectivePrice = currentPrice;
+                let finalValue;
 
-                if (reserveNotMet) {
-                  effectivePrice = currentPrice * 0.25;
+                // Withdrawn: final_price is explicitly set to 0
+                if (finalPrice === 0) {
+                  finalValue = 0;
+                }
+                // Sold: final_price is set and > 0
+                else if (finalPrice !== null && finalPrice > 0) {
+                  finalValue = finalPrice;
+                }
+                // Reserve not met: auction ended but no final_price
+                else if (auctionEnded && finalPrice === null) {
+                  finalValue = currentBid * 0.25;
+                }
+                // Pending: auction still active - use current bid
+                else {
+                  finalValue = currentBid;
                 }
 
-                const percentGain = ((effectivePrice - purchasePrice) / purchasePrice) * 100;
-                totalPercentGain += percentGain;
+                totalFinalValue += finalValue;
                 totalSpent += purchasePrice;
               });
             }
 
-            // Get bonus car score if exists
+            // Bonus car score still adds bonus points (kept for backward compatibility)
+            let bonusPoints = 0;
             const { data: bonusPrediction } = await supabase
               .from('bonus_car_predictions')
               .select('predicted_price, bonus_cars(actual_sale_price)')
@@ -222,24 +234,26 @@ export async function GET(request) {
               const percentOff = (diff / actualPrice) * 100;
 
               if (percentOff <= 5) {
-                totalPercentGain += 25;
+                bonusPoints = 25;
               } else if (percentOff <= 10) {
-                totalPercentGain += 15;
+                bonusPoints = 15;
               } else if (percentOff <= 15) {
-                totalPercentGain += 10;
+                bonusPoints = 10;
               } else if (percentOff <= 20) {
-                totalPercentGain += 5;
+                bonusPoints = 5;
               }
             }
 
-            const finalScore = parseFloat(totalPercentGain.toFixed(2));
+            // NEW: Score is now total dollar value (bonus points are separate/optional)
+            const finalScore = parseFloat(totalFinalValue.toFixed(2));
 
             return {
               user_id: member.user_id,
               total_score: finalScore,
               total_spent: totalSpent,
               car_count: garageCars?.length || 0,
-              garage_cars: garageCars
+              garage_cars: garageCars,
+              bonus_points: bonusPoints
             };
           })
         );
