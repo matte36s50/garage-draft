@@ -1995,6 +1995,12 @@ export default function BixPrixApp() {
         const bonusScore = await calculateBonusCarScore(userId, leagueId)
         if (bonusScore) {
           totalPercentGain += bonusScore.percentGain
+
+          // If this user is the bonus car winner, add 3x the sale price to their total
+          if (bonusScore.isWinner && bonusScore.bonusValue > 0) {
+            totalFinalValue += bonusScore.bonusValue
+            totalDollarGain += bonusScore.bonusValue
+          }
         }
 
         const avgPercentPerCar = carsCount > 0 ? totalPercentGain / (carsCount + (bonusScore ? 1 : 0)) : 0
@@ -2035,46 +2041,75 @@ export default function BixPrixApp() {
           .select('bonus_auction_id')
           .eq('id', leagueId)
           .single()
-        
+
         if (!league?.bonus_auction_id) return null
-        
+
         const { data: prediction } = await supabase
           .from('bonus_predictions')
           .select('predicted_price')
           .eq('league_id', leagueId)
           .eq('user_id', userId)
           .maybeSingle()
-        
+
         if (!prediction) return null
-        
+
         const { data: bonusAuction } = await supabase
           .from('auctions')
           .select('current_bid, final_price, price_at_48h')
           .eq('auction_id', league.bonus_auction_id)
           .single()
-        
+
         if (!bonusAuction) return null
-        
+
         const baseline = parseFloat(bonusAuction.price_at_48h)
-        const finalPrice = bonusAuction.final_price 
+        const finalPrice = bonusAuction.final_price
           ? parseFloat(bonusAuction.final_price)
           : parseFloat(bonusAuction.current_bid)
-        
+
         const basePercentGain = ((finalPrice - baseline) / baseline) * 100
-        
+
         const predictedPrice = parseFloat(prediction.predicted_price)
         const predictionError = Math.abs(predictedPrice - finalPrice)
         const percentError = (predictionError / finalPrice) * 100
-        
+
+        // Check if this user is the bonus car winner (closest prediction)
+        const { data: allPredictions } = await supabase
+          .from('bonus_predictions')
+          .select('user_id, predicted_price')
+          .eq('league_id', leagueId)
+
+        let isWinner = false
+        let bonusValue = 0
+
+        if (allPredictions && allPredictions.length > 0) {
+          let smallestError = Infinity
+          let winnerId = null
+
+          allPredictions.forEach(pred => {
+            const error = Math.abs(parseFloat(pred.predicted_price) - finalPrice)
+            if (error < smallestError) {
+              smallestError = error
+              winnerId = pred.user_id
+            }
+          })
+
+          if (winnerId === userId) {
+            isWinner = true
+            bonusValue = finalPrice * 3
+          }
+        }
+
         return {
           predicted: predictedPrice,
           actual: finalPrice,
           error: predictionError,
           percentError: parseFloat(percentError.toFixed(2)),
           percentGain: parseFloat(basePercentGain.toFixed(2)),
+          bonusValue: parseFloat(bonusValue.toFixed(2)),
+          isWinner,
           hasPrediction: true
         }
-        
+
       } catch (error) {
         console.error('Error calculating bonus car score:', error)
         return null
