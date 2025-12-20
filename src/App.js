@@ -1079,7 +1079,7 @@ export default function BixPrixApp() {
               </div>
               <h3 className="text-xl font-bold text-bpInk mb-3">3. Race the Market</h3>
               <p className="text-bpInk/70">
-                Score points based on how much each car appreciates. Highest total score wins!
+                Your score is the total dollar value of your cars at auction close. Highest total value wins!
               </p>
             </Card>
           </div>
@@ -1122,20 +1122,20 @@ export default function BixPrixApp() {
                 </h3>
                 <ul className="space-y-2 text-bpInk/80 text-sm">
                   <li className="flex items-start gap-2">
-                    <span className="text-green-600 font-bold">+</span>
-                    <span><strong>Gain points</strong> from % increase: (Final Price - Day 2 Price) / Day 2 Price × 100</span>
+                    <span className="text-green-600 font-bold">$</span>
+                    <span><strong>Car sells:</strong> Add the final sale price to your total</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-red-600 font-bold">-</span>
-                    <span><strong>Reserve not met?</strong> Take 25% of high bid as penalty</span>
+                    <span><strong>Reserve not met?</strong> Only get 25% of the high bid value</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-bpGold font-bold">⚡</span>
-                    <span><strong>Bonus car</strong> closest prediction gets DOUBLE the percentage gain!</span>
+                    <span><strong>Bonus car:</strong> Closest prediction wins 3× the sale price added to their total!</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-bpNavy font-bold">🏆</span>
-                    <span><strong>Win</strong> by having the highest total score across all cars</span>
+                    <span><strong>Win</strong> by having the highest total dollar value across all 7 cars</span>
                   </li>
                 </ul>
               </Card>
@@ -1150,31 +1150,32 @@ export default function BixPrixApp() {
                 <div className="bg-white/50 rounded-lg p-4">
                   <div className="font-bold text-bpInk mb-2">1959 Porsche 356A</div>
                   <div className="text-bpInk/70 space-y-1">
-                    <div>Day 2 Price: <strong>$65,000</strong></div>
+                    <div>Status: <strong>Sold</strong></div>
                     <div>Final Price: <strong>$82,000</strong></div>
-                    <div className="text-green-700 font-bold">Score: +26.2%</div>
+                    <div className="text-green-700 font-bold">Value: +$82,000</div>
                   </div>
                 </div>
-                
+
                 <div className="bg-white/50 rounded-lg p-4">
                   <div className="font-bold text-bpInk mb-2">1991 BMW M3</div>
                   <div className="text-bpInk/70 space-y-1">
-                    <div>Day 2 Price: <strong>$42,000</strong></div>
-                    <div>Reserve Not Met: <strong>$45,000</strong></div>
-                    <div className="text-red-700 font-bold">Score: -11.25%</div>
+                    <div>Status: <strong>Reserve Not Met</strong></div>
+                    <div>High Bid: <strong>$45,000</strong></div>
+                    <div className="text-red-700 font-bold">Value: +$11,250</div>
                     <div className="text-xs">(25% of $45k bid)</div>
                   </div>
                 </div>
-                
+
                 <div className="bg-gradient-to-br from-bpGold/20 to-bpRed/20 rounded-lg p-4 border-2 border-bpGold">
                   <div className="font-bold text-bpInk mb-2 flex items-center gap-1">
                     <Zap size={16} className="text-bpGold" />
-                    Bonus Car
+                    Bonus Car Winner
                   </div>
                   <div className="text-bpInk/70 space-y-1">
                     <div>Your Prediction: <strong>$95,000</strong></div>
                     <div>Actual Price: <strong>$92,000</strong></div>
-                    <div className="text-bpGold font-bold">Closest! Score: +30% × 2</div>
+                    <div className="text-bpGold font-bold">Closest! +$276,000</div>
+                    <div className="text-xs">(3× the $92k sale price)</div>
                   </div>
                 </div>
               </div>
@@ -1486,7 +1487,7 @@ export default function BixPrixApp() {
                   </span>
                 ) : (
                   <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded font-semibold animate-pulse">
-                    ⚡ Predict to win 2x points!
+                    ⚡ Predict to win 3× the sale price!
                   </span>
                 )}
               </div>
@@ -1716,7 +1717,7 @@ export default function BixPrixApp() {
                   )}
                   {!userPrediction && (
                     <div className="col-span-2 text-yellow-600 text-xs">
-                      ⚡ Make a prediction for 2x points!
+                      ⚡ Make a prediction for 3× the sale price!
                     </div>
                   )}
                 </div>
