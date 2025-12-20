@@ -179,11 +179,19 @@ export async function calculateUserScore(supabase, userId, leagueId) {
       });
     }
 
-    // Get bonus car score (still adds to percentage for bonus prediction accuracy)
+    // Get bonus car score
+    // Winner of bonus car prediction gets 3x the sale price added to their total
     const bonusScore = await calculateBonusCarScore(supabase, userId, leagueId);
     if (bonusScore) {
       console.log(`[Score Calc] Bonus car score: +${bonusScore.bonusPoints} points`);
       totalPercentGain += bonusScore.bonusPoints;
+
+      // If this user is the bonus car winner, add 3x the sale price to their total
+      if (bonusScore.isWinner && bonusScore.bonusValue > 0) {
+        console.log(`[Score Calc] BONUS CAR WINNER! Adding ${bonusScore.bonusValue} (3x sale price) to total`);
+        totalFinalValue += bonusScore.bonusValue;
+        totalDollarGain += bonusScore.bonusValue; // Also counts as dollar gain
+      }
     }
 
     // Calculate average per car (including bonus car if exists)
@@ -243,6 +251,7 @@ export async function calculateUserScore(supabase, userId, leagueId) {
 
 /**
  * Calculate bonus car prediction score
+ * Winner (closest prediction) gets 3x the sale price added to their total score
  * @param {Object} supabase - Supabase client
  * @param {string} userId - User ID
  * @param {string} leagueId - League ID
@@ -287,7 +296,37 @@ export async function calculateBonusCarScore(supabase, userId, leagueId) {
     const predictionError = Math.abs(predictedPrice - finalPrice);
     const percentError = (predictionError / finalPrice) * 100;
 
-    // Award bonus points based on accuracy (matching cron job logic)
+    // Check if this user is the bonus car winner (closest prediction in the league)
+    // Get all predictions for this league to determine winner
+    const { data: allPredictions } = await supabase
+      .from('bonus_predictions')
+      .select('user_id, predicted_price')
+      .eq('league_id', leagueId);
+
+    let isWinner = false;
+    let bonusValue = 0;
+
+    if (allPredictions && allPredictions.length > 0) {
+      // Find the prediction with smallest error
+      let smallestError = Infinity;
+      let winnerId = null;
+
+      allPredictions.forEach(pred => {
+        const error = Math.abs(parseFloat(pred.predicted_price) - finalPrice);
+        if (error < smallestError) {
+          smallestError = error;
+          winnerId = pred.user_id;
+        }
+      });
+
+      // If this user is the winner, they get 3x the sale price
+      if (winnerId === userId) {
+        isWinner = true;
+        bonusValue = finalPrice * 3;
+      }
+    }
+
+    // Legacy bonus points for backward compatibility
     let bonusPoints = 0;
     if (percentError <= 5) {
       bonusPoints = 25;
@@ -309,6 +348,8 @@ export async function calculateBonusCarScore(supabase, userId, leagueId) {
       error: predictionError,
       percentError: parseFloat(percentError.toFixed(2)),
       bonusPoints,
+      bonusValue: parseFloat(bonusValue.toFixed(2)),  // NEW: 3x sale price for winner
+      isWinner,                                        // NEW: True if closest prediction
       basePercentGain: parseFloat(basePercentGain.toFixed(2)),
       title: bonusAuction.title,
       imageUrl: bonusAuction.image_url,

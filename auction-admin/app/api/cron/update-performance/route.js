@@ -218,33 +218,77 @@ export async function GET(request) {
               });
             }
 
-            // Bonus car score still adds bonus points (kept for backward compatibility)
+            // Bonus car scoring - winner gets 3x the sale price
             let bonusPoints = 0;
-            const { data: bonusPrediction } = await supabase
-              .from('bonus_car_predictions')
-              .select('predicted_price, bonus_cars(actual_sale_price)')
-              .eq('user_id', member.user_id)
-              .eq('league_id', league.id)
-              .maybeSingle();
+            let bonusValue = 0;
+            let isWinner = false;
 
-            if (bonusPrediction?.bonus_cars?.actual_sale_price && bonusPrediction.predicted_price) {
-              const actualPrice = parseFloat(bonusPrediction.bonus_cars.actual_sale_price);
-              const predictedPrice = parseFloat(bonusPrediction.predicted_price);
-              const diff = Math.abs(actualPrice - predictedPrice);
-              const percentOff = (diff / actualPrice) * 100;
+            // Get the bonus auction for this league
+            const { data: leagueData } = await supabase
+              .from('leagues')
+              .select('bonus_auction_id')
+              .eq('id', league.id)
+              .single();
 
-              if (percentOff <= 5) {
-                bonusPoints = 25;
-              } else if (percentOff <= 10) {
-                bonusPoints = 15;
-              } else if (percentOff <= 15) {
-                bonusPoints = 10;
-              } else if (percentOff <= 20) {
-                bonusPoints = 5;
+            if (leagueData?.bonus_auction_id) {
+              // Get the bonus auction's final price
+              const { data: bonusAuction } = await supabase
+                .from('auctions')
+                .select('current_bid, final_price')
+                .eq('auction_id', leagueData.bonus_auction_id)
+                .single();
+
+              if (bonusAuction) {
+                const actualPrice = bonusAuction.final_price
+                  ? parseFloat(bonusAuction.final_price)
+                  : parseFloat(bonusAuction.current_bid);
+
+                // Get all predictions for this league
+                const { data: allPredictions } = await supabase
+                  .from('bonus_predictions')
+                  .select('user_id, predicted_price')
+                  .eq('league_id', league.id);
+
+                if (allPredictions && allPredictions.length > 0) {
+                  // Find the winner (smallest prediction error)
+                  let smallestError = Infinity;
+                  let winnerId = null;
+
+                  allPredictions.forEach(pred => {
+                    const error = Math.abs(parseFloat(pred.predicted_price) - actualPrice);
+                    if (error < smallestError) {
+                      smallestError = error;
+                      winnerId = pred.user_id;
+                    }
+                  });
+
+                  // If this user is the winner, they get 3x the sale price
+                  if (winnerId === member.user_id) {
+                    isWinner = true;
+                    bonusValue = actualPrice * 3;
+                    totalFinalValue += bonusValue;
+                    console.log(`[Cron] BONUS CAR WINNER: ${member.user_id} gets $${bonusValue} (3x $${actualPrice})`);
+                  }
+
+                  // Calculate legacy bonus points based on prediction accuracy
+                  const userPrediction = allPredictions.find(p => p.user_id === member.user_id);
+                  if (userPrediction) {
+                    const percentOff = (Math.abs(parseFloat(userPrediction.predicted_price) - actualPrice) / actualPrice) * 100;
+                    if (percentOff <= 5) {
+                      bonusPoints = 25;
+                    } else if (percentOff <= 10) {
+                      bonusPoints = 15;
+                    } else if (percentOff <= 15) {
+                      bonusPoints = 10;
+                    } else if (percentOff <= 20) {
+                      bonusPoints = 5;
+                    }
+                  }
+                }
               }
             }
 
-            // NEW: Score is now total dollar value (bonus points are separate/optional)
+            // Score is total dollar value (including 3x bonus for winner)
             const finalScore = parseFloat(totalFinalValue.toFixed(2));
 
             return {
@@ -253,7 +297,9 @@ export async function GET(request) {
               total_spent: totalSpent,
               car_count: garageCars?.length || 0,
               garage_cars: garageCars,
-              bonus_points: bonusPoints
+              bonus_points: bonusPoints,
+              bonus_value: bonusValue,
+              is_bonus_winner: isWinner
             };
           })
         );
