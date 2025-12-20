@@ -1372,46 +1372,46 @@ export default function BixPrixApp() {
     }
     
     return (
-      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-        <Card className="max-w-2xl w-full p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-bpInk flex items-center gap-2">
-              <Zap className="text-bpGold" size={24} />
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4">
+        <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <h2 className="text-lg sm:text-2xl font-bold text-bpInk flex items-center gap-2">
+              <Zap className="text-bpGold" size={20} />
               Predict the Final Price
             </h2>
             <button onClick={onClose} className="text-bpInk/60 hover:text-bpInk text-2xl">✕</button>
           </div>
-          
-          <div className="mb-6 p-4 rounded-lg bg-bpGold/10 border-2 border-bpGold/30">
-            <p className="text-sm text-bpInk/80 mb-2">🏆 <strong>BONUS CAR</strong> (Shared by all players)</p>
-            <h3 className="font-bold text-lg text-bpInk">{car.title}</h3>
-            <p className="text-sm text-bpInk/70 mt-1">Current Bid: ${car.currentBid.toLocaleString()}</p>
+
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg bg-bpGold/10 border-2 border-bpGold/30">
+            <p className="text-xs sm:text-sm text-bpInk/80 mb-1 sm:mb-2">🏆 <strong>BONUS CAR</strong> (Shared by all players)</p>
+            <h3 className="font-bold text-base sm:text-lg text-bpInk">{car.title}</h3>
+            <p className="text-xs sm:text-sm text-bpInk/70 mt-1">Current Bid: ${car.currentBid.toLocaleString()}</p>
           </div>
-          
-          <div className="mb-6">
-            <img 
-              src={car.imageUrl} 
-              alt={car.title} 
-              className="w-full h-64 object-cover rounded-lg"
+
+          <div className="mb-4 sm:mb-6">
+            <img
+              src={car.imageUrl}
+              alt={car.title}
+              className="w-full h-40 sm:h-64 object-cover rounded-lg"
             />
           </div>
-          
-          <div className="mb-6 p-4 rounded-lg bg-bpInk/5">
-            <p className="text-sm text-bpInk/80 mb-2">
+
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg bg-bpInk/5">
+            <p className="text-xs sm:text-sm text-bpInk/80 mb-2">
               <strong>How it works:</strong>
             </p>
-            <ul className="text-sm text-bpInk/70 space-y-1 list-disc list-inside">
+            <ul className="text-xs sm:text-sm text-bpInk/70 space-y-1 list-disc list-inside">
               <li>Everyone gets this car's percentage gain</li>
               <li>Closest prediction gets <strong>DOUBLE</strong> the percentage gain</li>
               <li>You can change your prediction anytime during the draft</li>
             </ul>
           </div>
-          
+
           <form onSubmit={handleSubmit}>
             <label className="block text-sm font-semibold text-bpInk mb-2">
               Your Prediction:
             </label>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <input
                 type="text"
                 value={prediction}
@@ -1420,7 +1420,7 @@ export default function BixPrixApp() {
                 className="flex-1 px-4 py-3 rounded-md border-2 border-bpNavy/20 text-bpInk text-lg font-semibold"
                 autoFocus
               />
-              <PrimaryButton type="submit" className="px-6">
+              <PrimaryButton type="submit" className="px-6 py-3 sm:py-0">
                 {currentPrediction ? 'Update' : 'Submit'}
               </PrimaryButton>
             </div>
@@ -1445,12 +1445,12 @@ export default function BixPrixApp() {
         onManualRefresh={manualRefresh}
       >
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
-          <div>
+          <div className="flex-1">
             <h2 className="text-2xl font-extrabold tracking-tight">Available Cars</h2>
             <p className="text-sm text-bpCream/70">
-              Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()} · Garage: {garage.length}/7 · <span className="text-bpGold">Min spend ${((selectedLeague?.spending_limit || 200000) / 2 / 1000).toFixed(0)}K to qualify</span>
+              Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()} · <span className="text-bpGold">Min spend ${((selectedLeague?.spending_limit || 200000) / 2 / 1000).toFixed(0)}K to qualify</span>
             </p>
-            
+
             {!canPick && (
               <div className="mt-2 p-2 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
                 ⚠️ {draftStatus.message} - You cannot modify your garage
@@ -1465,11 +1465,43 @@ export default function BixPrixApp() {
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-bpGray"/>
-              <input 
-                className="pl-9 pr-3 py-2 rounded-md bg-white/5 border border-white/10 text-bpCream placeholder:text-bpGray/70" 
+              <input
+                className="pl-9 pr-3 py-2 rounded-md bg-white/5 border border-white/10 text-bpCream placeholder:text-bpGray/70"
                 placeholder="Search make or model"
               />
             </div>
+          </div>
+        </div>
+
+        {/* Car Selection Progress */}
+        <div className={`mb-4 p-3 sm:p-4 rounded-lg border-2 ${garage.length === 7 ? 'bg-green-500/20 border-green-500/50' : 'bg-bpGold/10 border-bpGold/40'}`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className={`font-bold text-sm sm:text-base ${garage.length === 7 ? 'text-green-400' : 'text-bpGold'}`}>
+              {garage.length === 7 ? '✓ Garage Complete!' : `Choose ${7 - garage.length} more car${7 - garage.length !== 1 ? 's' : ''}`}
+            </span>
+            <span className={`text-lg sm:text-xl font-extrabold ${garage.length === 7 ? 'text-green-400' : 'text-bpCream'}`}>
+              {garage.length}/7
+            </span>
+          </div>
+          <div className="w-full bg-bpNavy/30 rounded-full h-3 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${garage.length === 7 ? 'bg-green-500' : 'bg-bpGold'}`}
+              style={{ width: `${(garage.length / 7) * 100}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-2">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div
+                key={i}
+                className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
+                  i < garage.length
+                    ? garage.length === 7 ? 'bg-green-500 border-green-400 text-white' : 'bg-bpGold border-bpGold text-bpNavy'
+                    : 'bg-transparent border-bpCream/30 text-bpCream/50'
+                }`}
+              >
+                {i < garage.length ? '✓' : i + 1}
+              </div>
+            ))}
           </div>
         </div>
 
@@ -1669,8 +1701,40 @@ export default function BixPrixApp() {
         onManualRefresh={manualRefresh}
       >
         <h2 className="text-2xl font-extrabold tracking-tight mb-3">My Garage</h2>
-        <p className="text-sm text-bpCream/70 mb-5">Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()} · {garage.length}/7 cars</p>
-        
+        <p className="text-sm text-bpCream/70 mb-3">Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()}</p>
+
+        {/* Car Selection Progress */}
+        <div className={`mb-4 p-3 sm:p-4 rounded-lg border-2 ${garage.length === 7 ? 'bg-green-500/20 border-green-500/50' : 'bg-bpGold/10 border-bpGold/40'}`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className={`font-bold text-sm sm:text-base ${garage.length === 7 ? 'text-green-400' : 'text-bpGold'}`}>
+              {garage.length === 7 ? '✓ Garage Complete!' : `Choose ${7 - garage.length} more car${7 - garage.length !== 1 ? 's' : ''}`}
+            </span>
+            <span className={`text-lg sm:text-xl font-extrabold ${garage.length === 7 ? 'text-green-400' : 'text-bpCream'}`}>
+              {garage.length}/7
+            </span>
+          </div>
+          <div className="w-full bg-bpNavy/30 rounded-full h-3 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${garage.length === 7 ? 'bg-green-500' : 'bg-bpGold'}`}
+              style={{ width: `${(garage.length / 7) * 100}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-2">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div
+                key={i}
+                className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
+                  i < garage.length
+                    ? garage.length === 7 ? 'bg-green-500 border-green-400 text-white' : 'bg-bpGold border-bpGold text-bpNavy'
+                    : 'bg-transparent border-bpCream/30 text-bpCream/50'
+                }`}
+              >
+                {i < garage.length ? '✓' : i + 1}
+              </div>
+            ))}
+          </div>
+        </div>
+
         {!canModify && (
           <div className="mb-4 p-3 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
             🔒 {draftStatus.message} - Your garage is locked
@@ -1678,18 +1742,18 @@ export default function BixPrixApp() {
         )}
 
         {bonusCar && (
-          <Card className="mb-4 p-4 border-2 border-bpGold/50">
-            <div className="flex gap-4">
-              <a 
-                href={bonusCar.auctionUrl} 
-                target="_blank" 
+          <Card className="mb-4 p-3 sm:p-4 border-2 border-bpGold/50">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+              <a
+                href={bonusCar.auctionUrl}
+                target="_blank"
                 rel="noopener noreferrer"
                 className="flex-shrink-0 hover:opacity-90 transition-opacity"
               >
-                <img 
-                  src={bonusCar.imageUrl} 
-                  alt={bonusCar.title} 
-                  className="w-28 h-20 rounded-lg object-cover"
+                <img
+                  src={bonusCar.imageUrl}
+                  alt={bonusCar.title}
+                  className="w-full sm:w-28 h-32 sm:h-20 rounded-lg object-cover"
                 />
               </a>
               <div className="flex-1">
@@ -1697,10 +1761,10 @@ export default function BixPrixApp() {
                   <Zap className="text-bpGold" size={16} />
                   <span className="text-xs font-semibold text-bpInk/60 uppercase">Bonus Car</span>
                 </div>
-                <a 
-                  href={bonusCar.auctionUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
+                <a
+                  href={bonusCar.auctionUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="font-bold text-bpInk hover:underline"
                 >
                   {bonusCar.title}
@@ -1708,19 +1772,23 @@ export default function BixPrixApp() {
                 <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
                   <div>Current: ${bonusCar.currentBid.toLocaleString()}</div>
                   <div>{bonusCar.timeLeft} left</div>
-                  {userPrediction && (
-                    <>
-                      <div className="col-span-2 text-green-700 font-semibold">
-                        Your prediction: ${userPrediction.toLocaleString()}
-                      </div>
-                    </>
-                  )}
-                  {!userPrediction && (
-                    <div className="col-span-2 text-yellow-600 text-xs">
-                      ⚡ Make a prediction for 3× the sale price!
-                    </div>
-                  )}
                 </div>
+                {userPrediction ? (
+                  <div className="mt-2 text-green-700 font-semibold text-sm">
+                    Your prediction: ${userPrediction.toLocaleString()}
+                  </div>
+                ) : (
+                  <div className="mt-2 text-yellow-600 text-xs">
+                    ⚡ Make a prediction for 3× the sale price!
+                  </div>
+                )}
+                <LightButton
+                  className="mt-3 text-sm w-full sm:w-auto"
+                  onClick={() => setShowPredictionModal(true)}
+                  disabled={!canModify}
+                >
+                  {userPrediction ? '✏️ Change Prediction' : '🎯 Make Prediction'}
+                </LightButton>
               </div>
             </div>
           </Card>
@@ -1803,6 +1871,14 @@ export default function BixPrixApp() {
             user={user}
             isOpen={isChatOpen}
             onToggle={() => setIsChatOpen(!isChatOpen)}
+          />
+        )}
+        {showPredictionModal && bonusCar && (
+          <PredictionModal
+            car={bonusCar}
+            onClose={() => setShowPredictionModal(false)}
+            onSubmit={submitPrediction}
+            currentPrediction={userPrediction}
           />
         )}
       </Shell>
