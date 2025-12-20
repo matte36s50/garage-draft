@@ -576,55 +576,39 @@ export default function BixPrixApp() {
       // Fetch manually selected auctions for this league
       const { data: leagueAuctionsData, error: leagueAuctionsError } = await supabase
         .from('league_auctions')
-        .select('*')
+        .select(`
+          *,
+          auctions!league_auctions_auction_id_fkey(*)
+        `)
         .eq('league_id', selectedLeague.id);
 
       if (leagueAuctionsError) throw leagueAuctionsError;
 
       console.log('Raw leagueAuctionsData from Supabase:', JSON.stringify(leagueAuctionsData, null, 2));
 
-      // If we have league_auctions, fetch the actual auction data separately
-      if (leagueAuctionsData && leagueAuctionsData.length > 0) {
-        const auctionIds = leagueAuctionsData.map(la => la.auction_id);
-        console.log('Fetching auctions with IDs:', auctionIds);
-
-        const { data: auctionsData, error: auctionsError } = await supabase
-          .from('auctions')
-          .select('*')
-          .in('auction_id', auctionIds);
-
-        if (auctionsError) throw auctionsError;
-
-        console.log('Fetched auctions data:', auctionsData?.length || 0, 'auctions');
-
-        // Create a map of auction_id to auction data
-        const auctionsMap = new Map();
-        (auctionsData || []).forEach(a => auctionsMap.set(a.auction_id, a));
-
-        // Transform league_auctions data to match expected format
-        auctionData = leagueAuctionsData
-          .filter(la => {
-            const auction = auctionsMap.get(la.auction_id);
-            if (!auction) {
-              console.warn('⚠️ Missing auction data for league_auction:', la);
-              return false;
-            }
-            return true;
-          })
-          .map(la => {
-            const auction = auctionsMap.get(la.auction_id);
-            console.log('Processing league auction:', la.auction_id);
-            console.log('Image URL from auction:', auction?.image_url);
-            // Use custom end date if provided, otherwise use auction's original end date
-            const endTimestamp = la.custom_end_date || auction.timestamp_end;
-            return {
-              ...auction,
-              timestamp_end: endTimestamp,
-              manually_added: true,  // Mark as manually added
-              custom_end_date: la.custom_end_date  // Keep track of custom end date
-            };
-          });
-      }
+      // Transform league_auctions data to match expected format
+      auctionData = (leagueAuctionsData || [])
+        .filter(la => {
+          if (!la.auctions) {
+            console.warn('⚠️ Missing auction data for league_auction:', la);
+            return false;
+          }
+          return true;
+        })
+        .map(la => {
+          console.log('Processing league auction:', la);
+          const auction = la.auctions;
+          console.log('Extracted auction:', auction);
+          console.log('Image URL from auction:', auction?.image_url);
+          // Use custom end date if provided, otherwise use auction's original end date
+          const endTimestamp = la.custom_end_date || auction.timestamp_end;
+          return {
+            ...auction,
+            timestamp_end: endTimestamp,
+            manually_added: true,  // Mark as manually added
+            custom_end_date: la.custom_end_date  // Keep track of custom end date
+          };
+        });
 
       console.log(`✅ Loaded ${auctionData.length} manually selected auctions for league`)
     } else {
