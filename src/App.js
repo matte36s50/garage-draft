@@ -1902,6 +1902,7 @@ export default function BixPrixApp() {
       }
     }
 
+    // NEW SCORING: Total dollar value instead of percentage gain
     const calculateUserScore = async (userId, leagueId) => {
       try {
         const { data: garage } = await supabase
@@ -1910,18 +1911,21 @@ export default function BixPrixApp() {
           .eq('user_id', userId)
           .eq('league_id', leagueId)
           .maybeSingle()
-        
+
         if (!garage) {
           return {
+            totalScore: 0,
+            totalFinalValue: 0,
             totalPercentGain: 0,
             totalDollarGain: 0,
             bonusCarScore: null,
             carsCount: 0,
             totalSpent: 0,
-            avgPercentPerCar: 0
+            avgPercentPerCar: 0,
+            isRosterComplete: false
           }
         }
-        
+
         const { data: cars } = await supabase
           .from('garage_cars')
           .select(`
@@ -1936,68 +1940,90 @@ export default function BixPrixApp() {
             )
           `)
           .eq('garage_id', garage.id)
-        
+
+        let totalFinalValue = 0
         let totalPercentGain = 0
         let totalDollarGain = 0
         let carsCount = 0
         let totalSpent = 0
-        
+
         if (cars && cars.length > 0) {
           cars.forEach(car => {
             const auction = car.auctions
             if (!auction) return
-            
+
             const purchasePrice = parseFloat(car.purchase_price)
-            const currentPrice = auction.final_price 
-              ? parseFloat(auction.final_price) 
-              : parseFloat(auction.current_bid || purchasePrice)
-            
+            const currentBid = parseFloat(auction.current_bid || purchasePrice)
+            const finalPrice = auction.final_price !== null ? parseFloat(auction.final_price) : null
+
             const now = Math.floor(Date.now() / 1000)
             const auctionEnded = auction.timestamp_end < now
-            const reserveNotMet = auctionEnded && !auction.final_price
-            
-            let effectivePrice = currentPrice
-            
-            if (reserveNotMet) {
-              effectivePrice = currentPrice * 0.25
+
+            let finalValue
+
+            // Withdrawn: final_price is explicitly set to 0
+            if (finalPrice === 0) {
+              finalValue = 0
             }
-            
-            const percentGain = ((effectivePrice - purchasePrice) / purchasePrice) * 100
+            // Sold: final_price is set and > 0
+            else if (finalPrice !== null && finalPrice > 0) {
+              finalValue = finalPrice
+            }
+            // Reserve not met: auction ended but no final_price
+            else if (auctionEnded && finalPrice === null) {
+              finalValue = currentBid * 0.25
+            }
+            // Pending: auction still active - use current bid
+            else {
+              finalValue = currentBid
+            }
+
+            totalFinalValue += finalValue
+
+            // Keep percentage gain for backward compatibility
+            const percentGain = purchasePrice > 0 ? ((finalValue - purchasePrice) / purchasePrice) * 100 : 0
             totalPercentGain += percentGain
-            
-            const dollarGain = effectivePrice - purchasePrice
+
+            const dollarGain = finalValue - purchasePrice
             totalDollarGain += dollarGain
-            
+
             totalSpent += purchasePrice
             carsCount++
           })
         }
-        
+
         const bonusScore = await calculateBonusCarScore(userId, leagueId)
         if (bonusScore) {
           totalPercentGain += bonusScore.percentGain
         }
-        
+
         const avgPercentPerCar = carsCount > 0 ? totalPercentGain / (carsCount + (bonusScore ? 1 : 0)) : 0
-        
+        const isRosterComplete = carsCount >= 7
+
         return {
+          totalScore: parseFloat(totalFinalValue.toFixed(2)),
+          totalFinalValue: parseFloat(totalFinalValue.toFixed(2)),
           totalPercentGain: parseFloat(totalPercentGain.toFixed(2)),
           totalDollarGain: parseFloat(totalDollarGain.toFixed(2)),
           bonusCarScore: bonusScore,
           carsCount,
           totalSpent: parseFloat(totalSpent.toFixed(2)),
-          avgPercentPerCar: parseFloat(avgPercentPerCar.toFixed(2))
+          avgPercentPerCar: parseFloat(avgPercentPerCar.toFixed(2)),
+          isRosterComplete
         }
-        
+
       } catch (error) {
         console.error(`Error calculating score for user ${userId}:`, error)
         return {
+          totalScore: 0,
+          totalFinalValue: 0,
           totalPercentGain: 0,
           totalDollarGain: 0,
           bonusCarScore: null,
           carsCount: 0,
           totalSpent: 0,
-          avgPercentPerCar: 0
+          avgPercentPerCar: 0,
+          isRosterComplete: false
         }
       }
     }
@@ -2108,17 +2134,28 @@ export default function BixPrixApp() {
       }
     }
 
+    // NEW SCORING: Sort by total dollar value as primary, with roster completion priority
     const sortStandings = (standings, sortBy) => {
       const sorted = [...standings]
       switch (sortBy) {
-        case 'total_percent':
-          return sorted.sort((a, b) => b.totalPercentGain - a.totalPercentGain)
+        case 'total_value':
+          // Complete rosters rank above incomplete, then by total value
+          return sorted.sort((a, b) => {
+            if (a.isRosterComplete && !b.isRosterComplete) return -1
+            if (!a.isRosterComplete && b.isRosterComplete) return 1
+            return b.totalScore - a.totalScore
+          })
         case 'total_dollar':
           return sorted.sort((a, b) => b.totalDollarGain - a.totalDollarGain)
-        case 'avg_percent':
-          return sorted.sort((a, b) => b.avgPercentPerCar - a.avgPercentPerCar)
+        case 'total_percent':
+          return sorted.sort((a, b) => b.totalPercentGain - a.totalPercentGain)
         default:
-          return sorted
+          // Default sort by total value
+          return sorted.sort((a, b) => {
+            if (a.isRosterComplete && !b.isRosterComplete) return -1
+            if (!a.isRosterComplete && b.isRosterComplete) return 1
+            return b.totalScore - a.totalScore
+          })
       }
     }
 
@@ -2154,34 +2191,34 @@ export default function BixPrixApp() {
           
           <div className="flex gap-2">
             <button
-              onClick={() => handleSortChange('total_percent')}
+              onClick={() => handleSortChange('total_value')}
               className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
-                sortBy === 'total_percent' 
-                  ? 'bg-bpGold text-bpInk' 
+                sortBy === 'total_value' || !sortBy
+                  ? 'bg-bpGold text-bpInk'
                   : 'bg-white/5 text-bpCream hover:bg-white/10'
               }`}
             >
-              % Gain
+              Total $
             </button>
             <button
               onClick={() => handleSortChange('total_dollar')}
               className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
-                sortBy === 'total_dollar' 
-                  ? 'bg-bpGold text-bpInk' 
+                sortBy === 'total_dollar'
+                  ? 'bg-bpGold text-bpInk'
                     : 'bg-white/5 text-bpCream hover:bg-white/10'
               }`}
             >
               $ Gain
             </button>
             <button
-              onClick={() => handleSortChange('avg_percent')}
+              onClick={() => handleSortChange('total_percent')}
               className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
-                sortBy === 'avg_percent' 
-                  ? 'bg-bpGold text-bpInk' 
+                sortBy === 'total_percent'
+                  ? 'bg-bpGold text-bpInk'
                   : 'bg-white/5 text-bpCream hover:bg-white/10'
               }`}
             >
-              Avg %
+              % Gain
             </button>
             <button
               onClick={fetchLeaderboard}
@@ -2211,16 +2248,20 @@ export default function BixPrixApp() {
         {!loading && standings.length > 0 && (
           <>
             <div className="grid md:grid-cols-4 gap-4 mb-6">
+              {/* Total Value Leader - Primary Score */}
               <Card className="p-4 border-2 border-bpGold/50 bg-gradient-to-br from-bpGold/10 to-bpGold/5">
                 <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="text-bpGold" size={20} />
-                  <span className="text-xs font-bold text-bpInk uppercase">% Gain Leader</span>
+                  <Trophy className="text-bpGold" size={20} />
+                  <span className="text-xs font-bold text-bpInk uppercase">Total Value Leader</span>
                 </div>
                 <div className="font-bold text-xl text-bpInk mb-1">
-                  {sortStandings(standings, 'total_percent')[0]?.username}
+                  {sortStandings(standings, 'total_value')[0]?.username}
+                  {!sortStandings(standings, 'total_value')[0]?.isRosterComplete && (
+                    <span className="ml-1 text-xs text-orange-600">({sortStandings(standings, 'total_value')[0]?.carsCount}/7)</span>
+                  )}
                 </div>
-                <div className="text-2xl font-bold text-green-700">
-                  +{sortStandings(standings, 'total_percent')[0]?.totalPercentGain}%
+                <div className="text-2xl font-bold text-bpInk">
+                  ${Math.round(sortStandings(standings, 'total_value')[0]?.totalScore || 0).toLocaleString()}
                 </div>
               </Card>
 
@@ -2233,20 +2274,20 @@ export default function BixPrixApp() {
                   {sortStandings(standings, 'total_dollar')[0]?.username}
                 </div>
                 <div className="text-2xl font-bold text-green-700">
-                  +${sortStandings(standings, 'total_dollar')[0]?.totalDollarGain.toLocaleString()}
+                  {sortStandings(standings, 'total_dollar')[0]?.totalDollarGain >= 0 ? '+' : ''}${Math.round(sortStandings(standings, 'total_dollar')[0]?.totalDollarGain || 0).toLocaleString()}
                 </div>
               </Card>
 
               <Card className="p-4 border-2 border-bpRed/50 bg-gradient-to-br from-bpRed/10 to-bpRed/5">
                 <div className="flex items-center gap-2 mb-2">
-                  <Target className="text-bpRed" size={20} />
-                  <span className="text-xs font-bold text-bpInk uppercase">Best Avg</span>
+                  <TrendingUp className="text-bpRed" size={20} />
+                  <span className="text-xs font-bold text-bpInk uppercase">% Gain Leader</span>
                 </div>
                 <div className="font-bold text-xl text-bpInk mb-1">
-                  {sortStandings(standings, 'avg_percent')[0]?.username}
+                  {sortStandings(standings, 'total_percent')[0]?.username}
                 </div>
                 <div className="text-2xl font-bold text-green-700">
-                  +{sortStandings(standings, 'avg_percent')[0]?.avgPercentPerCar}%
+                  +{sortStandings(standings, 'total_percent')[0]?.totalPercentGain}%
                 </div>
               </Card>
 
@@ -2273,10 +2314,9 @@ export default function BixPrixApp() {
                     <tr>
                       <th className="px-4 py-3 text-left text-sm font-bold text-bpInk">Rank</th>
                       <th className="px-4 py-3 text-left text-sm font-bold text-bpInk">Player</th>
-                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">% Gain</th>
+                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Total Value</th>
                       <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">$ Gain</th>
-                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Avg %</th>
-                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Cars</th>
+                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Roster</th>
                       <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Spent</th>
                       <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Bonus</th>
                     </tr>
@@ -2285,10 +2325,10 @@ export default function BixPrixApp() {
                     {standings.map((player, index) => {
                       const isCurrentUser = player.userId === user?.id
                       const rank = index + 1
-                      
+
                       return (
-                        <tr 
-                          key={player.userId} 
+                        <tr
+                          key={player.userId}
                           className={`border-b border-bpInk/10 ${
                             isCurrentUser ? 'bg-bpGold/10' : 'hover:bg-bpInk/5'
                           }`}
@@ -2307,24 +2347,25 @@ export default function BixPrixApp() {
                               </span>
                             )}
                           </td>
-                          <td className={`px-4 py-3 text-sm font-semibold text-right ${
-                            player.totalPercentGain >= 0 ? 'text-green-700' : 'text-red-700'
-                          }`}>
-                            {player.totalPercentGain >= 0 ? '+' : ''}{player.totalPercentGain}%
+                          {/* Total Value - Primary Score */}
+                          <td className="px-4 py-3 text-sm font-bold text-right text-bpInk">
+                            ${Math.round(player.totalScore || 0).toLocaleString()}
                           </td>
+                          {/* Dollar Gain */}
                           <td className={`px-4 py-3 text-sm font-semibold text-right ${
                             player.totalDollarGain >= 0 ? 'text-green-700' : 'text-red-700'
                           }`}>
-                            {player.totalDollarGain >= 0 ? '+' : ''}${player.totalDollarGain.toLocaleString()}
+                            {player.totalDollarGain >= 0 ? '+' : ''}${Math.round(player.totalDollarGain || 0).toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
-                            {player.avgPercentPerCar >= 0 ? '+' : ''}{player.avgPercentPerCar}%
-                          </td>
-                          <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
+                          {/* Roster Status */}
+                          <td className={`px-4 py-3 text-sm text-right ${
+                            player.isRosterComplete ? 'text-green-700' : 'text-orange-600'
+                          }`}>
                             {player.carsCount}/7
+                            {player.isRosterComplete && ' ✓'}
                           </td>
                           <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
-                            ${player.totalSpent.toLocaleString()}
+                            ${Math.round(player.totalSpent || 0).toLocaleString()}
                           </td>
                           <td className="px-4 py-3 text-sm text-right">
                             {player.bonusCarScore?.hasPrediction ? (

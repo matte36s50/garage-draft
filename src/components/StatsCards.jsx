@@ -1,5 +1,11 @@
 import { motion } from 'framer-motion';
 
+// Format dollar amount with commas
+const formatDollar = (amount) => {
+  if (amount === undefined || amount === null) return '$0';
+  return '$' + Math.round(amount).toLocaleString();
+};
+
 export default function StatsCards({ stats, spendingLimit = 200000 }) {
   const cards = [
     {
@@ -17,25 +23,26 @@ export default function StatsCards({ stats, spendingLimit = 200000 }) {
       iconColor: 'text-bpCream'
     },
     {
-      title: 'Total Gain',
-      value: stats?.totalGain !== undefined ? `${stats.totalGain >= 0 ? '+' : ''}${stats.totalGain.toFixed(2)}%` : '0.00%',
-      subtitle: `Player Avg: ${stats?.leagueAvg?.toFixed(2) || '0.00'}%`,
+      title: 'Total Value',
+      value: formatDollar(stats?.totalScore),
+      subtitle: `Avg: ${formatDollar(stats?.leagueAvg)}`,
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
         </svg>
       ),
-      trend: stats?.totalGain !== undefined && stats?.leagueAvg !== undefined
-        ? stats.totalGain - stats.leagueAvg
+      // Show dollar difference from average
+      dollarDiff: stats?.totalScore !== undefined && stats?.leagueAvg !== undefined
+        ? stats.totalScore - stats.leagueAvg
         : undefined,
-      trendLabel: 'vs Player Avg',
+      trendLabel: 'vs Avg',
       bgColor: 'bg-emerald-500/20',
       iconColor: 'text-emerald-400'
     },
     {
       title: 'Behind Leader',
-      value: stats?.behindLeader !== undefined ? `${stats.behindLeader.toFixed(2)}%` : '0.00%',
-      subtitle: stats?.behindLeader === 0 ? "You're in 1st!" : 'Points to 1st place',
+      value: stats?.behindLeader !== undefined ? formatDollar(stats.behindLeader) : '$0',
+      subtitle: stats?.behindLeader === 0 ? "You're in 1st!" : 'To 1st place',
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
@@ -45,17 +52,17 @@ export default function StatsCards({ stats, spendingLimit = 200000 }) {
       iconColor: 'text-bpGold'
     },
     {
-      title: 'Budget Used',
-      value: stats?.budgetUsed !== undefined ? `$${(stats.budgetUsed / 1000).toFixed(0)}K` : '$0K',
-      subtitle: `of $${(spendingLimit / 1000).toFixed(0)}K`,
+      title: 'Roster',
+      value: `${stats?.carsCount || 0}/7`,
+      subtitle: stats?.isRosterComplete ? 'Complete!' : `${7 - (stats?.carsCount || 0)} more needed`,
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
         </svg>
       ),
-      progress: stats?.budgetUsed !== undefined ? (stats.budgetUsed / spendingLimit) * 100 : 0,
-      bgColor: 'bg-bpRed/20',
-      iconColor: 'text-bpRed'
+      progress: stats?.carsCount !== undefined ? (stats.carsCount / 7) * 100 : 0,
+      bgColor: stats?.isRosterComplete ? 'bg-emerald-500/20' : 'bg-bpRed/20',
+      iconColor: stats?.isRosterComplete ? 'text-emerald-400' : 'text-bpRed'
     }
   ];
 
@@ -99,6 +106,9 @@ function StatCard({ card, index }) {
     );
   };
 
+  // Determine which trend value to use
+  const trendValue = card.dollarDiff !== undefined ? card.dollarDiff : card.trend;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -120,12 +130,15 @@ function StatCard({ card, index }) {
       <div className="flex items-center justify-between">
         <div className="text-sm text-bpGray">{card.subtitle}</div>
 
-        {card.trend !== undefined && (
-          <div className={`text-xs font-semibold flex items-center gap-1 ${getTrendColor(card.trend)}`}>
-            {getTrendIcon(card.trend)}
-            {card.trend !== 0 && (
+        {trendValue !== undefined && (
+          <div className={`text-xs font-semibold flex items-center gap-1 ${getTrendColor(trendValue)}`}>
+            {getTrendIcon(trendValue)}
+            {trendValue !== 0 && (
               <span>
-                {Math.abs(card.trend).toFixed(1)}
+                {card.dollarDiff !== undefined
+                  ? formatDollar(Math.abs(trendValue))
+                  : Math.abs(trendValue).toFixed(1)
+                }
               </span>
             )}
           </div>
@@ -136,7 +149,7 @@ function StatCard({ card, index }) {
         <div className="mt-3">
           <div className="w-full bg-bpNavy/10 rounded-full h-2">
             <div
-              className="bg-bpRed h-2 rounded-full transition-all duration-500"
+              className={`${card.title === 'Roster' && card.progress >= 100 ? 'bg-emerald-500' : 'bg-bpRed'} h-2 rounded-full transition-all duration-500`}
               style={{ width: `${Math.min(card.progress, 100)}%` }}
             />
           </div>
