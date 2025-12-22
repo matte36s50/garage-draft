@@ -36,7 +36,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
       // Calculate current market average (always fetch this for real-time display)
       const marketAvg = await calculateMarketAverage(supabase, leagueId);
       setMarketData(marketAvg);
-      console.log('[Performance Chart] Market average:', marketAvg.marketAverage + '%');
+      console.log('[Performance Chart] Market average (% gain):', marketAvg.marketAverage + '%');
 
       // If there's no historical data, create a current snapshot using real-time calculations
       if (!history || history.length === 0) {
@@ -47,10 +47,11 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
         const userScore = await calculateUserScore(supabase, userId, leagueId);
 
         console.log('[Performance Chart] Real-time calculations:', {
-          userScore: userScore.totalPercentGain,
+          userScore: '$' + userScore.totalScore.toLocaleString(),
+          leagueAvg: '$' + leagueStats.leagueAvg.toLocaleString(),
           leagueStats: leagueStats.scores.slice(0, 3).map(u => ({
             username: u.username,
-            score: u.totalScore
+            score: '$' + u.totalScore.toLocaleString()
           }))
         });
 
@@ -58,8 +59,8 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
         const now = new Date().toISOString();
         const currentPoint = {
           timestamp: now,
-          yourGain: userScore.totalPercentGain,
-          marketAvg: marketAvg.marketAverage
+          yourGain: userScore.totalScore,
+          marketAvg: leagueStats.leagueAvg
         };
 
         // Add top 3 players' scores
@@ -152,7 +153,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
   if (chartData.length === 0) {
     return (
       <div className="bg-bpCream rounded-lg p-6 border border-bpNavy/10">
-        <h3 className="text-lg font-bold mb-4 text-bpRed">Performance Over Time</h3>
+        <h3 className="text-lg font-bold mb-4 text-bpRed">Portfolio Value Over Time</h3>
         <div className="text-center py-12 text-bpGray">
           <p>Performance data will appear as the week progresses</p>
         </div>
@@ -164,7 +165,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
 
   return (
     <div className="bg-bpCream rounded-lg p-6 border border-bpNavy/10">
-      <h3 className="text-lg font-bold mb-4 text-bpRed">Performance Over Time</h3>
+      <h3 className="text-lg font-bold mb-4 text-bpRed">Portfolio Value Over Time</h3>
 
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
@@ -175,13 +176,14 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
             tick={{ fontSize: 12, fill: '#111111' }}
           />
           <YAxis
-            label={{ value: '% Gain', angle: -90, position: 'insideLeft', fill: '#111111' }}
+            label={{ value: 'Portfolio Value', angle: -90, position: 'insideLeft', fill: '#111111', dx: -10 }}
             tick={{ fontSize: 12, fill: '#111111' }}
-            tickFormatter={(value) => `${value.toFixed(1)}%`}
+            tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+            width={70}
           />
           <Tooltip
             labelFormatter={(ts) => format(new Date(ts), 'MMM d, yyyy h:mm a')}
-            formatter={(value) => [`${Number(value).toFixed(2)}%`, '']}
+            formatter={(value) => [`$${Number(value).toLocaleString()}`, '']}
             contentStyle={{ backgroundColor: '#FAF6EE', border: '1px solid #0F1A2B30', borderRadius: '8px' }}
           />
           <Legend />
@@ -227,7 +229,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
             dataKey="marketAvg"
             stroke="#22C55E"
             strokeWidth={2}
-            name="Market Avg"
+            name="League Avg"
             strokeDasharray="3 3"
             dot={false}
           />
@@ -237,21 +239,21 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
       <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="text-center p-4 bg-bpRed/10 rounded-lg">
           <div className="text-2xl font-bold text-bpRed">
-            {latestData.yourGain?.toFixed(2) || '0.00'}%
+            ${(latestData.yourGain || 0).toLocaleString()}
           </div>
-          <div className="text-sm text-bpInk/70 mt-1">Your Gain</div>
+          <div className="text-sm text-bpInk/70 mt-1">Your Portfolio</div>
         </div>
         <div className="text-center p-4 bg-green-500/10 rounded-lg">
           <div className="text-2xl font-bold text-green-600">
-            {(latestData.marketAvg || 0).toFixed(2)}%
+            ${(latestData.marketAvg || 0).toLocaleString()}
           </div>
-          <div className="text-sm text-green-700 mt-1">Market Avg (All Cars)</div>
+          <div className="text-sm text-green-700 mt-1">League Avg</div>
         </div>
         <div className="text-center p-4 bg-bpNavy/5 rounded-lg">
           <div className="text-2xl font-bold text-bpInk">
-            {((latestData.top1 || 0) - (latestData.yourGain || 0)).toFixed(2)}%
+            ${((latestData.top1 || 0) - (latestData.yourGain || 0)).toLocaleString()}
           </div>
-          <div className="text-sm text-bpInk/70 mt-1">Behind Leader ({(latestData.top1 || 0).toFixed(1)}%)</div>
+          <div className="text-sm text-bpInk/70 mt-1">Behind Leader (${(latestData.top1 || 0).toLocaleString()})</div>
         </div>
         <div className="text-center p-4 bg-bpGold/10 rounded-lg">
           <div className="text-2xl font-bold text-bpGold">
