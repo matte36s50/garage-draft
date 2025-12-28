@@ -470,6 +470,8 @@ export default function BixPrixApp() {
       const baseline = parseFloat(auction.price_at_48h)
       const imageUrl = auction.image_url || getDefaultCarImage(auction.make)
       
+      const auctionEnded = endDate < new Date()
+
       const bonusCarData = {
         id: auction.auction_id,
         title: auction.title,
@@ -482,6 +484,8 @@ export default function BixPrixApp() {
         auctionUrl: auction.url,
         imageUrl: imageUrl,
         endTime: endDate,
+        auctionEnded: auctionEnded,
+        finalPrice: auction.final_price ? parseFloat(auction.final_price) : null,
       }
       
       console.log('✅ Active bonus car loaded:', bonusCarData)
@@ -1770,8 +1774,16 @@ export default function BixPrixApp() {
                   {bonusCar.title}
                 </a>
                 <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
-                  <div>Current: ${bonusCar.currentBid.toLocaleString()}</div>
-                  <div>{bonusCar.timeLeft} left</div>
+                  {bonusCar.auctionEnded ? (
+                    bonusCar.finalPrice ? (
+                      <div className="text-green-700 font-semibold">Final: ${bonusCar.finalPrice.toLocaleString()}</div>
+                    ) : (
+                      <div className="text-bpRed">Reserve Not Met</div>
+                    )
+                  ) : (
+                    <div>Current: ${bonusCar.currentBid.toLocaleString()}</div>
+                  )}
+                  <div>{bonusCar.auctionEnded ? 'Ended' : `${bonusCar.timeLeft} left`}</div>
                 </div>
                 {userPrediction ? (
                   <div className="mt-2 text-green-700 font-semibold text-sm">
