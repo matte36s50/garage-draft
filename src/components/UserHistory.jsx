@@ -4,6 +4,7 @@ import { Trophy, Target, TrendingUp, Calendar, Car, ChevronRight, Award, Clock }
 export default function UserHistory({ supabase, user }) {
   const [loading, setLoading] = useState(true);
   const [results, setResults] = useState([]);
+  const [error, setError] = useState(null);
   const [stats, setStats] = useState({
     totalLeagues: 0,
     wins: 0,
@@ -14,15 +15,19 @@ export default function UserHistory({ supabase, user }) {
   useEffect(() => {
     if (user) {
       fetchHistory();
+    } else {
+      // If no user, stop loading and show empty state
+      setLoading(false);
     }
   }, [user]);
 
   async function fetchHistory() {
     try {
       setLoading(true);
+      setError(null);
 
       // Fetch user's league results
-      const { data: leagueResults, error } = await supabase
+      const { data: leagueResults, error: fetchError } = await supabase
         .from('league_results')
         .select(`
           id,
@@ -46,8 +51,9 @@ export default function UserHistory({ supabase, user }) {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching history:', error);
+      if (fetchError) {
+        console.error('Error fetching history:', fetchError);
+        setError(fetchError.message);
         setResults([]);
         return;
       }
@@ -67,8 +73,9 @@ export default function UserHistory({ supabase, user }) {
           avgRank: parseFloat(avgRank.toFixed(1))
         });
       }
-    } catch (error) {
-      console.error('Failed to fetch history:', error);
+    } catch (err) {
+      console.error('Failed to fetch history:', err);
+      setError('Failed to load history. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -107,6 +114,29 @@ export default function UserHistory({ supabase, user }) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-bpGold"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-extrabold tracking-tight text-bpCream">My History</h2>
+            <p className="text-sm text-bpCream/70">Your completed leagues and results</p>
+          </div>
+          <Clock className="text-bpGold" size={24} />
+        </div>
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-center">
+          <p className="text-red-400">{error}</p>
+          <button
+            onClick={fetchHistory}
+            className="mt-3 px-4 py-2 bg-bpGold text-bpNavy rounded-lg text-sm font-medium hover:bg-bpGold/90 transition"
+          >
+            Try Again
+          </button>
+        </div>
       </div>
     );
   }
