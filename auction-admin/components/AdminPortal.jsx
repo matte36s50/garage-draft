@@ -604,13 +604,9 @@ const AdminPortal = () => {
     try {
       const { supabase } = await import('@/lib/supabase');
       
-      let creatorId = null;
-      if (users.length > 0) {
-        creatorId = users[0].id;
-        console.log('Using first user as creator:', users[0].username);
-      } else {
-        console.log('No users found - creating admin league with null creator');
-      }
+      // Admin-created leagues have no specific creator (created_by = null)
+      // The UI will display "Admin" for leagues with null creator
+      const creatorId = null;
       
       const league = {
         name: trimmedName,
