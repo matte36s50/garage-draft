@@ -17,7 +17,8 @@ const AdminPortal = () => {
   const [showAddAuction, setShowAddAuction] = useState(false);
   const [newAuction, setNewAuction] = useState({
     auction_id: '', title: '', make: '', model: '', year: '',
-    price_at_48h: '', final_price: '', url: '', image_url: '', timestamp_end: ''
+    price_at_48h: '', final_price: '', url: '', image_url: '', timestamp_end: '',
+    auction_reference: ''
   });
 
   const [showAddUser, setShowAddUser] = useState(false);
@@ -41,7 +42,7 @@ const AdminPortal = () => {
   const [allAuctions, setAllAuctions] = useState([]);
   const [manualAuctions, setManualAuctions] = useState([]); // Separate list for manual auctions
   const [auctionSearchTerm, setAuctionSearchTerm] = useState('');
-  const [auctionFilter, setAuctionFilter] = useState({ make: '', model: '', year: '' });
+  const [auctionFilter, setAuctionFilter] = useState({ make: '', model: '', year: '', auction_reference: '' });
   const [addingAuctionId, setAddingAuctionId] = useState(null);
   const [customEndDateTime, setCustomEndDateTime] = useState('');
 
@@ -397,7 +398,8 @@ const AdminPortal = () => {
         image_url: newAuction.image_url || null,
         timestamp_end: endTimestamp,
         inserted_at: new Date().toISOString(),
-        current_bid: newAuction.price_at_48h || newAuction.final_price || null
+        current_bid: newAuction.price_at_48h || newAuction.final_price || null,
+        auction_reference: newAuction.auction_reference || null
       };
 
       const { error } = await supabase.from('auctions').insert([auction]);
@@ -408,7 +410,8 @@ const AdminPortal = () => {
         alert('Auction added!');
         loadAllData();
         setNewAuction({ auction_id: '', title: '', make: '', model: '', year: '',
-          price_at_48h: '', final_price: '', url: '', image_url: '', timestamp_end: '' });
+          price_at_48h: '', final_price: '', url: '', image_url: '', timestamp_end: '',
+          auction_reference: '' });
         setShowAddAuction(false);
       }
     } catch (error) {
@@ -990,6 +993,14 @@ const AdminPortal = () => {
                     onChange={(e) => setNewAuction({...newAuction, image_url: e.target.value})}
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600 col-span-2" />
                   <div className="col-span-2">
+                    <label className="text-slate-400 text-sm mb-1 block">Auction Event / Reference</label>
+                    <input type="text" placeholder="e.g., RM Arizona Car Week, Mecum Kissimmee 2025"
+                      value={newAuction.auction_reference}
+                      onChange={(e) => setNewAuction({...newAuction, auction_reference: e.target.value})}
+                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full" />
+                    <p className="text-slate-500 text-xs mt-1">Group auctions by their parent auction event for easy selection in leagues</p>
+                  </div>
+                  <div className="col-span-2">
                     <label className="text-slate-400 text-sm mb-1 block">Auction End Date *</label>
                     <input type="datetime-local" value={newAuction.timestamp_end}
                       onChange={(e) => setNewAuction({...newAuction, timestamp_end: e.target.value})}
@@ -1146,6 +1157,14 @@ const AdminPortal = () => {
                                   <div className="text-slate-400 text-xs">End Date</div>
                                   <div className="text-white font-semibold">
                                     {new Date(auction.timestamp_end * 1000).toLocaleDateString()}
+                                  </div>
+                                </div>
+                              )}
+                              {auction.auction_reference && (
+                                <div>
+                                  <div className="text-slate-400 text-xs">Auction Event</div>
+                                  <div className="text-orange-400 font-semibold">
+                                    📍 {auction.auction_reference}
                                   </div>
                                 </div>
                               )}
@@ -1694,7 +1713,7 @@ const AdminPortal = () => {
 
               {/* Filters */}
               <div className="p-6 border-b border-slate-700 bg-slate-900">
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-5 gap-4">
                   <div className="relative col-span-2">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                     <input
@@ -1707,7 +1726,7 @@ const AdminPortal = () => {
                   </div>
                   <input
                     type="text"
-                    placeholder="Filter by make (e.g., Porsche)"
+                    placeholder="Filter by make"
                     value={auctionFilter.make}
                     onChange={(e) => setAuctionFilter({...auctionFilter, make: e.target.value})}
                     className="px-4 py-2 bg-slate-800 border border-slate-700 rounded text-white"
@@ -1719,7 +1738,70 @@ const AdminPortal = () => {
                     onChange={(e) => setAuctionFilter({...auctionFilter, model: e.target.value})}
                     className="px-4 py-2 bg-slate-800 border border-slate-700 rounded text-white"
                   />
+                  <select
+                    value={auctionFilter.auction_reference}
+                    onChange={(e) => setAuctionFilter({...auctionFilter, auction_reference: e.target.value})}
+                    className="px-4 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+                  >
+                    <option value="">All Auction Events</option>
+                    {(() => {
+                      const currentLeague = leagues.find(l => l.id === managingLeagueId);
+                      const auctionsList = currentLeague?.use_manual_auctions ? manualAuctions : allAuctions;
+                      const uniqueRefs = [...new Set(auctionsList
+                        .filter(a => a.auction_reference)
+                        .map(a => a.auction_reference)
+                      )].sort();
+                      return uniqueRefs.map(ref => (
+                        <option key={ref} value={ref}>{ref}</option>
+                      ));
+                    })()}
+                  </select>
                 </div>
+                {/* Add All button for filtered auctions */}
+                {auctionFilter.auction_reference && (
+                  <div className="mt-4 flex items-center gap-3">
+                    <button
+                      onClick={async () => {
+                        const currentLeague = leagues.find(l => l.id === managingLeagueId);
+                        const auctionsList = currentLeague?.use_manual_auctions ? manualAuctions : allAuctions;
+                        const filteredAuctions = auctionsList.filter(a => {
+                          const matchesRef = a.auction_reference === auctionFilter.auction_reference;
+                          const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
+                          return matchesRef && notAlreadyAdded;
+                        });
+
+                        if (filteredAuctions.length === 0) {
+                          alert('No auctions to add - all auctions from this event are already in the league');
+                          return;
+                        }
+
+                        if (!confirm(`Add all ${filteredAuctions.length} auctions from "${auctionFilter.auction_reference}" to this league?`)) {
+                          return;
+                        }
+
+                        // Add all filtered auctions
+                        for (const auction of filteredAuctions) {
+                          await handleAddAuctionToLeague(managingLeagueId, auction.auction_id, null);
+                        }
+                      }}
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded flex items-center gap-2"
+                    >
+                      <Plus size={16} />
+                      Add All from "{auctionFilter.auction_reference}"
+                    </button>
+                    <span className="text-slate-400 text-sm">
+                      {(() => {
+                        const currentLeague = leagues.find(l => l.id === managingLeagueId);
+                        const auctionsList = currentLeague?.use_manual_auctions ? manualAuctions : allAuctions;
+                        return auctionsList.filter(a => {
+                          const matchesRef = a.auction_reference === auctionFilter.auction_reference;
+                          const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
+                          return matchesRef && notAlreadyAdded;
+                        }).length;
+                      })()} auctions available
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Two columns: Available auctions and Selected auctions */}
@@ -1738,8 +1820,9 @@ const AdminPortal = () => {
                           const matchesSearch = !auctionSearchTerm || a.title?.toLowerCase().includes(searchLower);
                           const matchesMake = !auctionFilter.make || a.make?.toLowerCase().includes(makeLower);
                           const matchesModel = !auctionFilter.model || a.model?.toLowerCase().includes(modelLower);
+                          const matchesRef = !auctionFilter.auction_reference || a.auction_reference === auctionFilter.auction_reference;
                           const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
-                          return matchesSearch && matchesMake && matchesModel && notAlreadyAdded;
+                          return matchesSearch && matchesMake && matchesModel && matchesRef && notAlreadyAdded;
                         }).length;
                       })()
                     })
@@ -1762,8 +1845,9 @@ const AdminPortal = () => {
                           const matchesSearch = !auctionSearchTerm || a.title?.toLowerCase().includes(searchLower);
                           const matchesMake = !auctionFilter.make || a.make?.toLowerCase().includes(makeLower);
                           const matchesModel = !auctionFilter.model || a.model?.toLowerCase().includes(modelLower);
+                          const matchesRef = !auctionFilter.auction_reference || a.auction_reference === auctionFilter.auction_reference;
                           const notAlreadyAdded = !(leagueAuctions[managingLeagueId] || []).some(la => la.auction_id === a.auction_id);
-                          return matchesSearch && matchesMake && matchesModel && notAlreadyAdded;
+                          return matchesSearch && matchesMake && matchesModel && matchesRef && notAlreadyAdded;
                         });
                     })()
                       .sort((a, b) => {
@@ -1800,6 +1884,11 @@ const AdminPortal = () => {
                               {auction.auction_id?.startsWith('manual_') && (
                                 <div className="text-purple-400 text-xs mt-1 font-medium">
                                   ✨ Manual auction
+                                </div>
+                              )}
+                              {auction.auction_reference && (
+                                <div className="text-orange-400 text-xs mt-1 font-medium">
+                                  📍 {auction.auction_reference}
                                 </div>
                               )}
                             </div>
@@ -1889,6 +1978,11 @@ const AdminPortal = () => {
                             ) : (
                               <div className="text-blue-400 text-xs mt-1">
                                 Original end: {la.auctions?.timestamp_end ? new Date(la.auctions.timestamp_end * 1000).toLocaleString() : 'Not set'}
+                              </div>
+                            )}
+                            {la.auctions?.auction_reference && (
+                              <div className="text-orange-400 text-xs mt-1 font-medium">
+                                📍 {la.auctions.auction_reference}
                               </div>
                             )}
                           </div>
