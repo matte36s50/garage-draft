@@ -104,6 +104,21 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
     }
   };
 
+  // Handle paste - prevent image paste errors
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          setSendError('Image paste is not supported. Please share image links instead.');
+          setTimeout(() => setSendError(null), 3000);
+          return;
+        }
+      }
+    }
+  };
+
   // Scroll to bottom button
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -321,6 +336,7 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder="Type a message..."
             rows={1}
             className="
