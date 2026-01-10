@@ -822,6 +822,26 @@ const AdminPortal = () => {
     setAuctionFilter({ make: '', model: '', year: '' });
   };
 
+  // Handler to set/update bonus car for manual leagues
+  const handleSetBonusCar = async (leagueId, auctionId) => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase
+        .from('leagues')
+        .update({ bonus_auction_id: auctionId || null })
+        .eq('id', leagueId);
+
+      if (!error) {
+        loadAllData();
+        alert(auctionId ? 'Bonus car updated!' : 'Bonus car removed');
+      } else {
+        alert('Error: ' + error.message);
+      }
+    } catch (error) {
+      alert('Failed: ' + error.message);
+    }
+  };
+
   // ========== HELPER FUNCTIONS ==========
   const calculateGain = (price48h, finalPrice) => {
     if (!price48h || !finalPrice) return 'N/A';
@@ -2006,12 +2026,38 @@ const AdminPortal = () => {
 
               {/* Footer */}
               <div className="p-6 border-t border-slate-700 bg-slate-900">
-                <button
-                  onClick={() => setShowAuctionManager(false)}
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded"
-                >
-                  Done
-                </button>
+                <div className="flex items-center justify-between gap-6">
+                  {/* Bonus Car Selection */}
+                  <div className="flex items-center gap-3 flex-1">
+                    <label className="text-slate-400 text-sm whitespace-nowrap flex items-center gap-2">
+                      <Zap size={16} className="text-yellow-400" />
+                      Bonus Car:
+                    </label>
+                    <select
+                      value={leagues.find(l => l.id === managingLeagueId)?.bonus_auction_id || ''}
+                      onChange={(e) => handleSetBonusCar(managingLeagueId, e.target.value)}
+                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 flex-1 max-w-md"
+                    >
+                      <option value="">No bonus car</option>
+                      {(leagueAuctions[managingLeagueId] || []).map(la => (
+                        <option key={la.auction_id} value={la.auction_id}>
+                          {la.auctions?.title || la.auction_id}
+                        </option>
+                      ))}
+                    </select>
+                    {leagues.find(l => l.id === managingLeagueId)?.bonus_auction_id && (
+                      <span className="text-yellow-400 text-xs font-medium">
+                        ⚡ Bonus car set
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setShowAuctionManager(false)}
+                    className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded"
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
             </div>
           </div>
