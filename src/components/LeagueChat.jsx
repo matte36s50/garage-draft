@@ -33,6 +33,7 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const inputRef = useRef(null);
+  const errorTimeoutRef = useRef(null);
 
   const {
     messages,
@@ -59,6 +60,15 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
       inputRef.current.focus();
     }
   }, [isOpen]);
+
+  // Cleanup error timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Track scroll position
   const handleScroll = useCallback((e) => {
@@ -92,7 +102,12 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
       }, 100);
     } else {
       setSendError(result.error);
-      setTimeout(() => setSendError(null), 3000);
+      // Clear any existing error timeout
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current);
+      }
+      // Set new timeout and store its ID
+      errorTimeoutRef.current = setTimeout(() => setSendError(null), 3000);
     }
   };
 
