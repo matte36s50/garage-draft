@@ -493,7 +493,7 @@ const AdminPortal = () => {
         if (values.length === 0) continue;
         
         const auction = {
-          auction_id: values[0] || `imported_${Date.now()}_${i}`,
+          auction_id: values[0] ? `manual_${values[0]}` : `manual_imported_${Date.now()}_${i}`,
           title: values[1] || '',
           make: values[2] || '',
           model: values[3] || '',
