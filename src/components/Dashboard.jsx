@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import StatsCards from './StatsCards';
 import PerformanceChart from './PerformanceChart';
 import EnhancedLeaderboard from './EnhancedLeaderboard';
@@ -13,13 +13,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
   const [timeRemaining, setTimeRemaining] = useState('');
   const [leagueEndTime, setLeagueEndTime] = useState(null);
 
-  useEffect(() => {
-    if (selectedLeague && user) {
-      fetchDashboardStats();
-    }
-  }, [selectedLeague, user]);
-
-  async function fetchDashboardStats() {
+  const fetchDashboardStats = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -77,7 +71,13 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
     } finally {
       setLoading(false);
     }
-  }
+  }, [supabase, user, selectedLeague]);
+
+  useEffect(() => {
+    if (selectedLeague && user) {
+      fetchDashboardStats();
+    }
+  }, [selectedLeague, user, fetchDashboardStats]);
 
   async function handleRecalculate() {
     setRecalculating(true);
@@ -86,7 +86,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
   }
 
   // Fetch the end time of the last auction in the league
-  async function fetchLeagueEndTime() {
+  const fetchLeagueEndTime = useCallback(async () => {
     if (!selectedLeague?.id) {
       console.log('[League Time] No selected league');
       setLeagueEndTime(null);
@@ -251,7 +251,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
     } catch (error) {
       console.error('[League Time] Error fetching league end time:', error);
     }
-  }
+  }, [supabase, selectedLeague]);
 
   // Calculate time remaining until league ends
   const calculateTimeLeft = (endTime) => {
@@ -283,7 +283,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
     if (selectedLeague) {
       fetchLeagueEndTime();
     }
-  }, [selectedLeague]);
+  }, [selectedLeague, fetchLeagueEndTime]);
 
   // Update time remaining every minute
   useEffect(() => {

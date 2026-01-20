@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
 import { calculateUserScore, calculateLeagueStats, calculateMarketAverage } from '../utils/scoreCalculation';
@@ -9,13 +9,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
   const [marketData, setMarketData] = useState({ marketAverage: 0, auctionCount: 0 });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (leagueId && userId) {
-      fetchPerformanceData();
-    }
-  }, [leagueId, userId]);
-
-  async function fetchPerformanceData() {
+  const fetchPerformanceData = useCallback(async () => {
     try {
       console.log('[Performance Chart] Fetching data for league:', leagueId, 'user:', userId);
 
@@ -137,7 +131,13 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [supabase, leagueId, userId]);
+
+  useEffect(() => {
+    if (leagueId && userId) {
+      fetchPerformanceData();
+    }
+  }, [leagueId, userId, fetchPerformanceData]);
 
   if (loading) {
     return (

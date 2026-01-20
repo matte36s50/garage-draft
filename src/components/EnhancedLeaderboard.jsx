@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { calculateUserScore } from '../utils/scoreCalculation';
 
@@ -8,17 +8,7 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (leagueId) {
-      fetchLeaderboard();
-
-      // Refresh every minute
-      const interval = setInterval(fetchLeaderboard, 60000);
-      return () => clearInterval(interval);
-    }
-  }, [leagueId]);
-
-  async function fetchLeaderboard() {
+  const fetchLeaderboard = useCallback(async () => {
     try {
       // Get all league members
       const { data: members, error } = await supabase
@@ -75,7 +65,17 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
     } finally {
       setLoading(false);
     }
-  }
+  }, [supabase, leagueId]);
+
+  useEffect(() => {
+    if (leagueId) {
+      fetchLeaderboard();
+
+      // Refresh every minute
+      const interval = setInterval(fetchLeaderboard, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [leagueId, fetchLeaderboard]);
 
   if (loading) {
     return (
