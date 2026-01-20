@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Trophy, Target, TrendingUp, Calendar, Car, ChevronRight, Award, Clock } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Trophy, Target, TrendingUp, Calendar, Car, Award, Clock } from 'lucide-react';
 
 export default function UserHistory({ supabase, user }) {
   const [loading, setLoading] = useState(true);
@@ -11,13 +11,7 @@ export default function UserHistory({ supabase, user }) {
     avgRank: 0
   });
 
-  useEffect(() => {
-    if (user) {
-      fetchHistory();
-    }
-  }, [user]);
-
-  async function fetchHistory() {
+  const fetchHistory = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -72,7 +66,13 @@ export default function UserHistory({ supabase, user }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [supabase, user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchHistory();
+    }
+  }, [user, fetchHistory]);
 
   // Format date range
   const formatDateRange = (start, end) => {

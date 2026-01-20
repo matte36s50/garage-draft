@@ -908,6 +908,7 @@ export default function BixPrixApp() {
       fetchUserPrediction(stored.id)
     }
     setLeagueLoading(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
   
   useEffect(() => { 
@@ -1907,6 +1908,7 @@ export default function BixPrixApp() {
     if (selectedLeague) {
       fetchLeaderboard()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLeague])
    // ADD THIS - League selector if no league selected
   if (!selectedLeague && !leagueLoading) {

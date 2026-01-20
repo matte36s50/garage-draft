@@ -1,17 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export default function LeaguePredictions({ supabase, leagueId, currentUserId, bonusCar }) {
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (leagueId) {
-      fetchPredictions();
-    }
-  }, [leagueId]);
-
-  async function fetchPredictions() {
+  const fetchPredictions = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -48,7 +42,13 @@ export default function LeaguePredictions({ supabase, leagueId, currentUserId, b
     } finally {
       setLoading(false);
     }
-  }
+  }, [supabase, leagueId, currentUserId]);
+
+  useEffect(() => {
+    if (leagueId) {
+      fetchPredictions();
+    }
+  }, [leagueId, fetchPredictions]);
 
   if (loading) {
     return (

@@ -1,9 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function ActivityFeed({ supabase, leagueId, limit = 15 }) {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const fetchActivities = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('league_activities')
+        .select('*')
+        .eq('league_id', leagueId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+      setActivities(data || []);
+    } catch (error) {
+      console.error('Failed to fetch activities:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase, leagueId, limit]);
 
   useEffect(() => {
     if (leagueId) {
@@ -30,25 +48,7 @@ export default function ActivityFeed({ supabase, leagueId, limit = 15 }) {
         supabase.removeChannel(channel);
       };
     }
-  }, [leagueId, limit]);
-
-  async function fetchActivities() {
-    try {
-      const { data, error } = await supabase
-        .from('league_activities')
-        .select('*')
-        .eq('league_id', leagueId)
-        .order('created_at', { ascending: false })
-        .limit(limit);
-
-      if (error) throw error;
-      setActivities(data || []);
-    } catch (error) {
-      console.error('Failed to fetch activities:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
+  }, [leagueId, limit, supabase, fetchActivities]);
 
   if (loading) {
     return (
