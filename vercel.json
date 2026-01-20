@@ -1,8 +1,0 @@
-{
-  "buildCommand": "cd auction-admin && npm run build",
-  "outputDirectory": "auction-admin/.next",
-  "devCommand": "cd auction-admin && npm run dev",
-  "installCommand": "cd auction-admin && npm install",
-  "framework": "nextjs",
-  "regions": ["iad1"]
-}
