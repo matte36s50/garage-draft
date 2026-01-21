@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Search, RefreshCw, Users, Trophy, Car, DollarSign, Upload, Download, CheckCircle, Play, Zap } from 'lucide-react';
+import { Plus, Trash2, Search, RefreshCw, Users, Trophy, Car, DollarSign, Upload, Download, CheckCircle, Play, Zap, Edit } from 'lucide-react';
 
 const AdminPortal = () => {
   const [activeTab, setActiveTab] = useState('auctions');
@@ -20,6 +20,9 @@ const AdminPortal = () => {
     price_at_48h: '', final_price: '', url: '', image_url: '', timestamp_end: '',
     auction_reference: ''
   });
+
+  const [showEditAuction, setShowEditAuction] = useState(false);
+  const [editingAuction, setEditingAuction] = useState(null);
 
   const [showAddUser, setShowAddUser] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', email: '' });
@@ -419,9 +422,83 @@ const AdminPortal = () => {
     }
   };
 
+  const handleStartEdit = (auction) => {
+    // Convert timestamp_end (Unix seconds) to datetime-local format
+    let datetimeLocal = '';
+    if (auction.timestamp_end) {
+      const date = new Date(auction.timestamp_end * 1000);
+      datetimeLocal = date.toISOString().slice(0, 16);
+    }
+
+    setEditingAuction({
+      id: auction.id,
+      auction_id: auction.auction_id,
+      title: auction.title || '',
+      make: auction.make || '',
+      model: auction.model || '',
+      year: auction.year || '',
+      price_at_48h: auction.price_at_48h || '',
+      final_price: auction.final_price || '',
+      url: auction.url || '',
+      image_url: auction.image_url || '',
+      timestamp_end: datetimeLocal,
+      auction_reference: auction.auction_reference || ''
+    });
+    setShowEditAuction(true);
+  };
+
+  const handleEditAuction = async () => {
+    if (!editingAuction.make || !editingAuction.model || !editingAuction.title) {
+      alert('Please fill in at least Make, Model, and Title');
+      return;
+    }
+
+    if (!editingAuction.timestamp_end) {
+      alert('Please set an auction end date');
+      return;
+    }
+
+    try {
+      const { supabase } = await import('@/lib/supabase');
+
+      // Convert datetime-local to Unix timestamp
+      const endTimestamp = Math.floor(new Date(editingAuction.timestamp_end).getTime() / 1000);
+
+      const updates = {
+        title: editingAuction.title,
+        make: editingAuction.make,
+        model: editingAuction.model,
+        year: editingAuction.year ? parseInt(editingAuction.year) : null,
+        price_at_48h: editingAuction.price_at_48h ? parseFloat(editingAuction.price_at_48h) : null,
+        final_price: editingAuction.final_price ? parseFloat(editingAuction.final_price) : null,
+        url: editingAuction.url || null,
+        image_url: editingAuction.image_url || null,
+        timestamp_end: endTimestamp,
+        current_bid: editingAuction.price_at_48h || editingAuction.final_price || null,
+        auction_reference: editingAuction.auction_reference || null
+      };
+
+      const { error } = await supabase
+        .from('auctions')
+        .update(updates)
+        .eq('id', editingAuction.id);
+
+      if (error) {
+        alert('Error: ' + error.message);
+      } else {
+        alert('Auction updated!');
+        loadAllData();
+        setEditingAuction(null);
+        setShowEditAuction(false);
+      }
+    } catch (error) {
+      alert('Failed: ' + error.message);
+    }
+  };
+
   const handleDeleteAuction = async (id) => {
     if (!confirm('Delete this auction? It will be removed from all garages!')) return;
-    
+
     try {
       const { supabase } = await import('@/lib/supabase');
       const { error } = await supabase.from('auctions').delete().eq('id', id);
@@ -434,9 +511,9 @@ const AdminPortal = () => {
 
   // ========== CSV EXPORT ==========
   const handleExportAuctionsCSV = () => {
-    const headers = ['auction_id', 'title', 'make', 'model', 'year', 'price_at_48h', 'final_price', 'url', 'image_url'];
+    const headers = ['auction_id', 'title', 'make', 'model', 'year', 'price_at_48h', 'final_price', 'url', 'image_url', 'auction_reference', 'timestamp_end'];
     const csvRows = [headers.join(',')];
-    
+
     auctions.forEach(auction => {
       const row = [
         auction.auction_id || '',
@@ -447,7 +524,9 @@ const AdminPortal = () => {
         auction.price_at_48h || '',
         auction.final_price || '',
         auction.url || '',
-        auction.image_url || ''
+        auction.image_url || '',
+        auction.auction_reference || '',
+        auction.timestamp_end || ''
       ];
       csvRows.push(row.join(','));
     });
@@ -470,28 +549,28 @@ const AdminPortal = () => {
   const handleImportAuctionsCSV = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    
+
     if (!file.name.endsWith('.csv')) {
       alert('Please upload a CSV file');
       return;
     }
-    
+
     setCsvImporting(true);
-    
+
     try {
       const text = await file.text();
       const lines = text.split('\n');
       const headers = lines[0].split(',').map(h => h.trim());
-      
+
       const auctions = [];
       for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
-        
+
         const values = lines[i].match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)
           ?.map(v => v.replace(/^"|"$/g, '').trim()) || [];
-        
+
         if (values.length === 0) continue;
-        
+
         const auction = {
           auction_id: values[0] ? `manual_${values[0]}` : `manual_imported_${Date.now()}_${i}`,
           title: values[1] || '',
@@ -502,10 +581,12 @@ const AdminPortal = () => {
           final_price: values[6] ? parseFloat(values[6]) : null,
           url: values[7] || null,
           image_url: values[8] || null,
+          auction_reference: values[9] || null,
+          timestamp_end: values[10] ? parseInt(values[10]) : null,
           inserted_at: new Date().toISOString(),
           current_bid: values[5] || values[6] || null
         };
-        
+
         auctions.push(auction);
       }
       
@@ -1039,6 +1120,66 @@ const AdminPortal = () => {
               </div>
             )}
 
+            {showEditAuction && editingAuction && (
+              <div className="bg-slate-800 p-6 rounded-lg border border-blue-500 mb-6">
+                <h3 className="text-xl font-bold mb-4 text-blue-400">Edit Auction</h3>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="col-span-2">
+                    <label className="text-slate-400 text-sm mb-1 block">Auction ID (cannot be changed)</label>
+                    <input type="text" value={editingAuction.auction_id} disabled
+                      className="bg-slate-900 text-slate-500 p-2 rounded border border-slate-600 w-full cursor-not-allowed" />
+                  </div>
+                  <input type="text" placeholder="Title *" value={editingAuction.title}
+                    onChange={(e) => setEditingAuction({...editingAuction, title: e.target.value})}
+                    className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
+                  <input type="text" placeholder="Make *" value={editingAuction.make}
+                    onChange={(e) => setEditingAuction({...editingAuction, make: e.target.value})}
+                    className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
+                  <input type="text" placeholder="Model *" value={editingAuction.model}
+                    onChange={(e) => setEditingAuction({...editingAuction, model: e.target.value})}
+                    className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
+                  <input type="number" placeholder="Year" value={editingAuction.year}
+                    onChange={(e) => setEditingAuction({...editingAuction, year: e.target.value})}
+                    className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
+                  <input type="number" placeholder="Price at 48h" value={editingAuction.price_at_48h}
+                    onChange={(e) => setEditingAuction({...editingAuction, price_at_48h: e.target.value})}
+                    className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
+                  <input type="number" placeholder="Final Price" value={editingAuction.final_price}
+                    onChange={(e) => setEditingAuction({...editingAuction, final_price: e.target.value})}
+                    className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
+                  <input type="text" placeholder="URL" value={editingAuction.url}
+                    onChange={(e) => setEditingAuction({...editingAuction, url: e.target.value})}
+                    className="bg-slate-700 text-white p-2 rounded border border-slate-600" />
+                  <input type="text" placeholder="Image URL" value={editingAuction.image_url}
+                    onChange={(e) => setEditingAuction({...editingAuction, image_url: e.target.value})}
+                    className="bg-slate-700 text-white p-2 rounded border border-slate-600 col-span-2" />
+                  <div className="col-span-2">
+                    <label className="text-slate-400 text-sm mb-1 block">Auction Event / Reference</label>
+                    <input type="text" placeholder="e.g., RM Arizona 2026, Mecum Kissimmee 2025"
+                      value={editingAuction.auction_reference}
+                      onChange={(e) => setEditingAuction({...editingAuction, auction_reference: e.target.value})}
+                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full" />
+                    <p className="text-slate-500 text-xs mt-1">Group auctions by their parent auction event for easy selection in leagues</p>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-slate-400 text-sm mb-1 block">Auction End Date *</label>
+                    <input type="datetime-local" value={editingAuction.timestamp_end}
+                      onChange={(e) => setEditingAuction({...editingAuction, timestamp_end: e.target.value})}
+                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full" />
+                    <p className="text-slate-500 text-xs mt-1">Set when this auction should end</p>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={handleEditAuction} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded">
+                    Save Changes
+                  </button>
+                  <button onClick={() => { setShowEditAuction(false); setEditingAuction(null); }} className="bg-slate-700 hover:bg-slate-600 text-white px-6 py-2 rounded">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
             <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
               <Car size={24} />
               Bring a Trailer Auctions
@@ -1196,6 +1337,10 @@ const AdminPortal = () => {
                               <a href={auction.url} target="_blank" rel="noopener noreferrer"
                                 className="text-blue-400 hover:text-blue-300 text-sm">View Auction →</a>
                             )}
+                            <button onClick={() => handleStartEdit(auction)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1">
+                              <Edit size={14} /> Edit
+                            </button>
                             <button onClick={() => handleDeleteAuction(auction.id)}
                               className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1">
                               <Trash2 size={14} /> Delete
