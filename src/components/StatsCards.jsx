@@ -7,7 +7,26 @@ const formatDollar = (amount) => {
 };
 
 export default function StatsCards({ stats, spendingLimit = 200000 }) {
+  const earningsValue = stats?.totalDollarGain || 0;
+  const isPositive = earningsValue >= 0;
+
   const cards = [
+    // FEATURED: Auction Earnings - Most prominent card
+    {
+      title: 'Auction Earnings',
+      value: formatDollar(earningsValue),
+      subtitle: 'Your profit from auction results',
+      description: 'Earnings = Final Values - Purchase Prices',
+      icon: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+      bgColor: isPositive ? 'bg-gradient-to-br from-emerald-500/30 to-emerald-600/20' : 'bg-gradient-to-br from-red-500/30 to-red-600/20',
+      iconColor: isPositive ? 'text-emerald-400' : 'text-red-400',
+      featured: true,
+      isPositive
+    },
     {
       title: 'Your Rank',
       value: stats?.rank != null && stats.rank > 0 ? `#${stats.rank}` : '-',
@@ -69,7 +88,9 @@ export default function StatsCards({ stats, spendingLimit = 200000 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((card, index) => (
-        <StatCard key={card.title} card={card} index={index} />
+        <div key={card.title} className={card.featured ? 'md:col-span-2' : ''}>
+          <StatCard card={card} index={index} />
+        </div>
       ))}
     </div>
   );
@@ -109,6 +130,72 @@ function StatCard({ card, index }) {
   // Determine which trend value to use
   const trendValue = card.dollarDiff !== undefined ? card.dollarDiff : card.trend;
 
+  // Featured card (Auction Earnings) gets special treatment
+  if (card.featured) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.1, duration: 0.5 }}
+        className={`
+          ${card.bgColor}
+          rounded-xl p-8
+          border-2 ${card.isPositive ? 'border-emerald-400/40' : 'border-red-400/40'}
+          hover:shadow-2xl hover:scale-[1.02]
+          transition-all duration-300
+          relative overflow-hidden
+        `}
+      >
+        {/* Decorative gradient overlay */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-white/5 to-transparent rounded-full blur-3xl" />
+
+        <div className="relative">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <div className={`${card.iconColor} p-3 rounded-xl bg-bpNavy/30`}>
+                  {card.icon}
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-bpCream">{card.title}</h3>
+                  <p className="text-sm text-bpCream/60">{card.subtitle}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-3">
+            <div className={`text-6xl font-extrabold ${card.isPositive ? 'text-emerald-300' : 'text-red-300'} tracking-tight`}>
+              {card.isPositive && '+'}{card.value}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-bpCream/70 italic">
+              {card.description}
+            </div>
+            {card.isPositive ? (
+              <div className="flex items-center gap-2 bg-emerald-500/20 px-4 py-2 rounded-full border border-emerald-400/30">
+                <svg className="w-5 h-5 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+                <span className="text-sm font-bold text-emerald-300">Profit</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 bg-red-500/20 px-4 py-2 rounded-full border border-red-400/30">
+                <svg className="w-5 h-5 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
+                </svg>
+                <span className="text-sm font-bold text-red-300">Loss</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // Standard card styling
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
