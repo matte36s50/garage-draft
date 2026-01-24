@@ -44,58 +44,6 @@ function loadCurrentScreen() {
   }
 }
 
-function ConnectionStatus({ lastUpdated, connectionStatus, onRefresh, isRefreshing }) {
-  const formatTimeAgo = (date) => {
-    const seconds = Math.floor((new Date() - date) / 1000)
-    if (seconds < 60) return 'just now'
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-    return `${Math.floor(seconds / 3600)}h ago`
-  }
-
-  return (
-    <div className="flex items-center gap-3 text-sm">
-      <div className="flex items-center gap-1.5">
-        {connectionStatus === 'connected' && (
-          <>
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            <span className="text-bpCream/70">Live</span>
-          </>
-        )}
-        {connectionStatus === 'connecting' && (
-          <>
-            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
-            <span className="text-bpCream/70">Connecting...</span>
-          </>
-        )}
-        {connectionStatus === 'disconnected' && (
-          <>
-            <div className="w-2 h-2 bg-red-500 rounded-full" />
-            <span className="text-bpCream/70">Offline</span>
-          </>
-        )}
-      </div>
-      
-      <span className="text-bpCream/50">•</span>
-      
-      <div className="flex items-center gap-1.5">
-        <Clock size={14} className="text-bpCream/50" />
-        <span className="text-bpCream/70">{formatTimeAgo(lastUpdated)}</span>
-      </div>
-
-      <button
-        onClick={onRefresh}
-        disabled={isRefreshing}
-        className={`p-1 hover:bg-white/10 rounded transition ${
-          isRefreshing ? 'animate-spin' : ''
-        }`}
-        title="Refresh data"
-      >
-        <RefreshCw size={14} className="text-bpCream/70" />
-      </button>
-    </div>
-  )
-}
-
 function RecentUpdates({ updates }) {
   if (updates.length === 0) return null
 
@@ -141,23 +89,6 @@ function BrandLogo({ compact }) {
 }
 
 function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, connectionStatus, recentUpdates, selectedLeague, onManualRefresh }) {
-  const [isManualRefreshing, setIsManualRefreshing] = useState(false)
-
-  const handleRefresh = async () => {
-    if (isManualRefreshing) return
-    setIsManualRefreshing(true)
-    
-    try {
-      if (onManualRefresh) {
-        await onManualRefresh()
-      }
-    } catch (error) {
-      console.error('Error during manual refresh:', error)
-    } finally {
-      setIsManualRefreshing(false)
-    }
-  }
-
   return (
     <div className="min-h-screen bg-bpNavy text-bpCream">
       <header className="sticky top-0 z-40 bg-bpNavy border-b border-white/10">
