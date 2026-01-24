@@ -6,7 +6,6 @@ import { calculateUserScore, calculateLeagueStats, calculateMarketAverage } from
 export default function PerformanceChart({ supabase, leagueId, userId }) {
   const [chartData, setChartData] = useState([]);
   const [topUsers, setTopUsers] = useState([]);
-  const [marketData, setMarketData] = useState({ marketAverage: 0, auctionCount: 0 });
   const [loading, setLoading] = useState(true);
 
   const fetchPerformanceData = useCallback(async () => {
@@ -29,7 +28,6 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
 
       // Calculate current market average (always fetch this for real-time display)
       const marketAvg = await calculateMarketAverage(supabase, leagueId);
-      setMarketData(marketAvg);
       console.log('[Performance Chart] Market average (% gain):', marketAvg.marketAverage + '%');
 
       // If there's no historical data, create a current snapshot using real-time calculations
