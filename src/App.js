@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard, History } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard, History, ChevronDown, Check } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import Dashboard from './components/Dashboard'
 import LeagueChat from './components/LeagueChat'
@@ -88,17 +88,84 @@ function BrandLogo({ compact }) {
   )
 }
 
-function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, connectionStatus, recentUpdates, selectedLeague, onManualRefresh }) {
+function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, connectionStatus, recentUpdates, selectedLeague, onManualRefresh, userLeagues, onLeagueChange }) {
+  const [leagueDropdownOpen, setLeagueDropdownOpen] = useState(false)
+
+  const handleLeagueSelect = (league) => {
+    if (onLeagueChange) {
+      onLeagueChange(league)
+    }
+    setLeagueDropdownOpen(false)
+  }
+
   return (
     <div className="min-h-screen bg-bpNavy text-bpCream">
       <header className="sticky top-0 z-40 bg-bpNavy border-b border-white/10">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <BrandLogo />
-            {selectedLeague && (
-              <div className="hidden md:flex items-center gap-2 text-xs px-3 py-1.5 bg-bpGold/10 border border-bpGold/30 rounded-full">
-                <Trophy size={14} className="text-bpGold" />
-                <span className="text-bpCream/90 font-medium">{selectedLeague.name}</span>
+            {selectedLeague && userLeagues && userLeagues.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setLeagueDropdownOpen(!leagueDropdownOpen)}
+                  className="hidden md:flex items-center gap-2 text-xs px-3 py-1.5 bg-bpGold/10 border border-bpGold/30 rounded-full hover:bg-bpGold/20 transition-colors cursor-pointer"
+                >
+                  <Trophy size={14} className="text-bpGold" />
+                  <span className="text-bpCream/90 font-medium">{selectedLeague.name}</span>
+                  {userLeagues.length > 1 && (
+                    <ChevronDown size={14} className={`text-bpGold transition-transform ${leagueDropdownOpen ? 'rotate-180' : ''}`} />
+                  )}
+                </button>
+
+                {/* League Dropdown */}
+                {leagueDropdownOpen && userLeagues.length > 1 && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setLeagueDropdownOpen(false)}
+                    />
+                    <div className="absolute left-0 mt-2 w-64 bg-bpNavy border border-bpCream/20 rounded-lg shadow-xl z-50 overflow-hidden">
+                      <div className="px-3 py-2 border-b border-bpCream/10">
+                        <span className="text-xs text-bpCream/60 font-medium uppercase tracking-wide">Switch League</span>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {userLeagues.map((league) => (
+                          <button
+                            key={league.id}
+                            onClick={() => handleLeagueSelect(league)}
+                            className={`w-full px-3 py-2.5 flex items-center gap-3 hover:bg-bpCream/10 transition-colors text-left ${
+                              selectedLeague?.id === league.id ? 'bg-bpGold/10' : ''
+                            }`}
+                          >
+                            <Trophy size={16} className={selectedLeague?.id === league.id ? 'text-bpGold' : 'text-bpCream/40'} />
+                            <div className="flex-1 min-w-0">
+                              <div className={`font-medium text-sm truncate ${selectedLeague?.id === league.id ? 'text-bpGold' : 'text-bpCream'}`}>
+                                {league.name}
+                              </div>
+                              <div className="text-xs text-bpCream/50">
+                                {league.use_manual_auctions ? 'Manual' : 'Auto'} auctions
+                              </div>
+                            </div>
+                            {selectedLeague?.id === league.id && (
+                              <Check size={16} className="text-bpGold flex-shrink-0" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="px-3 py-2 border-t border-bpCream/10">
+                        <button
+                          onClick={() => {
+                            setLeagueDropdownOpen(false)
+                            onNavigate && onNavigate('leagues')
+                          }}
+                          className="text-xs text-bpGold hover:underline"
+                        >
+                          Browse more leagues
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -267,6 +334,7 @@ export default function BixPrixApp() {
   const [budget, setBudget] = useState(200000)
   const [auctions, setAuctions] = useState([])
   const [leagues, setLeagues] = useState([])
+  const [userLeagues, setUserLeagues] = useState([])  // Leagues user has joined
   const [loading, setLoading] = useState(false)
   const [userGarageId, setUserGarageId] = useState(null)
   const [leagueLoading, setLeagueLoading] = useState(true)
@@ -628,6 +696,40 @@ export default function BixPrixApp() {
     setLeagues((data||[]).map(l => ({ ...l, playerCount: 0, status: 'Open' })))
   }
 
+  // Fetch leagues that the current user has joined
+  const fetchUserLeagues = async () => {
+    if (!user) {
+      setUserLeagues([])
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('league_members')
+      .select(`
+        league_id,
+        leagues!league_members_league_id_fkey(*)
+      `)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error('Error fetching user leagues:', error)
+      setUserLeagues([])
+      return
+    }
+
+    // Extract the league data from the join
+    const joinedLeagues = (data || [])
+      .filter(m => m.leagues)  // Filter out any null leagues
+      .map(m => ({
+        ...m.leagues,
+        playerCount: 0,
+        status: 'Open'
+      }))
+
+    console.log(`✅ User has joined ${joinedLeagues.length} leagues`)
+    setUserLeagues(joinedLeagues)
+  }
+
   const fetchUserGarage = async (leagueId) => {
     if (!user) return
     const { data: g, error: ge } = await supabase
@@ -727,6 +829,7 @@ export default function BixPrixApp() {
       setBudget(175000)
       setGarage([])
 
+      await fetchUserLeagues()  // Refresh joined leagues list
       await fetchAuctions()
       await fetchBonusCar(league.id)
       await fetchUserPrediction(league.id)
@@ -823,10 +926,12 @@ export default function BixPrixApp() {
     return () => subscription.unsubscribe()
   }, [])
 
-  useEffect(() => { 
-    if (user) { 
-      fetchLeagues() 
-    } 
+  useEffect(() => {
+    if (user) {
+      fetchLeagues()
+      fetchUserLeagues()  // Fetch leagues user has joined
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
   
   useEffect(() => {
@@ -1217,15 +1322,17 @@ export default function BixPrixApp() {
 
   function LeaguesScreen({ onNavigate, currentScreen }) {
     return (
-      <Shell 
-        onSignOut={() => supabase.auth.signOut()} 
-        onNavigate={onNavigate} 
+      <Shell
+        onSignOut={() => supabase.auth.signOut()}
+        onNavigate={onNavigate}
         currentScreen={currentScreen}
         lastUpdated={lastUpdated}
         connectionStatus={connectionStatus}
         recentUpdates={recentUpdates}
         selectedLeague={selectedLeague}
         onManualRefresh={manualRefresh}
+        userLeagues={userLeagues}
+        onLeagueChange={updateSelectedLeague}
       >
         <h2 className="text-2xl font-extrabold tracking-tight mb-4">Join a League</h2>
         <div className="grid sm:grid-cols-2 gap-4">
@@ -1371,14 +1478,16 @@ export default function BixPrixApp() {
     const canPick = draftStatus.status === 'open'
     
     return (
-      <Shell 
-        onNavigate={onNavigate} 
+      <Shell
+        onNavigate={onNavigate}
         currentScreen={currentScreen}
         lastUpdated={lastUpdated}
         connectionStatus={connectionStatus}
         recentUpdates={recentUpdates}
         selectedLeague={selectedLeague}
         onManualRefresh={manualRefresh}
+        userLeagues={userLeagues}
+        onLeagueChange={updateSelectedLeague}
       >
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
           <div className="flex-1">
@@ -1627,14 +1736,16 @@ export default function BixPrixApp() {
     const canModify = draftStatus.status === 'open'
     
     return (
-      <Shell 
-        onNavigate={onNavigate} 
+      <Shell
+        onNavigate={onNavigate}
         currentScreen={currentScreen}
         lastUpdated={lastUpdated}
         connectionStatus={connectionStatus}
         recentUpdates={recentUpdates}
         selectedLeague={selectedLeague}
         onManualRefresh={manualRefresh}
+        userLeagues={userLeagues}
+        onLeagueChange={updateSelectedLeague}
       >
         <h2 className="text-2xl font-extrabold tracking-tight mb-3">My Garage</h2>
         <p className="text-sm text-bpCream/70 mb-3">Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()}</p>
@@ -1844,10 +1955,12 @@ export default function BixPrixApp() {
    // ADD THIS - League selector if no league selected
   if (!selectedLeague && !leagueLoading) {
     return (
-      <Shell 
-        onSignOut={() => supabase.auth.signOut()} 
-        onNavigate={onNavigate} 
+      <Shell
+        onSignOut={() => supabase.auth.signOut()}
+        onNavigate={onNavigate}
         currentScreen={currentScreen}
+        userLeagues={userLeagues}
+        onLeagueChange={updateSelectedLeague}
       >
         <div className="max-w-2xl mx-auto">
           <h2 className="text-2xl font-extrabold tracking-tight mb-4">Select a League</h2>
@@ -2222,28 +2335,22 @@ export default function BixPrixApp() {
     }
 
     return (
-      <Shell 
-        onSignOut={() => supabase.auth.signOut()} 
-        onNavigate={onNavigate} 
+      <Shell
+        onSignOut={() => supabase.auth.signOut()}
+        onNavigate={onNavigate}
         currentScreen={currentScreen}
         lastUpdated={lastUpdated}
         connectionStatus={connectionStatus}
         recentUpdates={recentUpdates}
         selectedLeague={selectedLeague}
         onManualRefresh={manualRefresh}
+        userLeagues={userLeagues}
+        onLeagueChange={updateSelectedLeague}
       >
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-extrabold tracking-tight">Leaderboard</h2>
             <p className="text-sm text-bpCream/70">{selectedLeague?.name || 'Select a League'}</p>
-            {selectedLeague && (
-              <button
-                onClick={() => updateSelectedLeague(null)}
-                className="text-xs text-bpGold hover:underline mt-1"
-              >
-                Change League
-              </button>
-            )}
           </div>
           
           <div className="flex gap-2">
@@ -2480,11 +2587,13 @@ export default function BixPrixApp() {
       recentUpdates={recentUpdates}
       selectedLeague={selectedLeague}
       onManualRefresh={manualRefresh}
+      userLeagues={userLeagues}
+      onLeagueChange={updateSelectedLeague}
     >
       <Dashboard
         supabase={supabase}
         user={user}
-        leagues={leagues}
+        leagues={userLeagues}
         selectedLeague={selectedLeague}
         onLeagueChange={updateSelectedLeague}
         onNavigate={updateCurrentScreen}
@@ -2515,6 +2624,8 @@ export default function BixPrixApp() {
       lastUpdated={lastUpdated}
       connectionStatus={connectionStatus}
       selectedLeague={selectedLeague}
+      userLeagues={userLeagues}
+      onLeagueChange={updateSelectedLeague}
     >
       <UserHistory supabase={supabase} user={user} />
     </Shell>
