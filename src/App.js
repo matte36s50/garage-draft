@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard, History, ChevronDown, Check } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard, History, ChevronDown, Check, ArrowLeft } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import Dashboard from './components/Dashboard'
 import LeagueChat from './components/LeagueChat'
@@ -88,14 +88,32 @@ function BrandLogo({ compact }) {
   )
 }
 
-function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, connectionStatus, recentUpdates, selectedLeague, onManualRefresh, userLeagues, onLeagueChange }) {
+function getLeagueDraftInfo(league) {
+  if (!league) return { statusColor: 'bg-gray-400', label: '' }
+  const now = new Date()
+  const start = league.draft_starts_at ? new Date(league.draft_starts_at) : null
+  const end = league.draft_ends_at ? new Date(league.draft_ends_at) : null
+
+  if (!start || !end) return { statusColor: 'bg-emerald-400', label: 'Draft open' }
+  if (now < start) return { statusColor: 'bg-yellow-400', label: 'Opens soon' }
+  if (now >= start && now <= end) {
+    const diff = +end - +now
+    const days = Math.floor(diff / 86400000)
+    return { statusColor: 'bg-emerald-400', label: days > 0 ? `Draft closes in ${days}d` : 'Draft closing soon' }
+  }
+  return { statusColor: 'bg-gray-400', label: 'Draft closed' }
+}
+
+function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, connectionStatus, recentUpdates, selectedLeague, onManualRefresh, userLeagues, onLeagueChange, getDraftStatus: getDraftStatusProp, garage: garageProp }) {
   const [leagueDropdownOpen, setLeagueDropdownOpen] = useState(false)
+  const [mobileLeagueOpen, setMobileLeagueOpen] = useState(false)
 
   const handleLeagueSelect = (league) => {
     if (onLeagueChange) {
       onLeagueChange(league)
     }
     setLeagueDropdownOpen(false)
+    setMobileLeagueOpen(false)
   }
 
   return (
@@ -104,55 +122,59 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <BrandLogo />
+            {/* Desktop League Dropdown */}
             {selectedLeague && userLeagues && userLeagues.length > 0 && (
               <div className="relative">
                 <button
                   onClick={() => setLeagueDropdownOpen(!leagueDropdownOpen)}
-                  className="hidden md:flex items-center gap-2 text-xs px-3 py-1.5 bg-bpGold/10 border border-bpGold/30 rounded-full hover:bg-bpGold/20 transition-colors cursor-pointer"
+                  className="hidden md:flex items-center gap-2 text-xs px-3 py-1.5 bg-bpGold/10 border border-bpGold/30 rounded-full hover:bg-bpGold/20 hover:border-bpGold/60 transition-all cursor-pointer"
                 >
                   <Trophy size={14} className="text-bpGold" />
-                  <span className="text-bpCream/90 font-medium">{selectedLeague.name}</span>
+                  <span className="text-bpCream/90 font-medium max-w-[200px] truncate">{selectedLeague.name}</span>
                   {userLeagues.length > 1 && (
-                    <ChevronDown size={14} className={`text-bpGold transition-transform ${leagueDropdownOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown size={16} className={`text-bpGold transition-transform ${leagueDropdownOpen ? 'rotate-180' : ''}`} />
                   )}
                 </button>
 
-                {/* League Dropdown */}
+                {/* Desktop League Dropdown Panel */}
                 {leagueDropdownOpen && userLeagues.length > 1 && (
                   <>
                     <div
                       className="fixed inset-0 z-40"
                       onClick={() => setLeagueDropdownOpen(false)}
                     />
-                    <div className="absolute left-0 mt-2 w-64 bg-bpNavy border border-bpCream/20 rounded-lg shadow-xl z-50 overflow-hidden">
-                      <div className="px-3 py-2 border-b border-bpCream/10">
+                    <div className="absolute left-0 mt-2 min-w-[320px] bg-bpNavy border border-bpCream/20 rounded-lg shadow-xl z-50 overflow-hidden">
+                      <div className="px-4 py-2.5 border-b border-bpCream/10">
                         <span className="text-xs text-bpCream/60 font-medium uppercase tracking-wide">Switch League</span>
                       </div>
-                      <div className="max-h-64 overflow-y-auto">
-                        {userLeagues.map((league) => (
-                          <button
-                            key={league.id}
-                            onClick={() => handleLeagueSelect(league)}
-                            className={`w-full px-3 py-2.5 flex items-center gap-3 hover:bg-bpCream/10 transition-colors text-left ${
-                              selectedLeague?.id === league.id ? 'bg-bpGold/10' : ''
-                            }`}
-                          >
-                            <Trophy size={16} className={selectedLeague?.id === league.id ? 'text-bpGold' : 'text-bpCream/40'} />
-                            <div className="flex-1 min-w-0">
-                              <div className={`font-medium text-sm truncate ${selectedLeague?.id === league.id ? 'text-bpGold' : 'text-bpCream'}`}>
-                                {league.name}
+                      <div className="max-h-72 overflow-y-auto">
+                        {userLeagues.map((league) => {
+                          const info = getLeagueDraftInfo(league)
+                          return (
+                            <button
+                              key={league.id}
+                              onClick={() => handleLeagueSelect(league)}
+                              className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-bpCream/10 transition-colors text-left ${
+                                selectedLeague?.id === league.id ? 'bg-bpGold/10' : ''
+                              }`}
+                            >
+                              <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${info.statusColor}`} />
+                              <div className="flex-1 min-w-0">
+                                <div className={`font-medium text-sm ${selectedLeague?.id === league.id ? 'text-bpGold' : 'text-bpCream'}`}>
+                                  {league.name}
+                                </div>
+                                <div className="text-xs text-bpCream/50 mt-0.5">
+                                  {info.label}
+                                </div>
                               </div>
-                              <div className="text-xs text-bpCream/50">
-                                {league.use_manual_auctions ? 'Manual' : 'Auto'} auctions
-                              </div>
-                            </div>
-                            {selectedLeague?.id === league.id && (
-                              <Check size={16} className="text-bpGold flex-shrink-0" />
-                            )}
-                          </button>
-                        ))}
+                              {selectedLeague?.id === league.id && (
+                                <Check size={16} className="text-bpGold flex-shrink-0" />
+                              )}
+                            </button>
+                          )
+                        })}
                       </div>
-                      <div className="px-3 py-2 border-t border-bpCream/10">
+                      <div className="px-4 py-2.5 border-t border-bpCream/10">
                         <button
                           onClick={() => {
                             setLeagueDropdownOpen(false)
@@ -208,7 +230,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
             </button>
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {onSignOut && (
               <button
                 onClick={onSignOut}
@@ -223,6 +245,56 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
         </div>
         <div className="h-0.5 bg-bpRed/80" />
       </header>
+
+      {/* Mobile League Switcher Bar */}
+      {selectedLeague && userLeagues && userLeagues.length > 0 && (
+        <div className="sm:hidden sticky top-[53px] z-30 bg-bpNavy/95 backdrop-blur-sm border-b border-white/10">
+          <button
+            onClick={() => userLeagues.length > 1 && setMobileLeagueOpen(!mobileLeagueOpen)}
+            className="w-full px-4 py-2 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Trophy size={14} className="text-bpGold flex-shrink-0" />
+              <span className="text-sm text-bpCream font-medium truncate">{selectedLeague.name}</span>
+            </div>
+            {userLeagues.length > 1 && (
+              <ChevronDown size={16} className={`text-bpGold flex-shrink-0 transition-transform ${mobileLeagueOpen ? 'rotate-180' : ''}`} />
+            )}
+          </button>
+
+          {/* Mobile League Dropdown */}
+          {mobileLeagueOpen && userLeagues.length > 1 && (
+            <>
+              <div className="fixed inset-0 z-30 bg-black/40" onClick={() => setMobileLeagueOpen(false)} />
+              <div className="absolute left-0 right-0 z-40 bg-bpNavy border-b border-bpCream/20 shadow-xl max-h-64 overflow-y-auto">
+                {userLeagues.map((league) => {
+                  const info = getLeagueDraftInfo(league)
+                  return (
+                    <button
+                      key={league.id}
+                      onClick={() => handleLeagueSelect(league)}
+                      className={`w-full px-4 py-3 flex items-center gap-3 text-left border-b border-bpCream/5 ${
+                        selectedLeague?.id === league.id ? 'bg-bpGold/10' : 'active:bg-bpCream/10'
+                      }`}
+                    >
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${info.statusColor}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className={`font-medium text-sm ${selectedLeague?.id === league.id ? 'text-bpGold' : 'text-bpCream'}`}>
+                          {league.name}
+                        </div>
+                        <div className="text-xs text-bpCream/50 mt-0.5">{info.label}</div>
+                      </div>
+                      {selectedLeague?.id === league.id && (
+                        <Check size={16} className="text-bpGold flex-shrink-0" />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <main className="mx-auto max-w-5xl px-4 py-6 pb-24 sm:pb-6">{children}</main>
 
@@ -909,8 +981,13 @@ export default function BixPrixApp() {
         }
       }
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user || null)
+      if (event === 'PASSWORD_RECOVERY') {
+        // User clicked the password reset link - send them to the reset form
+        updateCurrentScreen('reset-password')
+        return
+      }
       if (session) {
         // Smart navigation on auth change
         const savedLeague = loadSelectedLeague()
@@ -1048,11 +1125,36 @@ export default function BixPrixApp() {
   }, [selectedLeague, user, bonusCar])
 
   function LandingScreen({ onGetStarted }) {
+    const [showStickyNav, setShowStickyNav] = useState(false)
+
+    useEffect(() => {
+      const handleScroll = () => {
+        setShowStickyNav(window.scrollY > 300)
+      }
+      window.addEventListener('scroll', handleScroll)
+      return () => window.removeEventListener('scroll', handleScroll)
+    }, [])
+
     return (
       <div className="min-h-screen bg-gradient-to-b from-bpNavy via-[#0B1220] to-bpNavy">
+        {/* Sticky Navigation Bar */}
+        <div className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${showStickyNav ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
+          <div className="bg-bpNavy/95 backdrop-blur-sm border-b border-white/10">
+            <div className="mx-auto max-w-5xl px-4 py-2.5 flex items-center justify-between">
+              <div className="font-extrabold tracking-wide text-lg text-bpCream">BIXPRIX</div>
+              <button
+                onClick={onGetStarted}
+                className="px-4 py-1.5 rounded-md text-sm font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 transition"
+              >
+                Sign In
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="relative overflow-hidden">
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDMpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-40"></div>
-          
+
           <div className="relative mx-auto max-w-5xl px-4 py-20 text-center">
             <div className="mb-8 flex flex-col items-center gap-4">
               <div className="text-center">
@@ -1064,23 +1166,23 @@ export default function BixPrixApp() {
                 </div>
               </div>
             </div>
-            
+
             <h1 className="text-4xl sm:text-5xl font-bold text-bpCream mb-6 leading-tight mt-8">
               <span className="bg-gradient-to-r from-bpGold to-bpRed bg-clip-text text-transparent">Fantasy Auto Auctions</span>
             </h1>
-            
+
             <p className="text-xl text-bpCream/80 mb-10 max-w-2xl mx-auto leading-relaxed">
               Draft your dream garage from live Bring a Trailer auctions. Predict prices. Beat the market. Win glory.
             </p>
-            
+
             <div className="flex gap-4 justify-center">
-              <PrimaryButton 
-                className="px-8 py-4 text-lg"
+              <button
                 onClick={onGetStarted}
+                className="inline-flex items-center justify-center rounded-md px-8 py-4 text-lg font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
               >
                 Get Started →
-              </PrimaryButton>
-              <OutlineButton 
+              </button>
+              <OutlineButton
                 className="px-8 py-4 text-lg"
                 onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
               >
@@ -1231,12 +1333,12 @@ export default function BixPrixApp() {
           <p className="text-xl text-bpCream/80 mb-8">
             Join a league, draft your garage, and prove you can predict the market better than anyone.
           </p>
-          <PrimaryButton 
-            className="px-12 py-4 text-lg"
+          <button
             onClick={onGetStarted}
+            className="inline-flex items-center justify-center rounded-md px-12 py-4 text-lg font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
           >
             Get Started Now →
-          </PrimaryButton>
+          </button>
         </div>
 
         <div className="border-t border-white/10 py-8">
@@ -1281,41 +1383,265 @@ export default function BixPrixApp() {
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-bpNavy to-[#0B1220] flex items-center justify-center px-4">
-        <Card className="w-full max-w-md p-8">
-          <div className="flex items-center justify-center mb-6"><BrandLogo /></div>
-          <h1 className="text-xl font-semibold text-bpInk/80 mb-1 text-center">Welcome</h1>
-          <p className="text-sm text-bpInk/70 text-center mb-6">Sign in to draft cars and race the market.</p>
-          <div className="space-y-3">
-            {isSignUp && (
-              <input 
-                className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" 
-                placeholder="Username" 
-                value={username} 
-                onChange={e=>setUsername(e.target.value)} 
+        <div className="w-full max-w-md">
+          {/* Back to home link */}
+          <button
+            onClick={() => updateCurrentScreen('landing')}
+            className="flex items-center gap-1.5 text-sm text-bpCream/70 hover:text-bpCream mb-6 transition"
+          >
+            <ArrowLeft size={16} />
+            Back to home
+          </button>
+
+          {/* Prominent logo above card */}
+          <button
+            onClick={() => updateCurrentScreen('landing')}
+            className="block mx-auto mb-8 text-center cursor-pointer group"
+          >
+            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BIXPRIX</div>
+            <div className="text-xs tracking-[0.18em] text-bpGray/95 uppercase">Race the Market</div>
+          </button>
+
+          <Card className="w-full p-8">
+            <h1 className="text-xl font-semibold text-bpInk/80 mb-1 text-center">Welcome</h1>
+            <p className="text-sm text-bpInk/70 text-center mb-6">Sign in to draft cars and race the market.</p>
+            <div className="space-y-3">
+              {isSignUp && (
+                <input
+                  className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+                  placeholder="Username"
+                  value={username}
+                  onChange={e=>setUsername(e.target.value)}
+                />
+              )}
+              <input
+                className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+                placeholder="Email"
+                type="email"
+                value={email}
+                onChange={e=>setEmail(e.target.value)}
               />
+              <input
+                className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+                placeholder="Password"
+                type="password"
+                value={password}
+                onChange={e=>setPassword(e.target.value)}
+              />
+              {!isSignUp && (
+                <div className="text-right">
+                  <button
+                    onClick={() => updateCurrentScreen('forgot-password')}
+                    className="text-sm text-bpNavy/60 hover:text-bpNavy transition"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
+              <PrimaryButton className="w-full" onClick={isSignUp ? signUp : signIn}>
+                {isSignUp ? 'Create Account' : 'Sign In'}
+              </PrimaryButton>
+              <OutlineButton className="w-full text-bpInk" onClick={()=>setIsSignUp(!isSignUp)}>
+                {isSignUp ? 'Have an account? Sign in' : 'New here? Create an account'}
+              </OutlineButton>
+            </div>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  function ForgotPasswordScreen() {
+    const [email, setEmail] = useState('')
+    const [submitted, setSubmitted] = useState(false)
+    const [loading, setLoading] = useState(false)
+
+    const handleSubmit = async (e) => {
+      e.preventDefault()
+      if (!email.trim()) return
+      setLoading(true)
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin
+        })
+        if (error) {
+          console.error('Password reset error:', error)
+        }
+        // Always show success message regardless of whether email exists (security)
+        setSubmitted(true)
+      } catch (err) {
+        console.error('Password reset error:', err)
+        setSubmitted(true)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-bpNavy to-[#0B1220] flex items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          <button
+            onClick={() => updateCurrentScreen('login')}
+            className="flex items-center gap-1.5 text-sm text-bpCream/70 hover:text-bpCream mb-6 transition"
+          >
+            <ArrowLeft size={16} />
+            Back to Sign In
+          </button>
+
+          <button
+            onClick={() => updateCurrentScreen('landing')}
+            className="block mx-auto mb-8 text-center cursor-pointer group"
+          >
+            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BIXPRIX</div>
+            <div className="text-xs tracking-[0.18em] text-bpGray/95 uppercase">Race the Market</div>
+          </button>
+
+          <Card className="w-full p-8">
+            {submitted ? (
+              <div className="text-center">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle size={32} className="text-emerald-600" />
+                </div>
+                <h1 className="text-xl font-semibold text-bpInk/80 mb-2">Check Your Email</h1>
+                <p className="text-sm text-bpInk/70 mb-6">
+                  If an account exists with that email, we've sent a password reset link. Check your inbox.
+                </p>
+                <OutlineButton className="w-full text-bpInk" onClick={() => updateCurrentScreen('login')}>
+                  Return to Sign In
+                </OutlineButton>
+              </div>
+            ) : (
+              <>
+                <h1 className="text-xl font-semibold text-bpInk/80 mb-1 text-center">Reset Password</h1>
+                <p className="text-sm text-bpInk/70 text-center mb-6">Enter your email and we'll send you a reset link.</p>
+                <form onSubmit={handleSubmit} className="space-y-3">
+                  <input
+                    className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+                    placeholder="Email"
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    required
+                  />
+                  <PrimaryButton className="w-full" type="submit" disabled={loading}>
+                    {loading ? 'Sending...' : 'Send Reset Link'}
+                  </PrimaryButton>
+                </form>
+              </>
             )}
-            <input 
-              className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" 
-              placeholder="Email" 
-              type="email" 
-              value={email} 
-              onChange={e=>setEmail(e.target.value)} 
-            />
-            <input 
-              className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk" 
-              placeholder="Password" 
-              type="password" 
-              value={password} 
-              onChange={e=>setPassword(e.target.value)} 
-            />
-            <PrimaryButton className="w-full" onClick={isSignUp ? signUp : signIn}>
-              {isSignUp ? 'Create Account' : 'Sign In'}
-            </PrimaryButton>
-            <OutlineButton className="w-full text-bpInk" onClick={()=>setIsSignUp(!isSignUp)}>
-              {isSignUp ? 'Have an account? Sign in' : 'New here? Create an account'}
-            </OutlineButton>
-          </div>
-        </Card>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  function ResetPasswordScreen() {
+    const [password, setPassword] = useState('')
+    const [confirmPassword, setConfirmPassword] = useState('')
+    const [loading, setLoading] = useState(false)
+    const [success, setSuccess] = useState(false)
+    const [error, setError] = useState('')
+
+    const handleSubmit = async (e) => {
+      e.preventDefault()
+      setError('')
+
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters long.')
+        return
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.')
+        return
+      }
+
+      setLoading(true)
+      try {
+        const { error: updateError } = await supabase.auth.updateUser({ password })
+        if (updateError) {
+          if (updateError.message.includes('expired') || updateError.message.includes('invalid')) {
+            setError('This reset link has expired. Please request a new one.')
+          } else {
+            setError(updateError.message)
+          }
+        } else {
+          setSuccess(true)
+          setTimeout(() => {
+            updateCurrentScreen('dashboard')
+          }, 2000)
+        }
+      } catch (err) {
+        setError('An error occurred. Please try again.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-bpNavy to-[#0B1220] flex items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          <button
+            onClick={() => updateCurrentScreen('landing')}
+            className="block mx-auto mb-8 text-center cursor-pointer group"
+          >
+            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BIXPRIX</div>
+            <div className="text-xs tracking-[0.18em] text-bpGray/95 uppercase">Race the Market</div>
+          </button>
+
+          <Card className="w-full p-8">
+            {success ? (
+              <div className="text-center">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle size={32} className="text-emerald-600" />
+                </div>
+                <h1 className="text-xl font-semibold text-bpInk/80 mb-2">Password Updated</h1>
+                <p className="text-sm text-bpInk/70">Your password has been reset successfully. Redirecting...</p>
+              </div>
+            ) : (
+              <>
+                <h1 className="text-xl font-semibold text-bpInk/80 mb-1 text-center">Set New Password</h1>
+                <p className="text-sm text-bpInk/70 text-center mb-6">Enter your new password below.</p>
+                {error && (
+                  <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
+                    {error}
+                    {error.includes('expired') && (
+                      <button
+                        onClick={() => updateCurrentScreen('forgot-password')}
+                        className="block mt-2 text-red-800 font-medium underline"
+                      >
+                        Request a new reset link
+                      </button>
+                    )}
+                  </div>
+                )}
+                <form onSubmit={handleSubmit} className="space-y-3">
+                  <input
+                    className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+                    placeholder="New Password"
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    minLength={8}
+                    required
+                  />
+                  <input
+                    className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
+                    placeholder="Confirm Password"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    minLength={8}
+                    required
+                  />
+                  <p className="text-xs text-bpInk/50">Must be at least 8 characters.</p>
+                  <PrimaryButton className="w-full" type="submit" disabled={loading}>
+                    {loading ? 'Updating...' : 'Update Password'}
+                  </PrimaryButton>
+                </form>
+              </>
+            )}
+          </Card>
+        </div>
       </div>
     )
   }
@@ -1495,6 +1821,30 @@ export default function BixPrixApp() {
             <p className="text-sm text-bpCream/70">
               Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()} · <span className="text-bpGold">Min spend ${((selectedLeague?.spending_limit || 200000) / 2 / 1000).toFixed(0)}K to qualify</span>
             </p>
+            {/* Budget Progress Bar */}
+            {(() => {
+              const limit = selectedLeague?.spending_limit || 200000
+              const spent = limit - budget
+              const spentPercent = Math.min((spent / limit) * 100, 100)
+              const halfwayMark = 50
+              return (
+                <div className="mt-2 mb-1">
+                  <div className="relative w-full h-3 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${spentPercent >= halfwayMark ? 'bg-emerald-500' : 'bg-bpGold'}`}
+                      style={{ width: `${spentPercent}%` }}
+                    />
+                    {/* 50% marker */}
+                    <div className="absolute top-0 bottom-0 w-0.5 border-l-2 border-dashed border-bpCream/50" style={{ left: '50%' }} />
+                  </div>
+                  <div className="flex justify-between mt-1 text-[10px] text-bpCream/50">
+                    <span>${spent.toLocaleString()} spent</span>
+                    <span className="absolute left-1/2 -translate-x-1/2 relative">50% min</span>
+                    <span>${limit.toLocaleString()}</span>
+                  </div>
+                </div>
+              )
+            })()}
 
             {!canPick && (
               <div className="mt-2 p-2 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
@@ -1520,33 +1870,30 @@ export default function BixPrixApp() {
 
         {/* Car Selection Progress */}
         <div className={`mb-4 p-3 sm:p-4 rounded-lg border-2 ${garage.length === 7 ? 'bg-green-500/20 border-green-500/50' : 'bg-bpGold/10 border-bpGold/40'}`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className={`font-bold text-sm sm:text-base ${garage.length === 7 ? 'text-green-400' : 'text-bpGold'}`}>
-              {garage.length === 7 ? '✓ Garage Complete!' : `Choose ${7 - garage.length} more car${7 - garage.length !== 1 ? 's' : ''}`}
-            </span>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex gap-2">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
+                    i < garage.length
+                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpNavy shadow-sm'
+                      : 'bg-transparent border-2 border-dashed border-bpCream/30 text-bpCream/40'
+                  }`}
+                >
+                  {i < garage.length ? '✓' : ''}
+                </div>
+              ))}
+            </div>
             <span className={`text-lg sm:text-xl font-extrabold ${garage.length === 7 ? 'text-green-400' : 'text-bpCream'}`}>
               {garage.length}/7
             </span>
           </div>
-          <div className="w-full bg-bpNavy/30 rounded-full h-3 overflow-hidden">
+          <div className="w-full bg-bpNavy/30 rounded-full h-2 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-300 ${garage.length === 7 ? 'bg-green-500' : 'bg-bpGold'}`}
               style={{ width: `${(garage.length / 7) * 100}%` }}
             />
-          </div>
-          <div className="flex justify-between mt-2">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div
-                key={i}
-                className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
-                  i < garage.length
-                    ? garage.length === 7 ? 'bg-green-500 border-green-400 text-white' : 'bg-bpGold border-bpGold text-bpNavy'
-                    : 'bg-transparent border-bpCream/30 text-bpCream/50'
-                }`}
-              >
-                {i < garage.length ? '✓' : i + 1}
-              </div>
-            ))}
           </div>
         </div>
 
@@ -1622,7 +1969,23 @@ export default function BixPrixApp() {
           </Card>
         )}
 
-        {loading && <p className="text-bpGray mb-4">Loading auctions…</p>}
+        {loading && (
+          <div className="grid md:grid-cols-2 gap-4 mb-4">
+            {[1, 2, 3, 4].map(i => (
+              <Card key={i} className="overflow-hidden">
+                <div className="aspect-[16/9] w-full bg-bpInk/10 animate-pulse" />
+                <div className="p-4 space-y-3">
+                  <div className="h-5 w-3/4 bg-bpInk/10 rounded animate-pulse" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="h-4 bg-bpInk/10 rounded animate-pulse" />
+                    <div className="h-4 bg-bpInk/10 rounded animate-pulse" />
+                  </div>
+                  <div className="h-10 bg-bpInk/10 rounded animate-pulse" />
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
 
         {!loading && auctions.length === 0 && (
           <Card className="p-8 text-center text-bpInk/70">
@@ -1635,17 +1998,18 @@ export default function BixPrixApp() {
             const draftPrice = a.baselinePrice || a.currentBid
             const disabled = garage.some((c)=>c.id===a.id) || budget < draftPrice || !canPick
             
+            const insufficientBudget = budget < draftPrice && !garage.some(c=>c.id===a.id)
             return (
-              <Card key={a.id} className="overflow-hidden">
-                <a 
-                  href={a.auctionUrl} 
-                  target="_blank" 
+              <Card key={a.id} className={`overflow-hidden transition-opacity duration-300 ${insufficientBudget ? 'opacity-60' : ''}`}>
+                <a
+                  href={a.auctionUrl}
+                  target="_blank"
                   rel="noopener noreferrer"
-                  className="block aspect-[16/9] w-full bg-bpInk/10 overflow-hidden hover:opacity-90 transition-opacity"
+                  className={`block aspect-[16/9] w-full bg-bpInk/10 overflow-hidden hover:opacity-90 transition-opacity relative ${insufficientBudget ? 'after:absolute after:inset-0 after:bg-black/20' : ''}`}
                 >
-                  <img 
-                    src={a.imageUrl} 
-                    alt={a.title} 
+                  <img
+                    src={a.imageUrl}
+                    alt={a.title}
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       e.target.src = getDefaultCarImage(a.make)
@@ -1748,37 +2112,57 @@ export default function BixPrixApp() {
         onLeagueChange={updateSelectedLeague}
       >
         <h2 className="text-2xl font-extrabold tracking-tight mb-3">My Garage</h2>
-        <p className="text-sm text-bpCream/70 mb-3">Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()}</p>
+        <p className="text-sm text-bpCream/70 mb-1">Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()}</p>
+        {/* Budget Progress Bar */}
+        {(() => {
+          const limit = selectedLeague?.spending_limit || 200000
+          const spent = limit - budget
+          const spentPercent = Math.min((spent / limit) * 100, 100)
+          const halfwayMark = 50
+          return (
+            <div className="mb-3">
+              <div className="relative w-full h-3 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${spentPercent >= halfwayMark ? 'bg-emerald-500' : 'bg-bpGold'}`}
+                  style={{ width: `${spentPercent}%` }}
+                />
+                <div className="absolute top-0 bottom-0 w-0.5 border-l-2 border-dashed border-bpCream/50" style={{ left: '50%' }} />
+              </div>
+              <div className="flex justify-between mt-1 text-[10px] text-bpCream/50">
+                <span>${spent.toLocaleString()} spent</span>
+                <span>50% min</span>
+                <span>${limit.toLocaleString()}</span>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Car Selection Progress */}
         <div className={`mb-4 p-3 sm:p-4 rounded-lg border-2 ${garage.length === 7 ? 'bg-green-500/20 border-green-500/50' : 'bg-bpGold/10 border-bpGold/40'}`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className={`font-bold text-sm sm:text-base ${garage.length === 7 ? 'text-green-400' : 'text-bpGold'}`}>
-              {garage.length === 7 ? '✓ Garage Complete!' : `Choose ${7 - garage.length} more car${7 - garage.length !== 1 ? 's' : ''}`}
-            </span>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex gap-2">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
+                    i < garage.length
+                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpNavy shadow-sm'
+                      : 'bg-transparent border-2 border-dashed border-bpCream/30 text-bpCream/40'
+                  }`}
+                >
+                  {i < garage.length ? '✓' : ''}
+                </div>
+              ))}
+            </div>
             <span className={`text-lg sm:text-xl font-extrabold ${garage.length === 7 ? 'text-green-400' : 'text-bpCream'}`}>
               {garage.length}/7
             </span>
           </div>
-          <div className="w-full bg-bpNavy/30 rounded-full h-3 overflow-hidden">
+          <div className="w-full bg-bpNavy/30 rounded-full h-2 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-300 ${garage.length === 7 ? 'bg-green-500' : 'bg-bpGold'}`}
               style={{ width: `${(garage.length / 7) * 100}%` }}
             />
-          </div>
-          <div className="flex justify-between mt-2">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div
-                key={i}
-                className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
-                  i < garage.length
-                    ? garage.length === 7 ? 'bg-green-500 border-green-400 text-white' : 'bg-bpGold border-bpGold text-bpNavy'
-                    : 'bg-transparent border-bpCream/30 text-bpCream/50'
-                }`}
-              >
-                {i < garage.length ? '✓' : i + 1}
-              </div>
-            ))}
           </div>
         </div>
 
@@ -1849,6 +2233,20 @@ export default function BixPrixApp() {
           </Card>
         )}
         
+        {/* Browse Cars CTA when garage is empty */}
+        {garage.length === 0 && canModify && (
+          <div className="mb-6 text-center py-8">
+            <Car size={48} className="mx-auto mb-4 text-bpCream/30" />
+            <p className="text-bpCream/70 mb-4 text-lg">Your garage is empty. Start building your dream lineup!</p>
+            <button
+              onClick={() => onNavigate('cars')}
+              className="inline-flex items-center justify-center rounded-md px-8 py-3 font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 transition shadow-lg text-lg"
+            >
+              Browse Available Cars →
+            </button>
+          </div>
+        )}
+
         <div className="grid md:grid-cols-2 gap-4">
           {Array.from({ length: 7 }).map((_, i) => {
             const car = garage[i]
@@ -1856,15 +2254,15 @@ export default function BixPrixApp() {
               <Card key={i} className={`p-4 ${car ? '' : 'border-dashed bg-bpCream/70 text-bpInk/60'}`}>
                 {car ? (
                   <div className="flex gap-4">
-                    <a 
-                      href={car.auctionUrl} 
-                      target="_blank" 
+                    <a
+                      href={car.auctionUrl}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="flex-shrink-0 hover:opacity-90 transition-opacity"
                     >
-                      <img 
-                        src={car.imageUrl} 
-                        alt={car.title} 
+                      <img
+                        src={car.imageUrl}
+                        alt={car.title}
                         className="w-28 h-20 rounded-lg object-cover"
                         onError={(e) => {
                           e.target.src = getDefaultCarImage(car.make)
@@ -1872,10 +2270,10 @@ export default function BixPrixApp() {
                       />
                     </a>
                     <div className="flex-1">
-                      <a 
-                        href={car.auctionUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
+                      <a
+                        href={car.auctionUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="font-bold text-bpInk hover:underline"
                       >
                         {car.title}
@@ -2395,9 +2793,25 @@ export default function BixPrixApp() {
         </div>
 
         {loading && (
-          <Card className="p-12 text-center text-bpInk/70">
-            <p>Loading standings...</p>
-          </Card>
+          <>
+            <div className="grid md:grid-cols-4 gap-4 mb-6">
+              {[1, 2, 3, 4].map(i => (
+                <Card key={i} className="p-4">
+                  <div className="h-4 w-24 bg-bpInk/10 rounded animate-pulse mb-3" />
+                  <div className="h-6 w-20 bg-bpInk/10 rounded animate-pulse mb-2" />
+                  <div className="h-8 w-28 bg-bpInk/10 rounded animate-pulse" />
+                </Card>
+              ))}
+            </div>
+            <Card className="overflow-hidden">
+              <div className="p-4 space-y-3">
+                <div className="h-10 bg-bpInk/5 rounded animate-pulse" />
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="h-14 bg-bpInk/5 rounded animate-pulse" />
+                ))}
+              </div>
+            </Card>
+          </>
         )}
 
         {!loading && standings.length === 0 && (
@@ -2493,8 +2907,8 @@ export default function BixPrixApp() {
                       return (
                         <tr
                           key={player.userId}
-                          className={`border-b border-bpInk/10 ${
-                            isCurrentUser ? 'bg-bpGold/10' : 'hover:bg-bpInk/5'
+                          className={`border-b border-bpInk/10 transition-colors ${
+                            isCurrentUser ? 'bg-bpGold/15 border-l-4 border-l-bpGold' : 'hover:bg-bpInk/5'
                           }`}
                         >
                           <td className="px-4 py-3 text-sm font-semibold text-bpInk">
@@ -2504,12 +2918,14 @@ export default function BixPrixApp() {
                             {rank > 3 && rank}
                           </td>
                           <td className="px-4 py-3 text-sm font-semibold text-bpInk">
-                            {player.username}
-                            {isCurrentUser && (
-                              <span className="ml-2 text-xs bg-bpGold/20 text-bpInk px-2 py-0.5 rounded">
-                                You
-                              </span>
-                            )}
+                            <span className="flex items-center gap-2">
+                              {player.username}
+                              {isCurrentUser && (
+                                <span className="inline-flex items-center text-[10px] bg-bpGold text-bpNavy px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
+                                  YOU
+                                </span>
+                              )}
+                            </span>
                           </td>
                           {/* Total Value - Primary Score */}
                           <td className="px-4 py-3 text-sm font-bold text-right text-bpInk">
@@ -2575,6 +2991,8 @@ export default function BixPrixApp() {
   }
 
   if (currentScreen === 'landing') return <LandingScreen onGetStarted={() => updateCurrentScreen('login')} />
+  if (currentScreen === 'forgot-password') return <ForgotPasswordScreen />
+  if (currentScreen === 'reset-password') return <ResetPasswordScreen />
   if (!user) return <LoginScreen />
   if (currentScreen === 'leagues') return <LeaguesScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
   if (currentScreen === 'dashboard') return (

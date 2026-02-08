@@ -307,15 +307,39 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
 
   if (loading && !userStats) {
     return (
-      <div className="min-h-screen bg-bpNavy flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-4xl mb-4">
-            <svg className="animate-spin h-10 w-10 mx-auto text-bpGold" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        {/* Skeleton: Welcome Section */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <div className="h-8 w-64 bg-bpCream/10 rounded animate-pulse mb-2"></div>
+            <div className="h-4 w-48 bg-bpCream/5 rounded animate-pulse"></div>
           </div>
-          <div className="text-lg text-bpGray">Loading your dashboard...</div>
+          <div className="h-10 w-24 bg-bpCream/10 rounded-lg animate-pulse"></div>
+        </div>
+        {/* Skeleton: Time Remaining Banner */}
+        <div className="mb-6 rounded-lg h-20 bg-bpCream/5 border border-bpCream/10 animate-pulse"></div>
+        {/* Skeleton: Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-28 bg-bpCream/5 border border-bpCream/10 rounded-xl animate-pulse"></div>
+          ))}
+        </div>
+        {/* Skeleton: Best Performer */}
+        <div className="mb-6 h-40 bg-bpCream/5 border border-bpCream/10 rounded-lg animate-pulse"></div>
+        {/* Skeleton: Two Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-3">
+            <div className="h-6 w-32 bg-bpCream/10 rounded animate-pulse mb-2"></div>
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="h-16 bg-bpCream/5 border border-bpCream/10 rounded-lg animate-pulse"></div>
+            ))}
+          </div>
+          <div className="space-y-3">
+            <div className="h-6 w-28 bg-bpCream/10 rounded animate-pulse mb-2"></div>
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-14 bg-bpCream/5 border border-bpCream/10 rounded-lg animate-pulse"></div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -323,24 +347,22 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
 
   if (!selectedLeague) {
     return (
-      <div className="min-h-screen bg-bpNavy flex items-center justify-center">
-        <div className="text-center max-w-md p-8">
-          <div className="text-6xl mb-4">
-            <svg className="w-16 h-16 mx-auto text-bpGray" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold mb-2 text-bpCream">No Active Leagues</h1>
-          <p className="text-bpGray mb-6">
-            Join or create a league to start playing!
-          </p>
-          <button
-            onClick={() => onNavigate('leagues')}
-            className="bg-bpRed text-bpCream px-6 py-3 rounded-lg hover:opacity-90 transition-opacity"
-          >
-            Browse Leagues
-          </button>
+      <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <div className="mb-6">
+          <svg className="w-20 h-20 mx-auto text-bpGold/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+          </svg>
         </div>
+        <h1 className="text-2xl font-bold mb-3 text-bpCream">Join a League to Get Started</h1>
+        <p className="text-bpGray mb-8 leading-relaxed">
+          Pick a league, draft your dream garage of 7 cars, and compete against friends to see who can predict the market best.
+        </p>
+        <button
+          onClick={() => onNavigate('leagues')}
+          className="inline-flex items-center justify-center rounded-md px-8 py-3 font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 transition shadow-lg text-lg"
+        >
+          Join a League →
+        </button>
       </div>
     );
   }
