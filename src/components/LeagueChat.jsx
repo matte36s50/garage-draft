@@ -305,7 +305,7 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
           onClick={scrollToBottom}
           className="
             absolute bottom-20 right-4
-            p-2 bg-bpGold text-bpNavy rounded-full
+            p-2 bg-bpGold text-bpInk rounded-full
             shadow-lg hover:bg-bpGold/90
             transition-all duration-200
           "
@@ -354,7 +354,7 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
             type="submit"
             disabled={!inputMessage.trim() || sending || !user}
             className="
-              p-2.5 bg-bpGold text-bpNavy rounded-xl
+              p-2.5 bg-bpGold text-bpInk rounded-xl
               hover:bg-bpGold/90 disabled:opacity-50 disabled:cursor-not-allowed
               transition-colors
             "

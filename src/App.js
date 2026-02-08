@@ -391,7 +391,7 @@ function LightButton({ className = '', children, ...props }) {
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center rounded-md px-4 py-2 font-semibold border-2 border-bpNavy/30 text-bpNavy hover:bg-bpNavy hover:text-bpCream focus:outline-none focus:ring-2 focus:ring-bpNavy/60 transition ${className}`}
+      className={`inline-flex items-center justify-center rounded-md px-4 py-2 font-semibold border-2 border-bpInk/30 text-bpInk hover:bg-bpNavy hover:text-bpCream focus:outline-none focus:ring-2 focus:ring-bpGold/60 transition ${className}`}
     >
       {children}
     </button>
@@ -1240,19 +1240,19 @@ export default function BixPrixApp() {
                 </h3>
                 <ul className="space-y-2 text-bpInk/80 text-sm">
                   <li className="flex items-start gap-2">
-                    <span className="text-bpNavy font-bold">•</span>
+                    <span className="text-bpInk font-bold">•</span>
                     <span><strong>League budget</strong> - Each league sets its own spending limit. Must spend at least 50% to qualify</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-bpNavy font-bold">•</span>
+                    <span className="text-bpInk font-bold">•</span>
                     <span><strong>24-hour draft window</strong> - Pick your cars when leagues open</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-bpNavy font-bold">•</span>
+                    <span className="text-bpInk font-bold">•</span>
                     <span><strong>Day 2 prices locked</strong> - Your purchase price is the bid 48 hours into each auction</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-bpNavy font-bold">•</span>
+                    <span className="text-bpInk font-bold">•</span>
                     <span><strong>Bonus car prediction</strong> - Everyone gets the same 8th car. Predict its final price!</span>
                   </li>
                 </ul>
@@ -1277,7 +1277,7 @@ export default function BixPrixApp() {
                     <span><strong>Bonus car:</strong> Closest prediction wins 3× the sale price added to their total!</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-bpNavy font-bold">🏆</span>
+                    <span className="text-bpInk font-bold">🏆</span>
                     <span><strong>Win</strong> by having the highest total dollar value across all 7 cars</span>
                   </li>
                 </ul>
@@ -1432,7 +1432,7 @@ export default function BixPrixApp() {
                 <div className="text-right">
                   <button
                     onClick={() => updateCurrentScreen('forgot-password')}
-                    className="text-sm text-bpNavy/60 hover:text-bpNavy transition"
+                    className="text-sm text-bpInk/60 hover:text-bpInk transition"
                   >
                     Forgot password?
                   </button>
