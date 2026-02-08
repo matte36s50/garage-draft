@@ -30,3 +30,6 @@
 .bg-bpRed{background-color:var(--bp-red)}
 .bg-bpGold{background-color:var(--bp-gold)}
 .border-bpNavy\/20{border-color:rgba(15,26,43,0.2)}
+
+/* Safe area for mobile bottom nav */
+.safe-area-pb { padding-bottom: env(safe-area-inset-bottom, 0px); }

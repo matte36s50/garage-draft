@@ -152,7 +152,7 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
       <button
         onClick={onToggle}
         className="
-          fixed bottom-4 right-4 z-40
+          fixed bottom-20 sm:bottom-4 right-4 z-30
           flex items-center gap-2 px-4 py-3
           bg-bpNavy border-2 border-bpGold/50 rounded-full
           text-bpCream hover:border-bpGold
@@ -161,7 +161,7 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
         "
       >
         <MessageCircle className="w-5 h-5 text-bpGold" />
-        <span className="font-medium">League Chat</span>
+        <span className="font-medium hidden sm:inline">League Chat</span>
         {unreadCount > 0 && (
           <span className="
             absolute -top-1 -right-1
@@ -179,8 +179,8 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
   // Expanded state - full chat panel
   return (
     <div className="
-      fixed bottom-4 right-4 z-40
-      w-80 sm:w-96 h-[500px] max-h-[70vh]
+      fixed bottom-20 sm:bottom-4 right-4 z-30
+      w-[calc(100%-2rem)] sm:w-96 h-[400px] sm:h-[500px] max-h-[60vh] sm:max-h-[70vh]
       bg-bpNavy border-2 border-bpGold/30 rounded-2xl
       shadow-2xl flex flex-col overflow-hidden
     ">
