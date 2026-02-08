@@ -100,7 +100,7 @@ function ActivityItem({ activity }) {
         );
       case 'car_added':
         return (
-          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-bpNavy/10 text-bpNavy">
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-bpNavy/10 text-bpInk">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>

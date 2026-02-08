@@ -148,7 +148,7 @@ function ChatBubble({ message, currentUserId, showTimestamp = true }) {
           className={`
             px-3 py-2 rounded-2xl break-words
             ${isOwnMessage
-              ? 'bg-bpGold text-bpNavy rounded-br-md'
+              ? 'bg-bpGold text-bpInk rounded-br-md'
               : 'bg-gray-700/80 text-gray-100 rounded-bl-md'
             }
           `}

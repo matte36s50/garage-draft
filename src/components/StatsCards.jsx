@@ -204,7 +204,7 @@ function StatCard({ card, index }) {
       className="bg-bpCream rounded-lg p-6 hover:shadow-lg transition-shadow border border-bpNavy/10"
     >
       <div className="flex items-center justify-between mb-2">
-        <div className="text-sm text-bpNavy/70 font-medium">{card.title}</div>
+        <div className="text-sm text-bpInk/70 font-medium">{card.title}</div>
         <div className={`${card.bgColor} ${card.iconColor} p-2 rounded-lg`}>
           {card.icon}
         </div>

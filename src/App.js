@@ -391,7 +391,7 @@ function LightButton({ className = '', children, ...props }) {
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center rounded-md px-4 py-2 font-semibold border-2 border-bpNavy/30 text-bpNavy hover:bg-bpNavy hover:text-bpCream focus:outline-none focus:ring-2 focus:ring-bpNavy/60 transition ${className}`}
+      className={`inline-flex items-center justify-center rounded-md px-4 py-2 font-semibold border-2 border-bpInk/30 text-bpInk hover:bg-bpNavy hover:text-bpCream focus:outline-none focus:ring-2 focus:ring-bpGold/60 transition ${className}`}
     >
       {children}
     </button>
@@ -1144,7 +1144,7 @@ export default function BixPrixApp() {
               <div className="font-extrabold tracking-wide text-lg text-bpCream">BIXPRIX</div>
               <button
                 onClick={onGetStarted}
-                className="px-4 py-1.5 rounded-md text-sm font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 transition"
+                className="px-4 py-1.5 rounded-md text-sm font-semibold bg-bpCream text-bpInk hover:opacity-90 transition"
               >
                 Sign In
               </button>
@@ -1178,7 +1178,7 @@ export default function BixPrixApp() {
             <div className="flex gap-4 justify-center">
               <button
                 onClick={onGetStarted}
-                className="inline-flex items-center justify-center rounded-md px-8 py-4 text-lg font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
+                className="inline-flex items-center justify-center rounded-md px-8 py-4 text-lg font-semibold bg-bpCream text-bpInk hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
               >
                 Get Started →
               </button>
@@ -1240,19 +1240,19 @@ export default function BixPrixApp() {
                 </h3>
                 <ul className="space-y-2 text-bpInk/80 text-sm">
                   <li className="flex items-start gap-2">
-                    <span className="text-bpNavy font-bold">•</span>
+                    <span className="text-bpInk font-bold">•</span>
                     <span><strong>League budget</strong> - Each league sets its own spending limit. Must spend at least 50% to qualify</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-bpNavy font-bold">•</span>
+                    <span className="text-bpInk font-bold">•</span>
                     <span><strong>24-hour draft window</strong> - Pick your cars when leagues open</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-bpNavy font-bold">•</span>
+                    <span className="text-bpInk font-bold">•</span>
                     <span><strong>Day 2 prices locked</strong> - Your purchase price is the bid 48 hours into each auction</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-bpNavy font-bold">•</span>
+                    <span className="text-bpInk font-bold">•</span>
                     <span><strong>Bonus car prediction</strong> - Everyone gets the same 8th car. Predict its final price!</span>
                   </li>
                 </ul>
@@ -1277,7 +1277,7 @@ export default function BixPrixApp() {
                     <span><strong>Bonus car:</strong> Closest prediction wins 3× the sale price added to their total!</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-bpNavy font-bold">🏆</span>
+                    <span className="text-bpInk font-bold">🏆</span>
                     <span><strong>Win</strong> by having the highest total dollar value across all 7 cars</span>
                   </li>
                 </ul>
@@ -1335,7 +1335,7 @@ export default function BixPrixApp() {
           </p>
           <button
             onClick={onGetStarted}
-            className="inline-flex items-center justify-center rounded-md px-12 py-4 text-lg font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
+            className="inline-flex items-center justify-center rounded-md px-12 py-4 text-lg font-semibold bg-bpCream text-bpInk hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
           >
             Get Started Now →
           </button>
@@ -1432,7 +1432,7 @@ export default function BixPrixApp() {
                 <div className="text-right">
                   <button
                     onClick={() => updateCurrentScreen('forgot-password')}
-                    className="text-sm text-bpNavy/60 hover:text-bpNavy transition"
+                    className="text-sm text-bpInk/60 hover:text-bpInk transition"
                   >
                     Forgot password?
                   </button>
@@ -1877,7 +1877,7 @@ export default function BixPrixApp() {
                   key={i}
                   className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
                     i < garage.length
-                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpNavy shadow-sm'
+                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpInk shadow-sm'
                       : 'bg-transparent border-2 border-dashed border-bpCream/30 text-bpCream/40'
                   }`}
                 >
@@ -2146,7 +2146,7 @@ export default function BixPrixApp() {
                   key={i}
                   className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
                     i < garage.length
-                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpNavy shadow-sm'
+                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpInk shadow-sm'
                       : 'bg-transparent border-2 border-dashed border-bpCream/30 text-bpCream/40'
                   }`}
                 >
@@ -2240,7 +2240,7 @@ export default function BixPrixApp() {
             <p className="text-bpCream/70 mb-4 text-lg">Your garage is empty. Start building your dream lineup!</p>
             <button
               onClick={() => onNavigate('cars')}
-              className="inline-flex items-center justify-center rounded-md px-8 py-3 font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 transition shadow-lg text-lg"
+              className="inline-flex items-center justify-center rounded-md px-8 py-3 font-semibold bg-bpCream text-bpInk hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 transition shadow-lg text-lg"
             >
               Browse Available Cars →
             </button>
@@ -2921,7 +2921,7 @@ export default function BixPrixApp() {
                             <span className="flex items-center gap-2">
                               {player.username}
                               {isCurrentUser && (
-                                <span className="inline-flex items-center text-[10px] bg-bpGold text-bpNavy px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
+                                <span className="inline-flex items-center text-[10px] bg-bpGold text-bpInk px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
                                   YOU
                                 </span>
                               )}
