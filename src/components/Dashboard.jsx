@@ -359,7 +359,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
         </p>
         <button
           onClick={() => onNavigate('leagues')}
-          className="inline-flex items-center justify-center rounded-md px-8 py-3 font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 transition shadow-lg text-lg"
+          className="inline-flex items-center justify-center rounded-md px-8 py-3 font-semibold bg-bpCream text-bpInk hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 transition shadow-lg text-lg"
         >
           Join a League →
         </button>

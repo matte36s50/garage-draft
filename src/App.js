@@ -1144,7 +1144,7 @@ export default function BixPrixApp() {
               <div className="font-extrabold tracking-wide text-lg text-bpCream">BIXPRIX</div>
               <button
                 onClick={onGetStarted}
-                className="px-4 py-1.5 rounded-md text-sm font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 transition"
+                className="px-4 py-1.5 rounded-md text-sm font-semibold bg-bpCream text-bpInk hover:opacity-90 transition"
               >
                 Sign In
               </button>
@@ -1178,7 +1178,7 @@ export default function BixPrixApp() {
             <div className="flex gap-4 justify-center">
               <button
                 onClick={onGetStarted}
-                className="inline-flex items-center justify-center rounded-md px-8 py-4 text-lg font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
+                className="inline-flex items-center justify-center rounded-md px-8 py-4 text-lg font-semibold bg-bpCream text-bpInk hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
               >
                 Get Started →
               </button>
@@ -1335,7 +1335,7 @@ export default function BixPrixApp() {
           </p>
           <button
             onClick={onGetStarted}
-            className="inline-flex items-center justify-center rounded-md px-12 py-4 text-lg font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
+            className="inline-flex items-center justify-center rounded-md px-12 py-4 text-lg font-semibold bg-bpCream text-bpInk hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
           >
             Get Started Now →
           </button>
@@ -1877,7 +1877,7 @@ export default function BixPrixApp() {
                   key={i}
                   className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
                     i < garage.length
-                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpNavy shadow-sm'
+                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpInk shadow-sm'
                       : 'bg-transparent border-2 border-dashed border-bpCream/30 text-bpCream/40'
                   }`}
                 >
@@ -2146,7 +2146,7 @@ export default function BixPrixApp() {
                   key={i}
                   className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
                     i < garage.length
-                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpNavy shadow-sm'
+                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpInk shadow-sm'
                       : 'bg-transparent border-2 border-dashed border-bpCream/30 text-bpCream/40'
                   }`}
                 >
@@ -2240,7 +2240,7 @@ export default function BixPrixApp() {
             <p className="text-bpCream/70 mb-4 text-lg">Your garage is empty. Start building your dream lineup!</p>
             <button
               onClick={() => onNavigate('cars')}
-              className="inline-flex items-center justify-center rounded-md px-8 py-3 font-semibold bg-bpCream text-bpNavy hover:bg-bpCream/90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 transition shadow-lg text-lg"
+              className="inline-flex items-center justify-center rounded-md px-8 py-3 font-semibold bg-bpCream text-bpInk hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 transition shadow-lg text-lg"
             >
               Browse Available Cars →
             </button>
@@ -2921,7 +2921,7 @@ export default function BixPrixApp() {
                             <span className="flex items-center gap-2">
                               {player.username}
                               {isCurrentUser && (
-                                <span className="inline-flex items-center text-[10px] bg-bpGold text-bpNavy px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
+                                <span className="inline-flex items-center text-[10px] bg-bpGold text-bpInk px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
                                   YOU
                                 </span>
                               )}
