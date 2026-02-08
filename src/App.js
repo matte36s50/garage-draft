@@ -963,20 +963,52 @@ export default function BixPrixApp() {
   }
 
   useEffect(() => {
+    // Handle Supabase auth redirects (password recovery, email confirmation, etc.)
+    // Supabase can redirect with ?code= (PKCE), ?token_hash= (token hash), or #access_token= (implicit)
+    const params = new URLSearchParams(window.location.search)
+    const hashParams = new URLSearchParams(window.location.hash.replace('#', '?'))
+    const code = params.get('code')
+    const tokenHash = params.get('token_hash')
+    const type = params.get('type') || hashParams.get('type')
+
+    if (code) {
+      // PKCE flow: exchange code for session
+      supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+        if (!error && data?.session) {
+          setUser(data.session.user)
+          if (type === 'recovery') {
+            updateCurrentScreen('reset-password')
+          } else {
+            updateCurrentScreen('dashboard')
+          }
+        }
+        // Clean up URL
+        window.history.replaceState({}, '', window.location.pathname)
+      })
+    } else if (tokenHash && type === 'recovery') {
+      // Token hash flow: verify OTP
+      supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' }).then(({ data, error }) => {
+        if (!error && data?.session) {
+          setUser(data.session.user)
+          updateCurrentScreen('reset-password')
+        }
+        window.history.replaceState({}, '', window.location.pathname)
+      })
+    }
+
     supabase.auth.getSession().then(({ data: { session }}) => {
       if (session) {
         setUser(session.user)
+        // If we already navigated to reset-password above, don't override
+        if (currentScreen === 'reset-password') return
         // Smart navigation: go to dashboard if user has a saved league, otherwise leagues
         const savedLeague = loadSelectedLeague()
         const savedScreen = loadCurrentScreen()
         if (savedLeague && savedScreen && savedScreen !== 'landing' && savedScreen !== 'login') {
-          // User has a league and was on a valid screen, restore that screen
           updateCurrentScreen(savedScreen)
         } else if (savedLeague) {
-          // User has a league but no saved screen, go to dashboard
           updateCurrentScreen('dashboard')
         } else {
-          // No saved league, go to leagues selection
           updateCurrentScreen('leagues')
         }
       }
@@ -984,12 +1016,10 @@ export default function BixPrixApp() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user || null)
       if (event === 'PASSWORD_RECOVERY') {
-        // User clicked the password reset link - send them to the reset form
         updateCurrentScreen('reset-password')
         return
       }
       if (session) {
-        // Smart navigation on auth change
         const savedLeague = loadSelectedLeague()
         if (savedLeague) {
           updateCurrentScreen('dashboard')
@@ -1462,7 +1492,7 @@ export default function BixPrixApp() {
       setLoading(true)
       try {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin
+          redirectTo: `${window.location.origin}/`
         })
         if (error) {
           console.error('Password reset error:', error)
