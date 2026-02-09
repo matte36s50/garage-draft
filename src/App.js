@@ -761,11 +761,15 @@ export default function BixPrixApp() {
   const fetchLeagues = async () => {
     const { data, error } = await supabase
       .from('leagues')
-      .select('*')
+      .select('*, league_members(count)')
       .eq('is_public', true)
       .order('created_at', { ascending: false })
     if (error) { console.error(error); setLeagues([]); return }
-    setLeagues((data||[]).map(l => ({ ...l, playerCount: 0, status: 'Open' })))
+    setLeagues((data||[]).map(l => ({
+      ...l,
+      playerCount: l.league_members?.[0]?.count || 0,
+      status: 'Open'
+    })))
   }
 
   // Fetch leagues that the current user has joined
@@ -779,7 +783,7 @@ export default function BixPrixApp() {
       .from('league_members')
       .select(`
         league_id,
-        leagues!league_members_league_id_fkey(*)
+        leagues!league_members_league_id_fkey(*, league_members(count))
       `)
       .eq('user_id', user.id)
 
@@ -794,7 +798,7 @@ export default function BixPrixApp() {
       .filter(m => m.leagues)  // Filter out any null leagues
       .map(m => ({
         ...m.leagues,
-        playerCount: 0,
+        playerCount: m.leagues.league_members?.[0]?.count || 0,
         status: 'Open'
       }))
 
@@ -1669,8 +1673,9 @@ export default function BixPrixApp() {
           )}
           {leagues.map(l => {
             const draftStatus = getDraftStatus(l)
-            const canJoin = draftStatus.status === 'open'
-            
+            const alreadyJoined = userLeagues.some(ul => ul.id === l.id)
+            const canJoin = draftStatus.status === 'open' && !alreadyJoined
+
             return (
               <Card key={l.id} className="p-5">
                 <div className="flex items-start justify-between">
@@ -1683,12 +1688,12 @@ export default function BixPrixApp() {
                     draftStatus.status === 'upcoming' ? 'bg-yellow-100 text-yellow-700' :
                     'bg-gray-100 text-gray-700'
                   }`}>
-                    {draftStatus.status === 'open' ? '🟢 Open' : 
-                     draftStatus.status === 'upcoming' ? '🟡 Soon' : 
+                    {draftStatus.status === 'open' ? '🟢 Open' :
+                     draftStatus.status === 'upcoming' ? '🟡 Soon' :
                      '🔴 Closed'}
                   </span>
                 </div>
-                
+
                 <div className="mt-3 p-2 rounded bg-bpInk/5 text-sm text-bpInk/80">
                   ⏰ {draftStatus.message}
                 </div>
@@ -1707,9 +1712,13 @@ export default function BixPrixApp() {
                   <span className="flex items-center gap-2"><Users size={16}/> {l.playerCount} players</span>
                   <span className="flex items-center gap-2"><Trophy size={16}/> {l.status || 'Open'}</span>
                 </div>
-                
+
                 <div className="mt-5">
-                  {canJoin ? (
+                  {alreadyJoined ? (
+                    <PrimaryButton className="w-full opacity-50 cursor-not-allowed" disabled>
+                      Already Joined
+                    </PrimaryButton>
+                  ) : canJoin ? (
                     <PrimaryButton className="w-full" onClick={() => joinLeague(l)}>
                       Join League
                     </PrimaryButton>
