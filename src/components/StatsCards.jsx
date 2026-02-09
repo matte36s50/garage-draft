@@ -139,7 +139,7 @@ function StatCard({ card, index }) {
         transition={{ delay: index * 0.1, duration: 0.5 }}
         className={`
           ${card.bgColor}
-          rounded-xl p-8
+          rounded-xl p-6
           border-2 ${card.isPositive ? 'border-emerald-400/40' : 'border-red-400/40'}
           hover:shadow-2xl hover:scale-[1.02]
           transition-all duration-300
@@ -147,7 +147,7 @@ function StatCard({ card, index }) {
         `}
       >
         {/* Decorative gradient overlay */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-white/5 to-transparent rounded-full blur-3xl" />
+        <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-white/5 to-transparent rounded-full blur-3xl" />
 
         <div className="relative">
           <div className="flex items-start justify-between mb-4">
@@ -165,7 +165,7 @@ function StatCard({ card, index }) {
           </div>
 
           <div className="mb-3">
-            <div className={`text-6xl font-extrabold ${card.isPositive ? 'text-emerald-300' : 'text-red-300'} tracking-tight`}>
+            <div className={`text-4xl font-extrabold ${card.isPositive ? 'text-emerald-300' : 'text-red-300'} tracking-tight`}>
               {card.isPositive && '+'}{card.value}
             </div>
           </div>
