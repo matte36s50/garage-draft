@@ -119,7 +119,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
   return (
     <div className="min-h-screen bg-bpNavy text-bpCream">
       <header className="sticky top-0 z-40 bg-bpNavy border-b border-white/10">
-        <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
+        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <BrandLogo />
             {/* Desktop League Dropdown */}
@@ -191,7 +191,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
               </div>
             )}
           </div>
-          <nav className="hidden sm:flex items-center gap-6 text-sm">
+          <nav className="hidden sm:flex items-center gap-4 text-sm">
             <button
               className={`hover:text-bpCream/90 transition ${currentScreen === 'dashboard' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
               onClick={() => onNavigate && onNavigate('dashboard')}
