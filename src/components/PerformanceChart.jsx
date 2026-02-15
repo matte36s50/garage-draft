@@ -139,10 +139,10 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
 
   if (loading) {
     return (
-      <div className="bg-bpCream rounded-lg p-6 border border-bpNavy/10">
+      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
         <div className="animate-pulse">
-          <div className="h-6 bg-bpNavy/10 rounded w-1/4 mb-4"></div>
-          <div className="h-64 bg-bpNavy/10 rounded"></div>
+          <div className="h-6 bg-slate-700 rounded w-1/4 mb-4"></div>
+          <div className="h-64 bg-slate-700 rounded"></div>
         </div>
       </div>
     );
@@ -150,9 +150,9 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
 
   if (chartData.length === 0) {
     return (
-      <div className="bg-bpCream rounded-lg p-6 border border-bpNavy/10">
-        <h3 className="text-lg font-bold mb-4 text-bpRed">Portfolio Value Over Time</h3>
-        <div className="text-center py-12 text-bpGray">
+      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+        <h3 className="text-lg font-bold mb-4 text-teal-400">Portfolio Value Over Time</h3>
+        <div className="text-center py-12 text-slate-400">
           <p>Performance data will appear as the week progresses</p>
         </div>
       </div>
@@ -162,37 +162,38 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
   const latestData = chartData[chartData.length - 1] || {};
 
   return (
-    <div className="bg-bpCream rounded-lg p-6 border border-bpNavy/10">
-      <h3 className="text-lg font-bold mb-4 text-bpRed">Portfolio Value Over Time</h3>
+    <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+      <h3 className="text-lg font-bold mb-4 text-teal-400">Portfolio Value Over Time</h3>
 
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#0F1A2B20" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
           <XAxis
             dataKey="timestamp"
             tickFormatter={(ts) => format(new Date(ts), 'MMM d, h:mm a')}
-            tick={{ fontSize: 12, fill: '#111111' }}
+            tick={{ fontSize: 12, fill: '#94a3b8' }}
           />
           <YAxis
-            label={{ value: 'Portfolio Value', angle: -90, position: 'insideLeft', fill: '#111111', dx: -10 }}
-            tick={{ fontSize: 12, fill: '#111111' }}
+            label={{ value: 'Portfolio Value', angle: -90, position: 'insideLeft', fill: '#94a3b8', dx: -10 }}
+            tick={{ fontSize: 12, fill: '#94a3b8' }}
             tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
             width={70}
           />
           <Tooltip
             labelFormatter={(ts) => format(new Date(ts), 'MMM d, yyyy h:mm a')}
             formatter={(value) => [`$${Number(value).toLocaleString()}`, '']}
-            contentStyle={{ backgroundColor: '#FAF6EE', border: '1px solid #0F1A2B30', borderRadius: '8px' }}
+            contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', color: '#f8fafc' }}
+            labelStyle={{ color: '#94a3b8' }}
           />
-          <Legend />
+          <Legend wrapperStyle={{ color: '#94a3b8' }} />
 
           <Line
             type="monotone"
             dataKey="yourGain"
-            stroke="#D64541"
+            stroke="#14b8a6"
             strokeWidth={3}
             name="You"
-            dot={{ r: 3, fill: '#D64541' }}
+            dot={{ r: 3, fill: '#14b8a6' }}
             activeDot={{ r: 5 }}
           />
           <Line
@@ -207,7 +208,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
           <Line
             type="monotone"
             dataKey="top2"
-            stroke="#0F1A2B"
+            stroke="#94a3b8"
             strokeWidth={2}
             name={topUsers[1]?.username || "2nd Place"}
             strokeDasharray="5 5"
@@ -216,7 +217,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
           <Line
             type="monotone"
             dataKey="top3"
-            stroke="#B0B3B8"
+            stroke="#64748b"
             strokeWidth={2}
             name={topUsers[2]?.username || "3rd Place"}
             strokeDasharray="5 5"
@@ -235,29 +236,29 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
       </ResponsiveContainer>
 
       <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="text-center p-4 bg-bpRed/10 rounded-lg">
-          <div className="text-2xl font-bold text-bpRed">
+        <div className="text-center p-4 bg-teal-500/10 rounded-lg border border-teal-500/20">
+          <div className="text-2xl font-bold text-teal-400">
             ${(latestData.yourGain || 0).toLocaleString()}
           </div>
-          <div className="text-sm text-bpInk/70 mt-1">Your Portfolio</div>
+          <div className="text-sm text-slate-400 mt-1">Your Portfolio</div>
         </div>
-        <div className="text-center p-4 bg-green-500/10 rounded-lg">
-          <div className="text-2xl font-bold text-green-600">
+        <div className="text-center p-4 bg-green-500/10 rounded-lg border border-green-500/20">
+          <div className="text-2xl font-bold text-green-400">
             ${(latestData.marketAvg || 0).toLocaleString()}
           </div>
-          <div className="text-sm text-green-700 mt-1">League Avg</div>
+          <div className="text-sm text-slate-400 mt-1">League Avg</div>
         </div>
-        <div className="text-center p-4 bg-bpNavy/5 rounded-lg">
-          <div className="text-2xl font-bold text-bpInk">
+        <div className="text-center p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+          <div className="text-2xl font-bold text-slate-200">
             ${((latestData.top1 || 0) - (latestData.yourGain || 0)).toLocaleString()}
           </div>
-          <div className="text-sm text-bpInk/70 mt-1">Behind Leader (${(latestData.top1 || 0).toLocaleString()})</div>
+          <div className="text-sm text-slate-400 mt-1">Behind Leader (${(latestData.top1 || 0).toLocaleString()})</div>
         </div>
-        <div className="text-center p-4 bg-bpGold/10 rounded-lg">
+        <div className="text-center p-4 bg-bpGold/10 rounded-lg border border-bpGold/20">
           <div className="text-2xl font-bold text-bpGold">
             #{calculateRank(latestData)}
           </div>
-          <div className="text-sm text-bpInk/70 mt-1">Current Rank</div>
+          <div className="text-sm text-slate-400 mt-1">Current Rank</div>
         </div>
       </div>
     </div>

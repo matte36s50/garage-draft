@@ -414,55 +414,48 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
           </div>
         </div>
 
-        {/* Time Remaining Banner */}
+        {/* Time Remaining Banner — compact to save above-the-fold space */}
         {timeRemaining && (
-          <div className={`mb-6 rounded-lg p-4 border-2 ${
+          <div className={`mb-4 rounded-lg px-4 py-2 border ${
             timeRemaining.ended
-              ? 'bg-red-900/20 border-red-500'
+              ? 'bg-red-900/20 border-red-500/50'
               : timeRemaining.days === 0 && timeRemaining.hours < 6
-              ? 'bg-orange-900/20 border-orange-500'
-              : 'bg-blue-900/20 border-blue-500'
+              ? 'bg-orange-900/20 border-orange-500/50'
+              : 'bg-slate-800 border-slate-700'
           }`}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex-shrink-0">
-                  <svg className={`w-8 h-8 ${
-                    timeRemaining.ended
-                      ? 'text-red-400'
-                      : timeRemaining.days === 0 && timeRemaining.hours < 6
-                      ? 'text-orange-400'
-                      : 'text-blue-400'
-                  }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className={`text-lg font-bold ${
-                    timeRemaining.ended
-                      ? 'text-red-300'
-                      : timeRemaining.days === 0 && timeRemaining.hours < 6
-                      ? 'text-orange-300'
-                      : 'text-blue-300'
-                  }`}>
-                    {timeRemaining.ended ? 'League Ended' : 'League Time Remaining'}
-                  </h3>
-                  <p className="text-bpCream text-xl font-bold">
-                    {timeRemaining.text}
-                  </p>
-                </div>
+              <div className="flex items-center gap-2">
+                <svg className={`w-5 h-5 flex-shrink-0 ${
+                  timeRemaining.ended
+                    ? 'text-red-400'
+                    : timeRemaining.days === 0 && timeRemaining.hours < 6
+                    ? 'text-orange-400'
+                    : 'text-teal-400'
+                }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className={`text-sm font-semibold ${
+                  timeRemaining.ended
+                    ? 'text-red-300'
+                    : timeRemaining.days === 0 && timeRemaining.hours < 6
+                    ? 'text-orange-300'
+                    : 'text-slate-300'
+                }`}>
+                  {timeRemaining.ended ? 'League Ended' : 'Time Left:'}
+                </span>
+                <span className="text-bpCream font-bold">
+                  {timeRemaining.text}
+                </span>
               </div>
               {!timeRemaining.ended && leagueEndTime && (
-                <div className="text-right">
-                  <p className="text-sm text-bpGray">Last auction ends at</p>
-                  <p className="text-bpCream font-medium">
-                    {leagueEndTime.toLocaleString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit',
-                      hour12: true
-                    })}
-                  </p>
+                <div className="text-right text-xs text-slate-400">
+                  Ends {leagueEndTime.toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                  })}
                 </div>
               )}
             </div>
@@ -479,8 +472,8 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
                 className={`
                   px-4 py-2 rounded-md font-medium whitespace-nowrap transition-colors
                   ${selectedLeague?.id === league.id
-                    ? 'bg-bpRed text-bpCream'
-                    : 'bg-bpCream/10 text-bpCream hover:bg-bpCream/20'
+                    ? 'bg-teal-500 text-white'
+                    : 'bg-slate-800 text-bpCream hover:bg-slate-700'
                   }
                 `}
               >
@@ -620,13 +613,13 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
               <div>
                 <p className="text-xs text-bpGray mb-1">Accuracy</p>
                 <p className={`text-lg font-bold ${userStats.bonusScore.percentError <= 10 ? 'text-green-400' : 'text-orange-400'}`}>
-                  {userStats.bonusScore.percentError.toFixed(1)}% off
+                  {isNaN(userStats.bonusScore.percentError) ? '—' : `${userStats.bonusScore.percentError.toFixed(1)}% off`}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-bpGray mb-1">Potential Bonus (2x if winner)</p>
                 <p className="text-lg font-bold text-bpGold">
-                  +{(userStats.bonusScore.basePercentGain * 2).toFixed(2)}%
+                  {isNaN(userStats.bonusScore.basePercentGain) ? '—' : `+${(userStats.bonusScore.basePercentGain * 2).toFixed(2)}%`}
                 </p>
               </div>
             </div>

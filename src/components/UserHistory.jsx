@@ -92,9 +92,9 @@ export default function UserHistory({ supabase, user }) {
     carsSnapshot.forEach(car => {
       const purchasePrice = parseFloat(car.purchase_price);
       const finalPrice = parseFloat(car.final_price);
-      const gain = ((finalPrice - purchasePrice) / purchasePrice) * 100;
+      const gain = purchasePrice > 0 ? ((finalPrice - purchasePrice) / purchasePrice) * 100 : 0;
 
-      if (gain > bestGain) {
+      if (!isNaN(gain) && gain > bestGain) {
         bestGain = gain;
         bestCar = { ...car, percentGain: gain };
       }
@@ -215,7 +215,7 @@ export default function UserHistory({ supabase, user }) {
                         <div className="mt-2 text-xs text-bpGray/80">
                           Best pick: <span className="text-bpCream">{bestCar.title}</span>
                           <span className={`ml-1 ${bestCar.percentGain >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            ({bestCar.percentGain >= 0 ? '+' : ''}{bestCar.percentGain.toFixed(1)}%)
+                            ({isNaN(bestCar.percentGain) ? '—' : `${bestCar.percentGain >= 0 ? '+' : ''}${bestCar.percentGain.toFixed(1)}%`})
                           </span>
                         </div>
                       )}
