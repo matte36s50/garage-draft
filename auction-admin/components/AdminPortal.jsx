@@ -1592,14 +1592,14 @@ const AdminPortal = () => {
                     className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full" />
                   
                   <div>
-                    <label className="text-slate-400 text-sm mb-1 block">Draft Starts At *</label>
+                    <label className="text-slate-400 text-sm mb-1 block">Draft Starts At * <span className="text-slate-500">(your local time)</span></label>
                     <input type="datetime-local" value={newLeague.draft_starts_at}
                       onChange={(e) => setNewLeague({...newLeague, draft_starts_at: e.target.value})}
                       className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full" />
                   </div>
-                  
+
                   <div>
-                    <label className="text-slate-400 text-sm mb-1 block">Draft Ends At *</label>
+                    <label className="text-slate-400 text-sm mb-1 block">Draft Ends At * <span className="text-slate-500">(your local time)</span></label>
                     <input type="datetime-local" value={newLeague.draft_ends_at}
                       onChange={(e) => setNewLeague({...newLeague, draft_ends_at: e.target.value})}
                       className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full" />

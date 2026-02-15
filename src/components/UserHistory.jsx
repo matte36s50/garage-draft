@@ -1,6 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Trophy, Target, TrendingUp, Calendar, Car, Award, Clock } from 'lucide-react';
 
+// Parse league timestamps as UTC — Supabase may strip the Z suffix from
+// TIMESTAMP columns, causing new Date() to misinterpret UTC values as local time.
+function parseUTCDate(dateStr) {
+  if (!dateStr) return null;
+  if (typeof dateStr === 'string' && !dateStr.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(dateStr)) {
+    return new Date(dateStr + 'Z');
+  }
+  return new Date(dateStr);
+}
+
 export default function UserHistory({ supabase, user }) {
   const [loading, setLoading] = useState(true);
   const [results, setResults] = useState([]);
@@ -76,8 +86,8 @@ export default function UserHistory({ supabase, user }) {
 
   // Format date range
   const formatDateRange = (start, end) => {
-    const startDate = new Date(start);
-    const endDate = new Date(end);
+    const startDate = parseUTCDate(start);
+    const endDate = parseUTCDate(end);
     const options = { month: 'short', day: 'numeric' };
     return `${startDate.toLocaleDateString('en-US', options)} - ${endDate.toLocaleDateString('en-US', options)}`;
   };
