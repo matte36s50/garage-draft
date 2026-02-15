@@ -292,9 +292,9 @@ export async function calculateBonusCarScore(supabase, userId, leagueId) {
       ? parseFloat(bonusAuction.final_price)
       : parseFloat(bonusAuction.current_bid);
 
-    // Calculate prediction accuracy
+    // Calculate prediction accuracy (guard against division by zero)
     const predictionError = Math.abs(predictedPrice - finalPrice);
-    const percentError = (predictionError / finalPrice) * 100;
+    const percentError = finalPrice > 0 ? (predictionError / finalPrice) * 100 : 0;
 
     // Check if this user is the bonus car winner (closest prediction in the league)
     // Get all predictions for this league to determine winner
@@ -338,9 +338,9 @@ export async function calculateBonusCarScore(supabase, userId, leagueId) {
       bonusPoints = 5;
     }
 
-    // Calculate base percent gain for display
+    // Calculate base percent gain for display (guard against division by zero)
     const baseline = parseFloat(bonusAuction.price_at_48h || finalPrice);
-    const basePercentGain = ((finalPrice - baseline) / baseline) * 100;
+    const basePercentGain = baseline > 0 ? ((finalPrice - baseline) / baseline) * 100 : 0;
 
     return {
       predicted: predictedPrice,

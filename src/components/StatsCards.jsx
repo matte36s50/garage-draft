@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 
 // Format dollar amount with commas
 const formatDollar = (amount) => {
-  if (amount === undefined || amount === null) return '$0';
+  if (amount === undefined || amount === null || isNaN(amount)) return '$0';
   return '$' + Math.round(amount).toLocaleString();
 };
 
@@ -22,8 +22,8 @@ export default function StatsCards({ stats, spendingLimit = 200000 }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       ),
-      bgColor: isPositive ? 'bg-gradient-to-br from-emerald-500/30 to-emerald-600/20' : 'bg-gradient-to-br from-red-500/30 to-red-600/20',
-      iconColor: isPositive ? 'text-emerald-400' : 'text-red-400',
+      bgColor: isPositive ? 'bg-gradient-to-br from-teal-500/20 to-teal-600/10' : 'bg-gradient-to-br from-red-500/20 to-red-600/10',
+      iconColor: isPositive ? 'text-teal-400' : 'text-red-400',
       featured: true,
       isPositive
     },
@@ -38,8 +38,8 @@ export default function StatsCards({ stats, spendingLimit = 200000 }) {
       ),
       trend: stats?.rankChange,
       trendLabel: stats?.rankChange > 0 ? 'Moved up' : stats?.rankChange < 0 ? 'Moved down' : 'No change',
-      bgColor: 'bg-bpCream/10',
-      iconColor: 'text-bpCream'
+      bgColor: 'bg-slate-400/10',
+      iconColor: 'text-slate-300'
     },
     {
       title: 'Total Value',
@@ -55,8 +55,8 @@ export default function StatsCards({ stats, spendingLimit = 200000 }) {
         ? stats.totalScore - stats.leagueAvg
         : undefined,
       trendLabel: 'vs Avg',
-      bgColor: 'bg-emerald-500/20',
-      iconColor: 'text-emerald-400'
+      bgColor: 'bg-teal-500/15',
+      iconColor: 'text-teal-400'
     },
     {
       title: 'Behind Leader',
@@ -67,7 +67,7 @@ export default function StatsCards({ stats, spendingLimit = 200000 }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
         </svg>
       ),
-      bgColor: 'bg-bpGold/20',
+      bgColor: 'bg-bpGold/15',
       iconColor: 'text-bpGold'
     },
     {
@@ -80,8 +80,8 @@ export default function StatsCards({ stats, spendingLimit = 200000 }) {
         </svg>
       ),
       progress: stats?.carsCount !== undefined ? (stats.carsCount / 7) * 100 : 0,
-      bgColor: stats?.isRosterComplete ? 'bg-emerald-500/20' : 'bg-bpRed/20',
-      iconColor: stats?.isRosterComplete ? 'text-emerald-400' : 'text-bpRed'
+      bgColor: stats?.isRosterComplete ? 'bg-emerald-500/15' : 'bg-teal-500/15',
+      iconColor: stats?.isRosterComplete ? 'text-emerald-400' : 'text-teal-400'
     }
   ];
 
@@ -98,10 +98,10 @@ export default function StatsCards({ stats, spendingLimit = 200000 }) {
 
 function StatCard({ card, index }) {
   const getTrendColor = (trend) => {
-    if (trend === undefined || trend === null) return 'text-bpGray';
+    if (trend === undefined || trend === null) return 'text-slate-400';
     if (trend > 0) return 'text-emerald-400';
     if (trend < 0) return 'text-red-400';
-    return 'text-bpGray';
+    return 'text-slate-400';
   };
 
   const getTrendIcon = (trend) => {
@@ -139,8 +139,8 @@ function StatCard({ card, index }) {
         transition={{ delay: index * 0.1, duration: 0.5 }}
         className={`
           ${card.bgColor}
-          rounded-xl p-6
-          border-2 ${card.isPositive ? 'border-emerald-400/40' : 'border-red-400/40'}
+          bg-slate-800 rounded-xl p-6
+          border-2 ${card.isPositive ? 'border-teal-400/40' : 'border-red-400/40'}
           hover:shadow-2xl hover:scale-[1.02]
           transition-all duration-300
           relative overflow-hidden
@@ -153,33 +153,33 @@ function StatCard({ card, index }) {
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <div className={`${card.iconColor} p-3 rounded-xl bg-bpNavy/30`}>
+                <div className={`${card.iconColor} p-3 rounded-xl bg-slate-900/60`}>
                   {card.icon}
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-bpCream">{card.title}</h3>
-                  <p className="text-sm text-bpCream/60">{card.subtitle}</p>
+                  <h3 className="text-xl font-bold text-slate-50">{card.title}</h3>
+                  <p className="text-sm text-slate-400">{card.subtitle}</p>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="mb-3">
-            <div className={`text-4xl font-extrabold ${card.isPositive ? 'text-emerald-300' : 'text-red-300'} tracking-tight`}>
+            <div className={`text-4xl font-extrabold text-teal-400 tracking-tight`}>
               {card.isPositive && '+'}{card.value}
             </div>
           </div>
 
           <div className="flex items-center justify-between">
-            <div className="text-sm text-bpCream/70 italic">
+            <div className="text-sm text-slate-400 italic">
               {card.description}
             </div>
             {card.isPositive ? (
-              <div className="flex items-center gap-2 bg-emerald-500/20 px-4 py-2 rounded-full border border-emerald-400/30">
-                <svg className="w-5 h-5 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-2 bg-teal-500/20 px-4 py-2 rounded-full border border-teal-400/30">
+                <svg className="w-5 h-5 text-teal-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
-                <span className="text-sm font-bold text-emerald-300">Profit</span>
+                <span className="text-sm font-bold text-teal-300">Profit</span>
               </div>
             ) : (
               <div className="flex items-center gap-2 bg-red-500/20 px-4 py-2 rounded-full border border-red-400/30">
@@ -195,27 +195,27 @@ function StatCard({ card, index }) {
     );
   }
 
-  // Standard card styling
+  // Standard card styling — dark card with light text
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
-      className="bg-bpCream rounded-lg p-6 hover:shadow-lg transition-shadow border border-bpNavy/10"
+      className="bg-slate-800 rounded-lg p-6 hover:shadow-lg transition-shadow border border-slate-700"
     >
       <div className="flex items-center justify-between mb-2">
-        <div className="text-sm text-bpInk/70 font-medium">{card.title}</div>
+        <div className="text-sm text-slate-400 font-medium">{card.title}</div>
         <div className={`${card.bgColor} ${card.iconColor} p-2 rounded-lg`}>
           {card.icon}
         </div>
       </div>
 
-      <div className="text-3xl font-bold text-bpInk mb-1">
+      <div className="text-3xl font-bold text-slate-50 mb-1">
         {card.value}
       </div>
 
       <div className="flex items-center justify-between">
-        <div className="text-sm text-bpGray">{card.subtitle}</div>
+        <div className="text-sm text-slate-400">{card.subtitle}</div>
 
         {trendValue !== undefined && (
           <div className={`text-xs font-semibold flex items-center gap-1 ${getTrendColor(trendValue)}`}>
@@ -234,13 +234,13 @@ function StatCard({ card, index }) {
 
       {card.progress !== undefined && (
         <div className="mt-3">
-          <div className="w-full bg-bpNavy/10 rounded-full h-2">
+          <div className="w-full bg-slate-700 rounded-full h-2">
             <div
-              className={`${card.title === 'Roster' && card.progress >= 100 ? 'bg-emerald-500' : 'bg-bpRed'} h-2 rounded-full transition-all duration-500`}
+              className={`${card.title === 'Roster' && card.progress >= 100 ? 'bg-emerald-500' : 'bg-teal-500'} h-2 rounded-full transition-all duration-500`}
               style={{ width: `${Math.min(card.progress, 100)}%` }}
             />
           </div>
-          <div className="text-xs text-bpGray mt-1 text-right">
+          <div className="text-xs text-slate-400 mt-1 text-right">
             {card.progress.toFixed(0)}%
           </div>
         </div>

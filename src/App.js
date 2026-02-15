@@ -234,16 +234,15 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
             {onSignOut && (
               <button
                 onClick={onSignOut}
-                style={{ backgroundColor: '#D64541', color: '#FFFFFF' }}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition hover:opacity-90"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition border border-white/30 text-white bg-transparent hover:bg-white/10 hover:border-white/50"
               >
-                <LogOut size={16} color="#FFFFFF" />
+                <LogOut size={16} />
                 <span className="hidden sm:inline">Sign out</span>
               </button>
             )}
           </div>
         </div>
-        <div className="h-0.5 bg-bpRed/80" />
+        <div className="h-0.5 bg-teal-500/80" />
       </header>
 
       {/* Mobile League Switcher Bar */}
@@ -369,7 +368,7 @@ function PrimaryButton({ className = '', children, ...props }) {
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center rounded-md px-4 py-2 font-semibold bg-bpNavy text-bpCream border border-bpNavy/40 hover:bg-bpRed focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition ${className}`}
+      className={`inline-flex items-center justify-center rounded-md px-4 py-2 font-semibold bg-teal-500 text-white border border-teal-600 hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-400/80 active:translate-y-[0.5px] transition ${className}`}
     >
       {children}
     </button>
@@ -1172,7 +1171,7 @@ export default function BixPrixApp() {
             </div>
 
             <h1 className="text-4xl sm:text-5xl font-bold text-bpCream mb-6 leading-tight mt-8">
-              <span className="bg-gradient-to-r from-bpGold to-bpRed bg-clip-text text-transparent">Fantasy Auto Auctions</span>
+              <span className="bg-gradient-to-r from-bpGold to-teal-400 bg-clip-text text-transparent">Fantasy Auto Auctions</span>
             </h1>
 
             <p className="text-xl text-bpCream/80 mb-10 max-w-2xl mx-auto leading-relaxed">
@@ -1264,7 +1263,7 @@ export default function BixPrixApp() {
 
               <Card className="p-6">
                 <h3 className="text-lg font-bold text-bpInk mb-4 flex items-center gap-2">
-                  <TrendingUp size={20} className="text-bpRed" />
+                  <TrendingUp size={20} className="text-teal-500" />
                   Scoring System
                 </h3>
                 <ul className="space-y-2 text-bpInk/80 text-sm">
@@ -1288,7 +1287,7 @@ export default function BixPrixApp() {
               </Card>
             </div>
 
-            <Card className="mt-8 p-6 bg-gradient-to-br from-bpGold/10 to-bpRed/10 border-2 border-bpGold/30">
+            <Card className="mt-8 p-6 bg-gradient-to-br from-bpGold/10 to-teal-500/10 border-2 border-bpGold/30">
               <h3 className="text-lg font-bold text-bpInk mb-4 flex items-center gap-2">
                 <Target size={20} className="text-bpGold" />
                 Example: How You Score
@@ -1313,7 +1312,7 @@ export default function BixPrixApp() {
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-bpGold/20 to-bpRed/20 rounded-lg p-4 border-2 border-bpGold">
+                <div className="bg-gradient-to-br from-bpGold/20 to-teal-500/20 rounded-lg p-4 border-2 border-bpGold">
                   <div className="font-bold text-bpInk mb-2 flex items-center gap-1">
                     <Zap size={16} className="text-bpGold" />
                     Bonus Car Winner
@@ -2042,7 +2041,7 @@ export default function BixPrixApp() {
                         </span>
                       )}
                       {a.trending && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-bpRed/15 text-bpInk">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-teal-500/15 text-teal-700">
                           <Star size={12}/> Trending
                         </span>
                       )}
@@ -2865,16 +2864,16 @@ export default function BixPrixApp() {
                 </div>
               </Card>
 
-              <Card className="p-4 border-2 border-bpRed/50 bg-gradient-to-br from-bpRed/10 to-bpRed/5">
+              <Card className="p-4 border-2 border-teal-500/50 bg-gradient-to-br from-teal-500/10 to-teal-500/5">
                 <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="text-bpRed" size={20} />
+                  <TrendingUp className="text-teal-400" size={20} />
                   <span className="text-xs font-bold text-bpInk uppercase">% Gain Leader</span>
                 </div>
                 <div className="font-bold text-xl text-bpInk mb-1">
                   {sortStandings(standings, 'total_percent')[0]?.username}
                 </div>
                 <div className="text-2xl font-bold text-green-700">
-                  +{sortStandings(standings, 'total_percent')[0]?.totalPercentGain}%
+                  {isNaN(sortStandings(standings, 'total_percent')[0]?.totalPercentGain) ? '—' : `+${sortStandings(standings, 'total_percent')[0]?.totalPercentGain}%`}
                 </div>
               </Card>
 

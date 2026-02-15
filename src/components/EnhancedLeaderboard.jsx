@@ -79,12 +79,12 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
 
   if (loading) {
     return (
-      <div className="bg-bpCream rounded-lg p-6 border border-bpNavy/10">
+      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
         <div className="animate-pulse">
-          <div className="h-6 bg-bpNavy/10 rounded w-1/4 mb-4"></div>
+          <div className="h-6 bg-slate-700 rounded w-1/4 mb-4"></div>
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-16 bg-bpNavy/10 rounded"></div>
+              <div key={i} className="h-16 bg-slate-700 rounded"></div>
             ))}
           </div>
         </div>
@@ -93,8 +93,8 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
   }
 
   return (
-    <div className="bg-bpCream rounded-lg p-6 border border-bpNavy/10">
-      <h3 className="text-lg font-bold mb-4 text-bpRed">Leaderboard</h3>
+    <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+      <h3 className="text-lg font-bold mb-4 text-teal-400">Leaderboard</h3>
 
       <div className="space-y-2">
         {leaderboard.map((member, index) => (
@@ -108,7 +108,7 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
       </div>
 
       {leaderboard.length === 0 && (
-        <div className="text-center py-8 text-bpGray">
+        <div className="text-center py-8 text-slate-400">
           <p>No players yet</p>
         </div>
       )}
@@ -119,37 +119,38 @@ export default function EnhancedLeaderboard({ supabase, leagueId, currentUserId 
 function LeaderboardRow({ member, index, isCurrentUser }) {
   const getRankDisplay = (rank) => {
     if (rank === 1) return <span className="text-2xl text-bpGold">1st</span>;
-    if (rank === 2) return <span className="text-2xl text-bpGray">2nd</span>;
+    if (rank === 2) return <span className="text-2xl text-slate-400">2nd</span>;
     if (rank === 3) return <span className="text-2xl text-amber-700">3rd</span>;
     return `#${rank}`;
   };
 
   const getRankChangeIcon = (change) => {
     if (change > 0) return (
-      <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
       </svg>
     );
     if (change < 0) return (
-      <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
       </svg>
     );
     return (
-      <svg className="w-4 h-4 text-bpGray" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14" />
       </svg>
     );
   };
 
   const getTrendColor = (change) => {
-    if (change > 0) return 'text-emerald-600';
-    if (change < 0) return 'text-red-500';
-    return 'text-bpGray';
+    if (change > 0) return 'text-emerald-400';
+    if (change < 0) return 'text-red-400';
+    return 'text-slate-500';
   };
 
   // Format dollar amount with commas
   const formatDollar = (amount) => {
+    if (amount === undefined || amount === null || isNaN(amount)) return '$0';
     return '$' + Math.round(amount).toLocaleString();
   };
 
@@ -161,22 +162,22 @@ function LeaderboardRow({ member, index, isCurrentUser }) {
       className={`
         flex items-center gap-4 p-4 rounded-lg border-2 transition-all
         ${isCurrentUser
-          ? 'bg-bpRed/10 border-bpRed shadow-md'
-          : 'bg-white border-bpNavy/10 hover:border-bpNavy/30'
+          ? 'bg-teal-500/10 border-teal-500 shadow-md'
+          : 'bg-slate-900 border-slate-700 hover:border-slate-600'
         }
       `}
     >
       {/* Rank */}
-      <div className="text-xl font-bold w-12 text-center text-bpInk">
+      <div className="text-xl font-bold w-12 text-center text-slate-50">
         {getRankDisplay(member.rank)}
       </div>
 
       {/* Username */}
       <div className="flex-1 min-w-0">
-        <div className="font-semibold text-bpInk truncate flex items-center gap-2">
+        <div className="font-semibold text-slate-50 truncate flex items-center gap-2">
           {member.username}
           {isCurrentUser && (
-            <span className="text-xs bg-bpRed text-bpCream px-2 py-1 rounded">
+            <span className="text-xs bg-teal-500 text-white px-2 py-1 rounded">
               YOU
             </span>
           )}
@@ -186,7 +187,7 @@ function LeaderboardRow({ member, index, isCurrentUser }) {
             </span>
           )}
         </div>
-        <div className="text-xs text-bpGray">
+        <div className="text-xs text-slate-400">
           {member.carCount}/{MAX_GARAGE_CARS} cars | {formatDollar(member.totalSpent)} spent
           {member.pendingCount > 0 && ` | ${member.pendingCount} pending`}
         </div>
@@ -194,10 +195,10 @@ function LeaderboardRow({ member, index, isCurrentUser }) {
 
       {/* Score - Now shows total dollar value */}
       <div className="text-right">
-        <div className="text-xl font-bold text-bpInk">
+        <div className="text-xl font-bold text-slate-50">
           {formatDollar(member.totalScore)}
         </div>
-        <div className="text-xs text-bpGray">
+        <div className="text-xs text-slate-400">
           {member.totalDollarGain >= 0 ? '+' : ''}{formatDollar(member.totalDollarGain)} gain
         </div>
         <div className={`text-xs font-semibold flex items-center justify-end gap-1 ${getTrendColor(member.rankChange)}`}>

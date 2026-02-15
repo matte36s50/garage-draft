@@ -5,14 +5,17 @@
 /* Font (Inter) */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-/* BixPrix Brand Tokens (tuned to mockup) */
+/* BixPrix Brand Tokens (Premium Dark Mode) */
 :root{
   --bp-navy:#0F1A2B;   /* deeper navy */
   --bp-cream:#FAF6EE;  /* warm off-white */
-  --bp-red:#D64541;    /* racing red */
+  --bp-red:#D64541;    /* racing red (legacy) */
+  --bp-teal:#14b8a6;   /* teal-500 – primary brand */
+  --bp-teal-light:#2dd4bf; /* teal-400 – text accents */
   --bp-gold:#C2A14D;   /* metallic gold */
   --bp-gray:#B0B3B8;   /* UI gray */
   --bp-ink:#111111;    /* text on light */
+  --bp-card:#1e293b;   /* slate-800 – card surfaces */
 }
 
 /* Base type + background for consistent feel */
@@ -28,6 +31,10 @@
 .bg-bpNavy{background-color:var(--bp-navy)}
 .bg-bpCream{background-color:var(--bp-cream)}
 .bg-bpRed{background-color:var(--bp-red)}
+.bg-bpTeal{background-color:var(--bp-teal)}
+.text-bpTeal{color:var(--bp-teal)}
+.text-bpTealLight{color:var(--bp-teal-light)}
+.bg-bpCard{background-color:var(--bp-card)}
 .bg-bpGold{background-color:var(--bp-gold)}
 .border-bpNavy\/20{border-color:rgba(15,26,43,0.2)}
 
