@@ -666,37 +666,37 @@ const AdminPortal = () => {
   // ========== LEAGUE FUNCTIONS ==========
   const handleAddLeague = async () => {
     const trimmedName = newLeague.name?.trim();
-    
+
     if (!trimmedName || !newLeague.draft_starts_at || !newLeague.draft_ends_at) {
       alert('Please fill in league name and draft dates');
       return;
     }
-    
+
     const startDate = new Date(newLeague.draft_starts_at);
     const endDate = new Date(newLeague.draft_ends_at);
-    
+
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       alert('Invalid date format. Please select valid dates.');
       return;
     }
-    
+
     if (endDate <= startDate) {
       alert('Draft end date must be after draft start date');
       return;
     }
-    
+
     try {
       const { supabase } = await import('@/lib/supabase');
-      
+
       // Admin-created leagues have no specific creator (created_by = null)
       // The UI will display "Admin" for leagues with null creator
       const creatorId = null;
-      
+
       const league = {
         name: trimmedName,
         created_by: creatorId,
-        draft_starts_at: startDate.toISOString(),
-        draft_ends_at: endDate.toISOString(),
+        draft_starts_at: newLeague.draft_starts_at,
+        draft_ends_at: newLeague.draft_ends_at,
         is_public: newLeague.is_public,
         use_manual_auctions: newLeague.use_manual_auctions,
         spending_limit: newLeague.spending_limit || 200000,
