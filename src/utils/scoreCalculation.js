@@ -1,13 +1,3 @@
-// Parse league timestamps as UTC — Supabase may strip the Z suffix from
-// TIMESTAMP columns, causing new Date() to misinterpret UTC values as local time.
-function parseUTCDate(dateStr) {
-  if (!dateStr) return null;
-  if (typeof dateStr === 'string' && !dateStr.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(dateStr)) {
-    return new Date(dateStr + 'Z');
-  }
-  return new Date(dateStr);
-}
-
 /**
  * Shared score calculation utilities
  * Used by both the Dashboard (real-time) and cron job (historical snapshots)
@@ -409,7 +399,7 @@ export async function calculateMarketAverage(supabase, leagueId) {
       console.log(`[Market Avg] No league_auctions found, using 4-5 day window fallback`);
 
       const leagueStartTime = league?.draft_starts_at
-        ? Math.floor(parseUTCDate(league.draft_starts_at).getTime() / 1000)
+        ? Math.floor(new Date(league.draft_starts_at).getTime() / 1000)
         : Math.floor(Date.now() / 1000);
 
       const fourDaysInSeconds = 4 * 24 * 60 * 60;

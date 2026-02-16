@@ -6,16 +6,6 @@ import ActivityFeed from './ActivityFeed';
 import LeaguePredictions from './LeaguePredictions';
 import { calculateUserScore, calculateLeagueStats } from '../utils/scoreCalculation';
 
-// Parse league timestamps as UTC — Supabase may strip the Z suffix from
-// TIMESTAMP columns, causing new Date() to misinterpret UTC values as local time.
-function parseUTCDate(dateStr) {
-  if (!dateStr) return null;
-  if (typeof dateStr === 'string' && !dateStr.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(dateStr)) {
-    return new Date(dateStr + 'Z');
-  }
-  return new Date(dateStr);
-}
-
 export default function Dashboard({ supabase, user, leagues, selectedLeague, onLeagueChange, onNavigate, bonusCar, userPrediction, draftStatus }) {
   const [userStats, setUserStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -203,7 +193,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
           // Use league's draft start time as the reference point (not current time)
           // This ensures the window doesn't shift as time passes
           const leagueStartTime = selectedLeague.draft_starts_at
-            ? Math.floor(parseUTCDate(selectedLeague.draft_starts_at).getTime() / 1000)
+            ? Math.floor(new Date(selectedLeague.draft_starts_at).getTime() / 1000)
             : Math.floor(Date.now() / 1000);
           const fourDaysInSeconds = 4 * 24 * 60 * 60;
           const fiveDaysInSeconds = 5 * 24 * 60 * 60;
