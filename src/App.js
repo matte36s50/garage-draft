@@ -11,6 +11,16 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 const STORAGE_KEY = 'bixprix_selected_league'
 const SCREEN_STORAGE_KEY = 'bixprix_current_screen'
 
+// Parse league timestamps as UTC — Supabase may strip the Z suffix from
+// TIMESTAMP columns, causing new Date() to misinterpret UTC values as local time.
+function parseUTCDate(dateStr) {
+  if (!dateStr) return null
+  if (typeof dateStr === 'string' && !dateStr.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(dateStr)) {
+    return new Date(dateStr + 'Z')
+  }
+  return new Date(dateStr)
+}
+
 function saveSelectedLeague(league) {
   if (league) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(league))
@@ -91,8 +101,8 @@ function BrandLogo({ compact }) {
 function getLeagueDraftInfo(league) {
   if (!league) return { statusColor: 'bg-gray-400', label: '' }
   const now = new Date()
-  const start = league.draft_starts_at ? new Date(league.draft_starts_at) : null
-  const end = league.draft_ends_at ? new Date(league.draft_ends_at) : null
+  const start = parseUTCDate(league.draft_starts_at)
+  const end = parseUTCDate(league.draft_ends_at)
 
   if (!start || !end) return { statusColor: 'bg-emerald-400', label: 'Draft open' }
   if (now < start) return { statusColor: 'bg-yellow-400', label: 'Opens soon' }
@@ -472,8 +482,8 @@ export default function BixPrixApp() {
     }
     
     const now = new Date()
-    const start = new Date(league.draft_starts_at)
-    const end = new Date(league.draft_ends_at)
+    const start = parseUTCDate(league.draft_starts_at)
+    const end = parseUTCDate(league.draft_ends_at)
     
     if (now < start) {
       const timeUntil = calculateTimeLeft(start)
@@ -2379,7 +2389,7 @@ export default function BixPrixApp() {
                   <div>
                     <h3 className="font-bold text-lg text-bpInk">{league.name}</h3>
                     <p className="text-sm text-bpInk/70">
-                      {new Date(league.draft_starts_at).toLocaleDateString()} - {new Date(league.draft_ends_at).toLocaleDateString()}
+                      {parseUTCDate(league.draft_starts_at)?.toLocaleDateString()} - {parseUTCDate(league.draft_ends_at)?.toLocaleDateString()}
                     </p>
                   </div>
                   <PrimaryButton 
