@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard, History, ChevronDown, Check, ArrowLeft, Share2 } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard, History, ChevronDown, Check, ArrowLeft } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import Dashboard from './components/Dashboard'
 import LeagueChat from './components/LeagueChat'
@@ -122,26 +122,6 @@ function getLeagueDraftInfo(league) {
 function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, connectionStatus, recentUpdates, selectedLeague, onManualRefresh, userLeagues, onLeagueChange, getDraftStatus: getDraftStatusProp, garage: garageProp }) {
   const [leagueDropdownOpen, setLeagueDropdownOpen] = useState(false)
   const [mobileLeagueOpen, setMobileLeagueOpen] = useState(false)
-  const [headerLinkCopied, setHeaderLinkCopied] = useState(false)
-
-  const copyLeagueLink = () => {
-    if (!selectedLeague) return
-    const url = `${window.location.origin}${window.location.pathname}?league=${selectedLeague.id}`
-    navigator.clipboard.writeText(url).then(() => {
-      setHeaderLinkCopied(true)
-      setTimeout(() => setHeaderLinkCopied(false), 2000)
-    }).catch(() => {
-      const el = document.createElement('textarea')
-      el.value = url
-      document.body.appendChild(el)
-      el.select()
-      document.execCommand('copy')
-      document.body.removeChild(el)
-      setHeaderLinkCopied(true)
-      setTimeout(() => setHeaderLinkCopied(false), 2000)
-    })
-  }
-
   const handleLeagueSelect = (league) => {
     if (onLeagueChange) {
       onLeagueChange(league)
@@ -223,20 +203,6 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
                   </>
                 )}
               </div>
-            )}
-            {selectedLeague && (
-              <button
-                onClick={copyLeagueLink}
-                title="Copy invite link for this league"
-                className={`hidden md:flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border transition-all ${
-                  headerLinkCopied
-                    ? 'border-green-400/60 text-green-400 bg-green-400/10'
-                    : 'border-bpCream/20 text-bpCream/60 hover:text-bpCream hover:border-bpCream/40'
-                }`}
-              >
-                <Share2 size={12} />
-                {headerLinkCopied ? 'Copied!' : 'Invite'}
-              </button>
             )}
           </div>
           <nav className="hidden sm:flex items-center gap-4 text-sm">
@@ -1467,10 +1433,20 @@ export default function BixPrixApp() {
   }
 
   function LoginScreen() {
-    const [isSignUp, setIsSignUp] = useState(false)
+    const hasPendingLeague = !!sessionStorage.getItem(PENDING_LEAGUE_KEY)
+    const [isSignUp, setIsSignUp] = useState(hasPendingLeague)
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [username, setUsername] = useState('')
+
+    const handleEmailChange = (e) => {
+      const val = e.target.value
+      setEmail(val)
+      if (isSignUp && !username) {
+        const suggested = val.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20)
+        if (suggested) setUsername(suggested)
+      }
+    }
 
     const signUp = async () => {
       const { data, error } = await supabase.auth.signUp({
@@ -1535,7 +1511,7 @@ export default function BixPrixApp() {
                 placeholder="Email"
                 type="email"
                 value={email}
-                onChange={e=>setEmail(e.target.value)}
+                onChange={handleEmailChange}
               />
               <input
                 className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
@@ -1763,26 +1739,6 @@ export default function BixPrixApp() {
   }
 
   function LeaguesScreen({ onNavigate, currentScreen }) {
-    const [copiedLeagueId, setCopiedLeagueId] = useState(null)
-
-    const copyInviteLink = (leagueId) => {
-      const url = `${window.location.origin}${window.location.pathname}?league=${leagueId}`
-      navigator.clipboard.writeText(url).then(() => {
-        setCopiedLeagueId(leagueId)
-        setTimeout(() => setCopiedLeagueId(null), 2000)
-      }).catch(() => {
-        // Fallback for older browsers
-        const el = document.createElement('textarea')
-        el.value = url
-        document.body.appendChild(el)
-        el.select()
-        document.execCommand('copy')
-        document.body.removeChild(el)
-        setCopiedLeagueId(leagueId)
-        setTimeout(() => setCopiedLeagueId(null), 2000)
-      })
-    }
-
     return (
       <Shell
         onSignOut={() => supabase.auth.signOut()}
@@ -1807,7 +1763,6 @@ export default function BixPrixApp() {
             const draftStatus = getDraftStatus(l)
             const alreadyJoined = userLeagues.some(ul => ul.id === l.id)
             const canJoin = draftStatus.status === 'open' && !alreadyJoined
-            const copied = copiedLeagueId === l.id
 
             return (
               <Card key={l.id} className="p-5">
@@ -1860,18 +1815,6 @@ export default function BixPrixApp() {
                       {draftStatus.status === 'upcoming' ? 'Draft Not Started' : 'Draft Closed'}
                     </PrimaryButton>
                   )}
-                  <button
-                    onClick={() => copyInviteLink(l.id)}
-                    title="Copy invite link"
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-md border text-sm font-medium transition ${
-                      copied
-                        ? 'border-green-400 text-green-700 bg-green-50'
-                        : 'border-bpNavy/30 text-bpInk/70 hover:bg-bpNavy/5 hover:border-bpNavy/50'
-                    }`}
-                  >
-                    <Share2 size={14} />
-                    {copied ? 'Copied!' : 'Invite'}
-                  </button>
                 </div>
               </Card>
             )

@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Search, RefreshCw, Users, Trophy, Car, DollarSign, Upload, Download, CheckCircle, Play, Zap, Edit } from 'lucide-react';
+import { Plus, Trash2, Search, RefreshCw, Users, Trophy, Car, DollarSign, Upload, Download, CheckCircle, Play, Zap, Edit, Link } from 'lucide-react';
 
 const AdminPortal = () => {
   const [activeTab, setActiveTab] = useState('auctions');
@@ -52,6 +52,7 @@ const AdminPortal = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLeague, setSelectedLeague] = useState(null);
   const [csvImporting, setCsvImporting] = useState(false);
+  const [copiedLeagueId, setCopiedLeagueId] = useState(null);
 
   // State for finalize tab - ended auctions without final prices
   const [endedAuctions, setEndedAuctions] = useState([]);
@@ -733,6 +734,15 @@ const AdminPortal = () => {
       alert('Failed to create league: ' + error.message);
       console.error('Exception:', error);
     }
+  };
+
+  const copyInviteLink = (leagueId) => {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.com';
+    const link = `${appUrl}?league=${leagueId}`;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopiedLeagueId(leagueId);
+      setTimeout(() => setCopiedLeagueId(null), 2000);
+    });
   };
 
   const handleDeleteLeague = async (id) => {
@@ -1751,6 +1761,11 @@ const AdminPortal = () => {
                               <Car size={14} /> Manage Auctions
                             </button>
                           )}
+                          <button onClick={() => copyInviteLink(league.id)}
+                            className={`${copiedLeagueId === league.id ? 'bg-green-600' : 'bg-slate-600 hover:bg-slate-500'} text-white px-3 py-1 rounded text-sm flex items-center gap-1 justify-center transition-colors`}>
+                            <Link size={14} />
+                            {copiedLeagueId === league.id ? 'Copied!' : 'Copy Invite Link'}
+                          </button>
                           <button onClick={() => handleDeleteLeague(league.id)}
                             className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm">
                             Delete
