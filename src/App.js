@@ -8,8 +8,8 @@ import UserHistory from './components/UserHistory'
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
 const supabase = createClient(supabaseUrl, supabaseKey)
-const STORAGE_KEY = 'bixprix_selected_league'
-const SCREEN_STORAGE_KEY = 'bixprix_current_screen'
+const STORAGE_KEY = 'bidprix_selected_league'
+const SCREEN_STORAGE_KEY = 'bidprix_current_screen'
 
 function saveSelectedLeague(league) {
   if (league) {
@@ -45,7 +45,7 @@ function loadCurrentScreen() {
 }
 
 // Magic link: capture ?league=<id> from URL on load and store for post-auth use
-const PENDING_LEAGUE_KEY = 'bixprix_pending_league'
+const PENDING_LEAGUE_KEY = 'bidprix_pending_league'
 ;(function captureMagicLeagueParam() {
   try {
     const params = new URLSearchParams(window.location.search)
@@ -92,7 +92,7 @@ function BrandLogo({ compact }) {
   return (
     <div className="flex items-center gap-3 select-none">
       <div className="leading-tight">
-        <div className="font-extrabold tracking-wide text-[22px] text-bpCream">BIXPRIX</div>
+        <div className="font-extrabold tracking-wide text-[22px] text-bpCream">BID PRIX</div>
         {!compact && (
           <div className="text-[10px] tracking-[0.18em] text-bpGray/95 uppercase">
             Race the Market
@@ -363,7 +363,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
 
       <footer className="border-t border-white/10 mt-10 hidden sm:block">
         <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-bpGray">
-          © {new Date().getFullYear()} BixPrix — Race the Market.
+          © {new Date().getFullYear()} Bid Prix — Race the Market.
         </div>
       </footer>
     </div>
@@ -411,7 +411,7 @@ function LightButton({ className = '', children, ...props }) {
   )
 }
 
-export default function BixPrixApp() {
+export default function BidPrixApp() {
   const [currentScreen, setCurrentScreen] = useState(() => loadCurrentScreen() || 'landing')
   const [user, setUser] = useState(null)
   const [selectedLeague, setSelectedLeague] = useState(null)
@@ -1224,7 +1224,7 @@ export default function BixPrixApp() {
         <div className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${showStickyNav ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
           <div className="bg-bpNavy/95 backdrop-blur-sm border-b border-white/10">
             <div className="mx-auto max-w-5xl px-4 py-2.5 flex items-center justify-between">
-              <div className="font-extrabold tracking-wide text-lg text-bpCream">BIXPRIX</div>
+              <div className="font-extrabold tracking-wide text-lg text-bpCream">BID PRIX</div>
               <button
                 onClick={onGetStarted}
                 className="px-4 py-1.5 rounded-md text-sm font-semibold bg-bpCream text-bpInk hover:opacity-90 transition"
@@ -1242,7 +1242,7 @@ export default function BixPrixApp() {
             <div className="mb-8 flex flex-col items-center gap-4">
               <div className="text-center">
                 <div className="text-6xl font-black tracking-tight text-bpCream drop-shadow-2xl mb-2">
-                  BIXPRIX
+                  BID PRIX
                 </div>
                 <div className="text-2xl tracking-[0.2em] text-bpCream/90 uppercase font-bold">
                   Race the Market
@@ -1426,7 +1426,7 @@ export default function BixPrixApp() {
 
         <div className="border-t border-white/10 py-8">
           <div className="mx-auto max-w-5xl px-4 text-center text-sm text-bpGray">
-            <p>© {new Date().getFullYear()} BixPrix. Not affiliated with Bring a Trailer.</p>
+            <p>© {new Date().getFullYear()} Bid Prix. Not affiliated with Bring a Trailer.</p>
           </div>
         </div>
       </div>
@@ -1491,7 +1491,7 @@ export default function BixPrixApp() {
             onClick={() => updateCurrentScreen('landing')}
             className="block mx-auto mb-8 text-center cursor-pointer group"
           >
-            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BIXPRIX</div>
+            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BID PRIX</div>
             <div className="text-xs tracking-[0.18em] text-bpGray/95 uppercase">Race the Market</div>
           </button>
 
@@ -1585,7 +1585,7 @@ export default function BixPrixApp() {
             onClick={() => updateCurrentScreen('landing')}
             className="block mx-auto mb-8 text-center cursor-pointer group"
           >
-            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BIXPRIX</div>
+            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BID PRIX</div>
             <div className="text-xs tracking-[0.18em] text-bpGray/95 uppercase">Race the Market</div>
           </button>
 
@@ -1677,7 +1677,7 @@ export default function BixPrixApp() {
             onClick={() => updateCurrentScreen('landing')}
             className="block mx-auto mb-8 text-center cursor-pointer group"
           >
-            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BIXPRIX</div>
+            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BID PRIX</div>
             <div className="text-xs tracking-[0.18em] text-bpGray/95 uppercase">Race the Market</div>
           </button>
 
