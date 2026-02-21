@@ -1,5 +1,5 @@
 -- =====================================================
--- BixPrix League Chat System Migration
+-- Bid Prix League Chat System Migration
 -- =====================================================
 -- This migration creates:
 -- 1. league_messages table for chat messages

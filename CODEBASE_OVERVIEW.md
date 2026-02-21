@@ -1,8 +1,8 @@
-# BixPrix Codebase Overview
+# Bid Prix Codebase Overview
 
 ## Project Architecture
 
-The BixPrix application is a **Fantasy Auto Auctions** game built with a two-part architecture:
+The Bid Prix application is a **Fantasy Auto Auctions** game built with a two-part architecture:
 
 1. **Main Client App** (`/home/user/garage-draft/src/`) - React SPA for players
 2. **Admin Portal** (`/home/user/garage-draft/auction-admin/`) - Next.js app for administrators
@@ -35,7 +35,7 @@ Leagues represent competition periods where players draft cars and compete.
 - Fetch all public leagues: `fetchLeagues()` - queries `leagues` table with `is_public = true`
 - Join a league: `joinLeague(league)` - Creates garage + league_member records
 - Get draft status: `getDraftStatus(league)` - Determines if draft is open/upcoming/closed
-- Select league: League persists in localStorage as `bixprix_selected_league`
+- Select league: League persists in localStorage as `bidprix_selected_league`
 
 **In Admin Portal (AdminPortal.jsx):**
 - Create new league with draft start/end dates

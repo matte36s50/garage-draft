@@ -5,7 +5,7 @@
 /* Font (Inter) */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-/* BixPrix Brand Tokens (Premium Dark Mode) */
+/* Bid Prix Brand Tokens (Premium Dark Mode) */
 :root{
   --bp-navy:#0F1A2B;   /* deeper navy */
   --bp-cream:#FAF6EE;  /* warm off-white */
