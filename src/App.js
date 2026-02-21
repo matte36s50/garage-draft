@@ -1083,6 +1083,7 @@ export default function BixPrixApp() {
       }
     })
     return () => subscription.unsubscribe()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
