@@ -1255,7 +1255,7 @@ export default function BidPrixApp() {
             </h1>
 
             <p className="text-xl text-bpCream/80 mb-10 max-w-2xl mx-auto leading-relaxed">
-              Draft your dream garage from live Bring a Trailer auctions. Predict prices. Beat the market. Win glory.
+              Draft your dream garage from live Bring a Trailer auctions. Predict prices. Beat the market.
             </p>
 
             <div className="flex gap-4 justify-center">
