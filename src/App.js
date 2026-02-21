@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard, History, ChevronDown, Check, ArrowLeft } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard, History, ChevronDown, Check, ArrowLeft, Share2 } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import Dashboard from './components/Dashboard'
 import LeagueChat from './components/LeagueChat'
@@ -43,6 +43,21 @@ function loadCurrentScreen() {
     return null
   }
 }
+
+// Magic link: capture ?league=<id> from URL on load and store for post-auth use
+const PENDING_LEAGUE_KEY = 'bixprix_pending_league'
+;(function captureMagicLeagueParam() {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const leagueId = params.get('league')
+    if (leagueId) {
+      sessionStorage.setItem(PENDING_LEAGUE_KEY, leagueId)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  } catch (e) {
+    // ignore - browser might not support sessionStorage
+  }
+})()
 
 function RecentUpdates({ updates }) {
   if (updates.length === 0) return null
@@ -107,6 +122,25 @@ function getLeagueDraftInfo(league) {
 function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, connectionStatus, recentUpdates, selectedLeague, onManualRefresh, userLeagues, onLeagueChange, getDraftStatus: getDraftStatusProp, garage: garageProp }) {
   const [leagueDropdownOpen, setLeagueDropdownOpen] = useState(false)
   const [mobileLeagueOpen, setMobileLeagueOpen] = useState(false)
+  const [headerLinkCopied, setHeaderLinkCopied] = useState(false)
+
+  const copyLeagueLink = () => {
+    if (!selectedLeague) return
+    const url = `${window.location.origin}${window.location.pathname}?league=${selectedLeague.id}`
+    navigator.clipboard.writeText(url).then(() => {
+      setHeaderLinkCopied(true)
+      setTimeout(() => setHeaderLinkCopied(false), 2000)
+    }).catch(() => {
+      const el = document.createElement('textarea')
+      el.value = url
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+      setHeaderLinkCopied(true)
+      setTimeout(() => setHeaderLinkCopied(false), 2000)
+    })
+  }
 
   const handleLeagueSelect = (league) => {
     if (onLeagueChange) {
@@ -189,6 +223,20 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
                   </>
                 )}
               </div>
+            )}
+            {selectedLeague && (
+              <button
+                onClick={copyLeagueLink}
+                title="Copy invite link for this league"
+                className={`hidden md:flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border transition-all ${
+                  headerLinkCopied
+                    ? 'border-green-400/60 text-green-400 bg-green-400/10'
+                    : 'border-bpCream/20 text-bpCream/60 hover:text-bpCream hover:border-bpCream/40'
+                }`}
+              >
+                <Share2 size={12} />
+                {headerLinkCopied ? 'Copied!' : 'Invite'}
+              </button>
             )}
           </div>
           <nav className="hidden sm:flex items-center gap-4 text-sm">
@@ -916,6 +964,66 @@ export default function BixPrixApp() {
     }
   }
 
+  // Magic link: called after auth to auto-join the league from the URL param
+  const handlePendingLeague = async (sessionUser) => {
+    const pendingId = sessionStorage.getItem(PENDING_LEAGUE_KEY)
+    if (!pendingId || !sessionUser) return false
+
+    sessionStorage.removeItem(PENDING_LEAGUE_KEY)
+
+    try {
+      const { data: league, error } = await supabase
+        .from('leagues')
+        .select('*, league_members(count)')
+        .eq('id', pendingId)
+        .single()
+
+      if (error || !league) {
+        console.warn('Magic link: league not found', pendingId)
+        return false
+      }
+
+      const normalizedLeague = {
+        ...league,
+        playerCount: league.league_members?.[0]?.count || 0,
+        status: 'Open',
+      }
+
+      // Check if already a member
+      const { data: existing } = await supabase
+        .from('league_members')
+        .select('league_id')
+        .eq('league_id', pendingId)
+        .eq('user_id', sessionUser.id)
+        .maybeSingle()
+
+      if (!existing) {
+        const draftStatus = getDraftStatus(league)
+        if (draftStatus.status === 'open') {
+          // Join the league
+          const { data: g, error: ge } = await supabase
+            .from('garages')
+            .insert([{ user_id: sessionUser.id, league_id: pendingId, remaining_budget: league.spending_limit || 200000 }])
+            .select()
+            .single()
+
+          if (!ge && g) {
+            await supabase
+              .from('league_members')
+              .insert([{ league_id: pendingId, user_id: sessionUser.id, total_score: 0 }])
+          }
+        }
+      }
+
+      updateSelectedLeague(normalizedLeague)
+      updateCurrentScreen('dashboard')
+      return true
+    } catch (err) {
+      console.error('Magic link: error handling pending league', err)
+      return false
+    }
+  }
+
   const addToGarage = async (auction) => {
     if (selectedLeague) {
       const draftStatus = getDraftStatus(selectedLeague)
@@ -966,25 +1074,26 @@ export default function BixPrixApp() {
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session }}) => {
+    supabase.auth.getSession().then(async ({ data: { session }}) => {
       if (session) {
         setUser(session.user)
-        // Smart navigation: go to dashboard if user has a saved league, otherwise leagues
-        const savedLeague = loadSelectedLeague()
-        const savedScreen = loadCurrentScreen()
-        if (savedLeague && savedScreen && savedScreen !== 'landing' && savedScreen !== 'login') {
-          // User has a league and was on a valid screen, restore that screen
-          updateCurrentScreen(savedScreen)
-        } else if (savedLeague) {
-          // User has a league but no saved screen, go to dashboard
-          updateCurrentScreen('dashboard')
-        } else {
-          // No saved league, go to leagues selection
-          updateCurrentScreen('leagues')
+        // Magic link: check for pending league from URL param first
+        const handled = await handlePendingLeague(session.user)
+        if (!handled) {
+          // Smart navigation: go to dashboard if user has a saved league, otherwise leagues
+          const savedLeague = loadSelectedLeague()
+          const savedScreen = loadCurrentScreen()
+          if (savedLeague && savedScreen && savedScreen !== 'landing' && savedScreen !== 'login') {
+            updateCurrentScreen(savedScreen)
+          } else if (savedLeague) {
+            updateCurrentScreen('dashboard')
+          } else {
+            updateCurrentScreen('leagues')
+          }
         }
       }
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user || null)
       if (event === 'PASSWORD_RECOVERY') {
         // User clicked the password reset link - send them to the reset form
@@ -992,12 +1101,16 @@ export default function BixPrixApp() {
         return
       }
       if (session) {
-        // Smart navigation on auth change
-        const savedLeague = loadSelectedLeague()
-        if (savedLeague) {
-          updateCurrentScreen('dashboard')
-        } else {
-          updateCurrentScreen('leagues')
+        // Magic link: check for pending league from URL param first
+        const handled = await handlePendingLeague(session.user)
+        if (!handled) {
+          // Smart navigation on auth change
+          const savedLeague = loadSelectedLeague()
+          if (savedLeague) {
+            updateCurrentScreen('dashboard')
+          } else {
+            updateCurrentScreen('leagues')
+          }
         }
       } else {
         updateCurrentScreen('landing')
@@ -1650,6 +1763,26 @@ export default function BixPrixApp() {
   }
 
   function LeaguesScreen({ onNavigate, currentScreen }) {
+    const [copiedLeagueId, setCopiedLeagueId] = useState(null)
+
+    const copyInviteLink = (leagueId) => {
+      const url = `${window.location.origin}${window.location.pathname}?league=${leagueId}`
+      navigator.clipboard.writeText(url).then(() => {
+        setCopiedLeagueId(leagueId)
+        setTimeout(() => setCopiedLeagueId(null), 2000)
+      }).catch(() => {
+        // Fallback for older browsers
+        const el = document.createElement('textarea')
+        el.value = url
+        document.body.appendChild(el)
+        el.select()
+        document.execCommand('copy')
+        document.body.removeChild(el)
+        setCopiedLeagueId(leagueId)
+        setTimeout(() => setCopiedLeagueId(null), 2000)
+      })
+    }
+
     return (
       <Shell
         onSignOut={() => supabase.auth.signOut()}
@@ -1674,6 +1807,7 @@ export default function BixPrixApp() {
             const draftStatus = getDraftStatus(l)
             const alreadyJoined = userLeagues.some(ul => ul.id === l.id)
             const canJoin = draftStatus.status === 'open' && !alreadyJoined
+            const copied = copiedLeagueId === l.id
 
             return (
               <Card key={l.id} className="p-5">
@@ -1712,20 +1846,32 @@ export default function BixPrixApp() {
                   <span className="flex items-center gap-2"><Trophy size={16}/> {l.status || 'Open'}</span>
                 </div>
 
-                <div className="mt-5">
+                <div className="mt-5 flex gap-2">
                   {alreadyJoined ? (
-                    <PrimaryButton className="w-full opacity-50 cursor-not-allowed" disabled>
+                    <PrimaryButton className="flex-1 opacity-50 cursor-not-allowed" disabled>
                       Already Joined
                     </PrimaryButton>
                   ) : canJoin ? (
-                    <PrimaryButton className="w-full" onClick={() => joinLeague(l)}>
+                    <PrimaryButton className="flex-1" onClick={() => joinLeague(l)}>
                       Join League
                     </PrimaryButton>
                   ) : (
-                    <PrimaryButton className="w-full opacity-50 cursor-not-allowed" disabled>
+                    <PrimaryButton className="flex-1 opacity-50 cursor-not-allowed" disabled>
                       {draftStatus.status === 'upcoming' ? 'Draft Not Started' : 'Draft Closed'}
                     </PrimaryButton>
                   )}
+                  <button
+                    onClick={() => copyInviteLink(l.id)}
+                    title="Copy invite link"
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-md border text-sm font-medium transition ${
+                      copied
+                        ? 'border-green-400 text-green-700 bg-green-50'
+                        : 'border-bpNavy/30 text-bpInk/70 hover:bg-bpNavy/5 hover:border-bpNavy/50'
+                    }`}
+                  >
+                    <Share2 size={14} />
+                    {copied ? 'Copied!' : 'Invite'}
+                  </button>
                 </div>
               </Card>
             )
