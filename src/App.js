@@ -44,6 +44,21 @@ function loadCurrentScreen() {
   }
 }
 
+// Magic link: capture ?league=<id> from URL on load and store for post-auth use
+const PENDING_LEAGUE_KEY = 'bixprix_pending_league'
+;(function captureMagicLeagueParam() {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const leagueId = params.get('league')
+    if (leagueId) {
+      sessionStorage.setItem(PENDING_LEAGUE_KEY, leagueId)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  } catch (e) {
+    // ignore - browser might not support sessionStorage
+  }
+})()
+
 function RecentUpdates({ updates }) {
   if (updates.length === 0) return null
 
@@ -107,7 +122,6 @@ function getLeagueDraftInfo(league) {
 function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, connectionStatus, recentUpdates, selectedLeague, onManualRefresh, userLeagues, onLeagueChange, getDraftStatus: getDraftStatusProp, garage: garageProp }) {
   const [leagueDropdownOpen, setLeagueDropdownOpen] = useState(false)
   const [mobileLeagueOpen, setMobileLeagueOpen] = useState(false)
-
   const handleLeagueSelect = (league) => {
     if (onLeagueChange) {
       onLeagueChange(league)
@@ -916,6 +930,66 @@ export default function BixPrixApp() {
     }
   }
 
+  // Magic link: called after auth to auto-join the league from the URL param
+  const handlePendingLeague = async (sessionUser) => {
+    const pendingId = sessionStorage.getItem(PENDING_LEAGUE_KEY)
+    if (!pendingId || !sessionUser) return false
+
+    sessionStorage.removeItem(PENDING_LEAGUE_KEY)
+
+    try {
+      const { data: league, error } = await supabase
+        .from('leagues')
+        .select('*, league_members(count)')
+        .eq('id', pendingId)
+        .single()
+
+      if (error || !league) {
+        console.warn('Magic link: league not found', pendingId)
+        return false
+      }
+
+      const normalizedLeague = {
+        ...league,
+        playerCount: league.league_members?.[0]?.count || 0,
+        status: 'Open',
+      }
+
+      // Check if already a member
+      const { data: existing } = await supabase
+        .from('league_members')
+        .select('league_id')
+        .eq('league_id', pendingId)
+        .eq('user_id', sessionUser.id)
+        .maybeSingle()
+
+      if (!existing) {
+        const draftStatus = getDraftStatus(league)
+        if (draftStatus.status === 'open') {
+          // Join the league
+          const { data: g, error: ge } = await supabase
+            .from('garages')
+            .insert([{ user_id: sessionUser.id, league_id: pendingId, remaining_budget: league.spending_limit || 200000 }])
+            .select()
+            .single()
+
+          if (!ge && g) {
+            await supabase
+              .from('league_members')
+              .insert([{ league_id: pendingId, user_id: sessionUser.id, total_score: 0 }])
+          }
+        }
+      }
+
+      updateSelectedLeague(normalizedLeague)
+      updateCurrentScreen('dashboard')
+      return true
+    } catch (err) {
+      console.error('Magic link: error handling pending league', err)
+      return false
+    }
+  }
+
   const addToGarage = async (auction) => {
     if (selectedLeague) {
       const draftStatus = getDraftStatus(selectedLeague)
@@ -966,25 +1040,26 @@ export default function BixPrixApp() {
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session }}) => {
+    supabase.auth.getSession().then(async ({ data: { session }}) => {
       if (session) {
         setUser(session.user)
-        // Smart navigation: go to dashboard if user has a saved league, otherwise leagues
-        const savedLeague = loadSelectedLeague()
-        const savedScreen = loadCurrentScreen()
-        if (savedLeague && savedScreen && savedScreen !== 'landing' && savedScreen !== 'login') {
-          // User has a league and was on a valid screen, restore that screen
-          updateCurrentScreen(savedScreen)
-        } else if (savedLeague) {
-          // User has a league but no saved screen, go to dashboard
-          updateCurrentScreen('dashboard')
-        } else {
-          // No saved league, go to leagues selection
-          updateCurrentScreen('leagues')
+        // Magic link: check for pending league from URL param first
+        const handled = await handlePendingLeague(session.user)
+        if (!handled) {
+          // Smart navigation: go to dashboard if user has a saved league, otherwise leagues
+          const savedLeague = loadSelectedLeague()
+          const savedScreen = loadCurrentScreen()
+          if (savedLeague && savedScreen && savedScreen !== 'landing' && savedScreen !== 'login') {
+            updateCurrentScreen(savedScreen)
+          } else if (savedLeague) {
+            updateCurrentScreen('dashboard')
+          } else {
+            updateCurrentScreen('leagues')
+          }
         }
       }
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user || null)
       if (event === 'PASSWORD_RECOVERY') {
         // User clicked the password reset link - send them to the reset form
@@ -992,12 +1067,16 @@ export default function BixPrixApp() {
         return
       }
       if (session) {
-        // Smart navigation on auth change
-        const savedLeague = loadSelectedLeague()
-        if (savedLeague) {
-          updateCurrentScreen('dashboard')
-        } else {
-          updateCurrentScreen('leagues')
+        // Magic link: check for pending league from URL param first
+        const handled = await handlePendingLeague(session.user)
+        if (!handled) {
+          // Smart navigation on auth change
+          const savedLeague = loadSelectedLeague()
+          if (savedLeague) {
+            updateCurrentScreen('dashboard')
+          } else {
+            updateCurrentScreen('leagues')
+          }
         }
       } else {
         updateCurrentScreen('landing')
@@ -1354,10 +1433,20 @@ export default function BixPrixApp() {
   }
 
   function LoginScreen() {
-    const [isSignUp, setIsSignUp] = useState(false)
+    const hasPendingLeague = !!sessionStorage.getItem(PENDING_LEAGUE_KEY)
+    const [isSignUp, setIsSignUp] = useState(hasPendingLeague)
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [username, setUsername] = useState('')
+
+    const handleEmailChange = (e) => {
+      const val = e.target.value
+      setEmail(val)
+      if (isSignUp && !username) {
+        const suggested = val.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20)
+        if (suggested) setUsername(suggested)
+      }
+    }
 
     const signUp = async () => {
       const { data, error } = await supabase.auth.signUp({
@@ -1422,7 +1511,7 @@ export default function BixPrixApp() {
                 placeholder="Email"
                 type="email"
                 value={email}
-                onChange={e=>setEmail(e.target.value)}
+                onChange={handleEmailChange}
               />
               <input
                 className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
@@ -1712,17 +1801,17 @@ export default function BixPrixApp() {
                   <span className="flex items-center gap-2"><Trophy size={16}/> {l.status || 'Open'}</span>
                 </div>
 
-                <div className="mt-5">
+                <div className="mt-5 flex gap-2">
                   {alreadyJoined ? (
-                    <PrimaryButton className="w-full opacity-50 cursor-not-allowed" disabled>
+                    <PrimaryButton className="flex-1 opacity-50 cursor-not-allowed" disabled>
                       Already Joined
                     </PrimaryButton>
                   ) : canJoin ? (
-                    <PrimaryButton className="w-full" onClick={() => joinLeague(l)}>
+                    <PrimaryButton className="flex-1" onClick={() => joinLeague(l)}>
                       Join League
                     </PrimaryButton>
                   ) : (
-                    <PrimaryButton className="w-full opacity-50 cursor-not-allowed" disabled>
+                    <PrimaryButton className="flex-1 opacity-50 cursor-not-allowed" disabled>
                       {draftStatus.status === 'upcoming' ? 'Draft Not Started' : 'Draft Closed'}
                     </PrimaryButton>
                   )}
