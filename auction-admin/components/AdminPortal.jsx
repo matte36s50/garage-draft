@@ -737,7 +737,7 @@ const AdminPortal = () => {
   };
 
   const copyInviteLink = (leagueId) => {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.com';
+    const appUrl = 'https://garage-draft.vercel.app';
     const link = `${appUrl}?league=${leagueId}`;
     navigator.clipboard.writeText(link).then(() => {
       setCopiedLeagueId(leagueId);
