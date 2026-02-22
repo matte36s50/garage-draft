@@ -1935,10 +1935,10 @@ export default function BidPrixApp() {
                     {/* 50% marker */}
                     <div className="absolute top-0 bottom-0 w-0.5 border-l-2 border-dashed border-bpCream/50" style={{ left: '50%' }} />
                   </div>
-                  <div className="flex justify-between mt-1 text-[10px] text-bpCream/50">
+                  <div className="grid grid-cols-3 mt-1 text-[10px] text-bpCream/50">
                     <span>${spent.toLocaleString()} spent</span>
-                    <span className="absolute left-1/2 -translate-x-1/2 relative">50% min</span>
-                    <span>${limit.toLocaleString()}</span>
+                    <span className="text-center">50% min</span>
+                    <span className="text-right">${limit.toLocaleString()}</span>
                   </div>
                 </div>
               )
@@ -2226,10 +2226,10 @@ export default function BidPrixApp() {
                 />
                 <div className="absolute top-0 bottom-0 w-0.5 border-l-2 border-dashed border-bpCream/50" style={{ left: '50%' }} />
               </div>
-              <div className="flex justify-between mt-1 text-[10px] text-bpCream/50">
+              <div className="grid grid-cols-3 mt-1 text-[10px] text-bpCream/50">
                 <span>${spent.toLocaleString()} spent</span>
-                <span>50% min</span>
-                <span>${limit.toLocaleString()}</span>
+                <span className="text-center">50% min</span>
+                <span className="text-right">${limit.toLocaleString()}</span>
               </div>
             </div>
           )
