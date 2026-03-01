@@ -225,6 +225,7 @@ async function runFinalizer() {
       .select('auction_id, title, url, current_bid, timestamp_end')
       .lt('timestamp_end', twoHoursAgo)  // Ended more than 2 hours ago
       .is('final_price', null)           // No final price yet
+      .eq('reserve_not_met', false)      // Skip already-confirmed reserve-not-met auctions
       .not('url', 'is', null)            // Has a URL to scrape
       .order('timestamp_end', { ascending: false })
       .limit(100);
@@ -317,13 +318,16 @@ async function runFinalizer() {
         continue;
       }
 
-      // Handle reserve not met - update current_bid but leave final_price NULL
-      // This way the 25% penalty is correctly applied in scoring
+      // Handle reserve not met - update current_bid and flag reserve_not_met.
+      // final_price stays NULL so scoring applies the 25% penalty correctly.
+      // reserve_not_met = true prevents this auction from reappearing in the
+      // Finalize tab or being re-scraped on subsequent cron runs.
       if (status === 'no_sale') {
-        // Update current_bid with the high bid so scoring can use it
+        // Update current_bid with the high bid so scoring can use it,
+        // and set reserve_not_met so this auction is permanently resolved.
         await supabase
           .from('auctions')
-          .update({ current_bid: price })
+          .update({ current_bid: price, reserve_not_met: true })
           .eq('auction_id', auction.auction_id);
 
         console.log(`   ⚠️ Reserve not met - updated current_bid to ${price.toLocaleString()}`);

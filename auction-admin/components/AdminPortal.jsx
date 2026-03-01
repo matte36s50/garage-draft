@@ -252,8 +252,9 @@ const AdminPortal = () => {
       const { data, error } = await supabase
         .from('auctions')
         .select('*')
-        .lt('timestamp_end', now)  // Auction has ended
-        .is('final_price', null)   // No final price set yet
+        .lt('timestamp_end', now)        // Auction has ended
+        .is('final_price', null)         // No final price set yet
+        .eq('reserve_not_met', false)    // Exclude confirmed reserve-not-met auctions
         .order('timestamp_end', { ascending: false })
         .limit(100);
 
@@ -348,18 +349,22 @@ const AdminPortal = () => {
     try {
       const { supabase } = await import('@/lib/supabase');
 
-      // We'll set final_price to a special value (0) to indicate reserve not met
-      // Or we could add a new field. For now, leave final_price as null
-      // and the system already handles this (reserveNotMet = ended && !final_price)
+      // Persist reserve_not_met = true so the auction is permanently excluded
+      // from the Finalize tab on every subsequent load. final_price stays NULL
+      // so the scoring system correctly applies the 25% penalty via:
+      //   auctionEnded && finalPrice === null → reserve_not_met status
+      const { error } = await supabase
+        .from('auctions')
+        .update({ reserve_not_met: true })
+        .eq('auction_id', auctionId);
 
-      // Remove from ended auctions list since it's "handled"
-      // Actually, we should probably keep it with null final_price
-      // The scoring system already handles this case
+      if (error) throw error;
 
-      alert('Auction will be scored as "Reserve Not Met" (75% penalty applied)');
       setEndedAuctions(prev => prev.filter(a => a.auction_id !== auctionId));
+      alert('Auction marked as "Reserve Not Met" — 25% of high bid will be scored.');
     } catch (error) {
       console.error('Error marking reserve not met:', error);
+      alert('Failed to mark auction as reserve not met: ' + error.message);
     } finally {
       setUpdatingAuctionId(null);
     }
