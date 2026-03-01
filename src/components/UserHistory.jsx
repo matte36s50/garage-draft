@@ -3,6 +3,7 @@ import { Trophy, Target, TrendingUp, Calendar, Car, Award, Clock } from 'lucide-
 
 export default function UserHistory({ supabase, user }) {
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [results, setResults] = useState([]);
   const [stats, setStats] = useState({
     totalLeagues: 0,
@@ -14,6 +15,7 @@ export default function UserHistory({ supabase, user }) {
   const fetchHistory = useCallback(async () => {
     try {
       setLoading(true);
+      setFetchError(null);
 
       // Fetch user's league results
       const { data: leagueResults, error } = await supabase
@@ -42,6 +44,7 @@ export default function UserHistory({ supabase, user }) {
 
       if (error) {
         console.error('Error fetching history:', error);
+        setFetchError(error.message || 'Failed to load league history');
         setResults([]);
         return;
       }
@@ -63,6 +66,7 @@ export default function UserHistory({ supabase, user }) {
       }
     } catch (error) {
       console.error('Failed to fetch history:', error);
+      setFetchError(error.message || 'Failed to load league history');
     } finally {
       setLoading(false);
     }
@@ -165,7 +169,13 @@ export default function UserHistory({ supabase, user }) {
       <div>
         <h3 className="text-lg font-semibold text-bpCream mb-3">Completed Leagues</h3>
 
-        {results.length === 0 ? (
+        {fetchError ? (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-8 text-center">
+            <Trophy className="mx-auto text-red-400 mb-3" size={40} />
+            <p className="text-red-400 font-medium">Failed to load history</p>
+            <p className="text-red-400/70 text-sm mt-1">{fetchError}</p>
+          </div>
+        ) : results.length === 0 ? (
           <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center">
             <Trophy className="mx-auto text-bpGray mb-3" size={40} />
             <p className="text-bpGray">No completed leagues yet</p>
