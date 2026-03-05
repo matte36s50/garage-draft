@@ -201,8 +201,8 @@ export async function calculateUserScore(supabase, userId, leagueId) {
     // Roster is complete when user has exactly 7 cars
     const isRosterComplete = carsCount >= MAX_GARAGE_CARS;
 
-    // Sort cars by final value to find best performer
-    carsData.sort((a, b) => b.finalValue - a.finalValue);
+    // Sort cars by dollar gain to find best performer
+    carsData.sort((a, b) => b.dollarGain - a.dollarGain);
 
     console.log(`[Score Calc] Final results:`, {
       totalScore: totalFinalValue.toFixed(2),
