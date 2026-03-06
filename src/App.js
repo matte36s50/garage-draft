@@ -1006,7 +1006,14 @@ export default function BidPrixApp() {
         return
       }
     }
-    
+
+    // Validate the auction is in the current league's allowed pool
+    const isAuctionInLeaguePool = auctions.some(a => a.id === auction.id)
+    if (!isAuctionInLeaguePool) {
+      alert('Error: This car is not part of the current league\'s auction pool.')
+      return
+    }
+
     if (garage.length >= 7) { alert('Garage is full!'); return }
     const draftPrice = auction.baselinePrice || auction.currentBid
     if (budget < draftPrice) { alert('Not enough budget remaining!'); return }
