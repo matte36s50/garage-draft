@@ -769,8 +769,15 @@ export default function BidPrixApp() {
       }
     })
 
+    // Shuffle so each player sees cars in a different order.
+    // Order stays stable for the session (no re-shuffle on tab switches).
+    for (let i = transformed.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [transformed[i], transformed[j]] = [transformed[j], transformed[i]];
+    }
+
     setAuctions(transformed)
-    
+
   } catch (e) {
     console.error('Error fetching auctions:', e)
     setAuctions([])
