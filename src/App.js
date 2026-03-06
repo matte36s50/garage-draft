@@ -647,8 +647,9 @@ export default function BidPrixApp() {
     }
   }
 
-  const fetchAuctions = async () => {
-  if (!selectedLeague) {
+  const fetchAuctions = async (leagueOverride) => {
+  const league = leagueOverride || selectedLeague
+  if (!league) {
     console.log('No league selected, cannot fetch auctions')
     return
   }
@@ -658,7 +659,7 @@ export default function BidPrixApp() {
     let auctionData = [];
 
     // Check if league uses manual auction selection
-    if (selectedLeague.use_manual_auctions) {
+    if (league.use_manual_auctions) {
       console.log('League uses manual auction selection')
 
       // Fetch manually selected auctions for this league
@@ -668,7 +669,7 @@ export default function BidPrixApp() {
           *,
           auctions!league_auctions_auction_id_fkey(*)
         `)
-        .eq('league_id', selectedLeague.id);
+        .eq('league_id', league.id);
 
       if (leagueAuctionsError) throw leagueAuctionsError;
 
@@ -892,7 +893,7 @@ export default function BidPrixApp() {
       if (existing) {
         updateSelectedLeague(league)
         await fetchUserGarage(league.id)
-        await fetchAuctions()
+        await fetchAuctions(league)
         await fetchBonusCar(league.id)
         await fetchUserPrediction(league.id)
         updateCurrentScreen('cars')
@@ -919,7 +920,7 @@ export default function BidPrixApp() {
       setGarage([])
 
       await fetchUserLeagues()  // Refresh joined leagues list
-      await fetchAuctions()
+      await fetchAuctions(league)
       await fetchBonusCar(league.id)
       await fetchUserPrediction(league.id)
       updateCurrentScreen('cars')
