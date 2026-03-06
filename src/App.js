@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import Dashboard from './components/Dashboard'
 import LeagueChat from './components/LeagueChat'
 import UserHistory from './components/UserHistory'
+import DraftResults from './components/DraftResults'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
@@ -229,6 +230,12 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
               onClick={() => onNavigate && onNavigate('leaderboard')}
             >
               Leaderboard
+            </button>
+            <button
+              className={`hover:text-bpCream/90 transition ${currentScreen === 'draft-results' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
+              onClick={() => onNavigate && onNavigate('draft-results')}
+            >
+              Draft Picks
             </button>
             <button
               className={`hover:text-bpCream/90 transition ${currentScreen === 'leagues' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
@@ -3144,6 +3151,25 @@ export default function BidPrixApp() {
       onLeagueChange={updateSelectedLeague}
     >
       <UserHistory supabase={supabase} user={user} />
+    </Shell>
+  )
+  if (currentScreen === 'draft-results') return (
+    <Shell
+      onSignOut={() => supabase.auth.signOut()}
+      onNavigate={updateCurrentScreen}
+      currentScreen={currentScreen}
+      lastUpdated={lastUpdated}
+      connectionStatus={connectionStatus}
+      selectedLeague={selectedLeague}
+      userLeagues={userLeagues}
+      onLeagueChange={updateSelectedLeague}
+    >
+      <DraftResults
+        supabase={supabase}
+        selectedLeague={selectedLeague}
+        draftStatus={selectedLeague ? getDraftStatus(selectedLeague) : null}
+        getDefaultCarImage={getDefaultCarImage}
+      />
     </Shell>
   )
   return null
