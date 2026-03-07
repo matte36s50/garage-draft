@@ -204,26 +204,29 @@ export async function GET(request) {
 
 // POST doesn't require auth - called from admin UI which is already protected
 export async function POST(request) {
-  return runFinalizer();
+  // Manual admin trigger: only skip auctions that ended in the last 5 minutes
+  // (BaT updates pages within minutes of auction end, so no need for 2-hour wait)
+  return runFinalizer({ minAgeMinutes: 5 });
 }
 
-async function runFinalizer() {
+async function runFinalizer({ minAgeMinutes = 120 } = {}) {
   const supabase = getSupabaseClient();
 
   console.log('=' .repeat(50));
   console.log('🚀 Auction Finalizer - Starting');
   console.log(`🕐 Time: ${new Date().toISOString()}`);
+  console.log(`⏱️ Min age: ${minAgeMinutes} minutes`);
   console.log('=' .repeat(50));
 
   try {
-    // Get auctions that ended more than 2 hours ago but have no final_price
+    // Get auctions that ended more than minAgeMinutes ago but have no final_price
     const now = Math.floor(Date.now() / 1000);
-    const twoHoursAgo = now - (2 * 60 * 60);
+    const cutoff = now - (minAgeMinutes * 60);
 
     const { data: auctions, error: fetchError } = await supabase
       .from('auctions')
       .select('auction_id, title, url, current_bid, timestamp_end')
-      .lt('timestamp_end', twoHoursAgo)  // Ended more than 2 hours ago
+      .lt('timestamp_end', cutoff)  // Ended more than minAgeMinutes ago
       .is('final_price', null)           // No final price yet
       .eq('reserve_not_met', false)      // Skip already-confirmed reserve-not-met auctions
       .not('url', 'is', null)            // Has a URL to scrape
