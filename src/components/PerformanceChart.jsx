@@ -99,9 +99,16 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
           }
           point.yourGain = lastUserGain;
 
-          // Add market average (use historical if available in snapshot, otherwise current)
-          const anyPointAtTimestamp = history.find(h => h.timestamp === timestamp);
-          point.marketAvg = anyPointAtTimestamp?.snapshot?.marketAverage ?? marketAvg.marketAverage;
+          // Calculate league average dollar value from all users' cumulative gains at this timestamp
+          const pointsAtTimestamp = history.filter(h => h.timestamp === timestamp);
+          const validGains = pointsAtTimestamp
+            .filter(h => h.cumulative_gain !== null && h.cumulative_gain !== undefined)
+            .map(h => h.cumulative_gain);
+          if (validGains.length > 0) {
+            point.marketAvg = validGains.reduce((a, b) => a + b, 0) / validGains.length;
+          } else {
+            point.marketAvg = 0;
+          }
 
           // Get top 3 users' data
           topUsersData?.forEach((user, index) => {
@@ -181,7 +188,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
           />
           <Tooltip
             labelFormatter={(ts) => format(new Date(ts), 'MMM d, yyyy h:mm a')}
-            formatter={(value) => [`$${Number(value).toLocaleString()}`, '']}
+            formatter={(value, name) => [`$${Number(value).toLocaleString()}`, name]}
             contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', color: '#f8fafc' }}
             labelStyle={{ color: '#94a3b8' }}
           />
