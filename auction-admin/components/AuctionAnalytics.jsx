@@ -109,8 +109,9 @@ export default function AuctionAnalytics() {
 
   useEffect(() => { loadData(); }, [limit]);
 
-  // Derive unique makes for datalist
+  // Derive unique makes and auction events for datalists
   const makes = useMemo(() => [...new Set(auctions.map(a => a.make).filter(Boolean))].sort(), [auctions]);
+  const auctionEvents = useMemo(() => [...new Set(auctions.map(a => a.auction_reference).filter(Boolean))].sort(), [auctions]);
 
   // Filtered auctions
   const filtered = useMemo(() => {
@@ -294,13 +295,17 @@ export default function AuctionAnalytics() {
             />
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Auction Reference / ID</label>
+            <label className="text-xs text-slate-500 mb-1 block">Auction Event</label>
             <input
+              list="event-list"
               value={searchRef}
               onChange={e => setSearchRef(e.target.value)}
-              placeholder="e.g. bat-12345"
+              placeholder="e.g. Gooding Amelia"
               className="w-full bg-slate-700 border border-slate-600 text-white rounded px-3 py-1.5 text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500"
             />
+            <datalist id="event-list">
+              {auctionEvents.map(e => <option key={e} value={e} />)}
+            </datalist>
           </div>
         </div>
         {(searchMake || searchModel || searchYear || searchTitle || searchRef) && (
@@ -431,7 +436,7 @@ export default function AuctionAnalytics() {
                     <ThBtn field="year">Year</ThBtn>
                     <ThBtn field="make">Make</ThBtn>
                     <ThBtn field="model">Model</ThBtn>
-                    <ThBtn field="auction_reference">Auction Ref</ThBtn>
+                    <ThBtn field="auction_reference">Auction Event</ThBtn>
                     <ThBtn field="estimate">48h Estimate</ThBtn>
                     <ThBtn field="final">Final Price</ThBtn>
                     <ThBtn field="variance">Variance</ThBtn>
