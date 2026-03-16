@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Search, RefreshCw, Users, Trophy, Car, DollarSign, Upload, Download, CheckCircle, Play, Zap, Edit, Link } from 'lucide-react';
+import AuctionAnalytics from './AuctionAnalytics';
 
 const AdminPortal = () => {
   const [activeTab, setActiveTab] = useState('auctions');
@@ -1024,7 +1025,7 @@ const AdminPortal = () => {
 
         {/* TABS */}
         <div className="flex gap-2 mb-6 border-b border-slate-700">
-          {['auctions', 'finalize', 'users', 'leagues', 'garages'].map(tab => (
+          {['auctions', 'finalize', 'users', 'leagues', 'garages', 'analytics'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1867,6 +1868,11 @@ const AdminPortal = () => {
               ))
             )}
           </div>
+        )}
+
+        {/* ANALYTICS TAB */}
+        {activeTab === 'analytics' && (
+          <AuctionAnalytics />
         )}
 
         {/* AUCTION MANAGER MODAL */}
