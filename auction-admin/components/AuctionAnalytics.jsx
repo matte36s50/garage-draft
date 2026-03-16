@@ -81,6 +81,7 @@ export default function AuctionAnalytics() {
   const [searchModel, setSearchModel] = useState('');
   const [searchYear, setSearchYear] = useState('');
   const [searchTitle, setSearchTitle] = useState('');
+  const [searchRef, setSearchRef] = useState('');
   const [sortField, setSortField] = useState('timestamp_end');
   const [sortDir, setSortDir] = useState('desc');
   const [chartView, setChartView] = useState('bar'); // 'bar' | 'scatter'
@@ -92,7 +93,7 @@ export default function AuctionAnalytics() {
       const { supabase } = await import('@/lib/supabase');
       const { data, error } = await supabase
         .from('auctions')
-        .select('auction_id, title, make, model, year, price_at_48h, final_price, current_bid, reserve_not_met, timestamp_end, inserted_at')
+        .select('auction_id, title, make, model, year, price_at_48h, final_price, current_bid, reserve_not_met, timestamp_end, inserted_at, auction_reference')
         .not('final_price', 'is', null)
         .order('timestamp_end', { ascending: false })
         .limit(limit);
@@ -118,9 +119,10 @@ export default function AuctionAnalytics() {
       if (searchModel && !a.model?.toLowerCase().includes(searchModel.toLowerCase())) return false;
       if (searchYear && String(a.year) !== searchYear) return false;
       if (searchTitle && !a.title?.toLowerCase().includes(searchTitle.toLowerCase())) return false;
+      if (searchRef && !a.auction_reference?.toLowerCase().includes(searchRef.toLowerCase()) && !a.auction_id?.toLowerCase().includes(searchRef.toLowerCase())) return false;
       return true;
     });
-  }, [auctions, searchMake, searchModel, searchYear, searchTitle]);
+  }, [auctions, searchMake, searchModel, searchYear, searchTitle, searchRef]);
 
   // Enriched rows with computed fields
   const rows = useMemo(() => {
@@ -249,7 +251,7 @@ export default function AuctionAnalytics() {
           <Search size={14} />
           Filter Auctions
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <label className="text-xs text-slate-500 mb-1 block">Title / Keywords</label>
             <input
@@ -291,10 +293,19 @@ export default function AuctionAnalytics() {
               className="w-full bg-slate-700 border border-slate-600 text-white rounded px-3 py-1.5 text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500"
             />
           </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Auction Reference / ID</label>
+            <input
+              value={searchRef}
+              onChange={e => setSearchRef(e.target.value)}
+              placeholder="e.g. bat-12345"
+              className="w-full bg-slate-700 border border-slate-600 text-white rounded px-3 py-1.5 text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            />
+          </div>
         </div>
-        {(searchMake || searchModel || searchYear || searchTitle) && (
+        {(searchMake || searchModel || searchYear || searchTitle || searchRef) && (
           <button
-            onClick={() => { setSearchMake(''); setSearchModel(''); setSearchYear(''); setSearchTitle(''); }}
+            onClick={() => { setSearchMake(''); setSearchModel(''); setSearchYear(''); setSearchTitle(''); setSearchRef(''); }}
             className="mt-3 text-xs text-slate-400 hover:text-white underline"
           >
             Clear filters ({stats.total} of {auctions.length} shown)
@@ -420,6 +431,7 @@ export default function AuctionAnalytics() {
                     <ThBtn field="year">Year</ThBtn>
                     <ThBtn field="make">Make</ThBtn>
                     <ThBtn field="model">Model</ThBtn>
+                    <ThBtn field="auction_reference">Auction Ref</ThBtn>
                     <ThBtn field="estimate">48h Estimate</ThBtn>
                     <ThBtn field="final">Final Price</ThBtn>
                     <ThBtn field="variance">Variance</ThBtn>
@@ -434,6 +446,9 @@ export default function AuctionAnalytics() {
                       <td className="px-3 py-2.5 text-slate-300">{row.make || '—'}</td>
                       <td className="px-3 py-2.5 text-white font-medium max-w-[160px]">
                         <span className="block truncate" title={row.title}>{row.model || row.title || '—'}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-orange-400 text-xs font-mono">
+                        {row.auction_reference || <span className="text-slate-600">—</span>}
                       </td>
                       <td className="px-3 py-2.5 text-blue-400 font-mono">{fmt(row.estimate)}</td>
                       <td className="px-3 py-2.5 text-green-400 font-mono">{row.final > 0 ? fmt(row.final) : '—'}</td>
@@ -461,7 +476,7 @@ export default function AuctionAnalytics() {
                   ))}
                   {sorted.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-3 py-10 text-center text-slate-500">
+                      <td colSpan={9} className="px-3 py-10 text-center text-slate-500">
                         No completed auctions found matching your filters.
                       </td>
                     </tr>
