@@ -3,6 +3,36 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Search, RefreshCw, Users, Trophy, Car, DollarSign, Upload, Download, CheckCircle, Play, Zap, Edit, Link } from 'lucide-react';
 import AuctionAnalytics from './AuctionAnalytics';
 
+// Realistic fake player name pool for seeding
+const FAKE_FIRST_NAMES = [
+  'Jake','Matt','Chris','Ryan','Mike','Tom','Dave','Nick','Alex','Brian',
+  'Steve','Dan','Eric','Kevin','Mark','Kyle','Sean','Josh','Adam','Tyler',
+  'Aaron','Derek','Greg','Scott','Brad','Jeff','Tony','Rob','Sam','Jason',
+  'Lisa','Sarah','Megan','Kate','Amy','Rachel','Kelly','Lauren','Ashley','Jen',
+  'Carolyn','Diana','Tina','Michelle','Nicole','Stephanie','Holly','Amber','Dana','Andrea'
+];
+const FAKE_LAST_INITIALS = ['A','B','C','D','E','F','G','H','J','K','L','M','N','P','R','S','T','W'];
+const FAKE_SUFFIXES = ['','_cars','88','42','99','21','7','_bids','_garage'];
+
+function generateFakeUsername(existingUsernames) {
+  const used = new Set(existingUsernames);
+  // Build all combinations, shuffle, find first unused
+  const combos = [];
+  for (const first of FAKE_FIRST_NAMES) {
+    for (const last of FAKE_LAST_INITIALS) {
+      for (const suffix of FAKE_SUFFIXES) {
+        combos.push(`${first}${last}${suffix}`);
+      }
+    }
+  }
+  // Fisher-Yates shuffle
+  for (let i = combos.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [combos[i], combos[j]] = [combos[j], combos[i]];
+  }
+  return combos.find(c => !used.has(c)) || `Player${Date.now()}`;
+}
+
 const AdminPortal = () => {
   const [activeTab, setActiveTab] = useState('auctions');
   const [auctions, setAuctions] = useState([]);
@@ -27,6 +57,11 @@ const AdminPortal = () => {
 
   const [showAddUser, setShowAddUser] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', email: '' });
+
+  const [showSeedUsers, setShowSeedUsers] = useState(false);
+  const [seedConfig, setSeedConfig] = useState({ leagueId: '', count: 5, autoPick: true });
+  const [seeding, setSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState(null);
 
   const [showAddLeague, setShowAddLeague] = useState(false);
   const [newLeague, setNewLeague] = useState({
@@ -667,6 +702,138 @@ const AdminPortal = () => {
       else alert('Error: ' + error.message);
     } catch (error) {
       alert('Failed: ' + error.message);
+    }
+  };
+
+  const handleSeedFakeUsers = async () => {
+    if (!seedConfig.leagueId) { alert('Please select a league'); return; }
+    const count = parseInt(seedConfig.count, 10);
+    if (!count || count < 1 || count > 20) { alert('Count must be between 1 and 20'); return; }
+
+    setSeeding(true);
+    setSeedResult(null);
+
+    try {
+      const { supabase } = await import('@/lib/supabase');
+
+      // Resolve the league
+      const league = leagues.find(l => l.id === seedConfig.leagueId);
+      if (!league) { alert('League not found'); setSeeding(false); return; }
+      const spendingLimit = league.spending_limit || 175000;
+
+      // Fetch available auctions for this league — mirrors main app rules exactly
+      let availableAuctions = [];
+      if (league.use_manual_auctions) {
+        // Manual leagues: auctions explicitly assigned to this league
+        const { data: la } = await supabase
+          .from('league_auctions')
+          .select('auctions(*)')
+          .eq('league_id', league.id);
+        availableAuctions = (la || [])
+          .map(r => r.auctions)
+          .filter(a => a && a.price_at_48h != null && a.final_price == null);
+      } else {
+        // Standard leagues: same 4-5 day window the main app uses
+        const now = Math.floor(Date.now() / 1000);
+        const minEnd = now + 4 * 24 * 60 * 60;
+        const maxEnd = now + 5 * 24 * 60 * 60;
+        const { data: auctionData } = await supabase
+          .from('auctions')
+          .select('*')
+          .not('price_at_48h', 'is', null)
+          .is('final_price', null)
+          .gte('timestamp_end', minEnd)
+          .lte('timestamp_end', maxEnd);
+        availableAuctions = auctionData || [];
+      }
+
+      // Collect existing usernames so we don't duplicate
+      const existingUsernames = users.map(u => u.username);
+      const usedInBatch = [];
+
+      let totalCars = 0;
+      const createdPlayers = [];
+
+      for (let i = 0; i < count; i++) {
+        // Generate a unique username
+        const username = generateFakeUsername([...existingUsernames, ...usedInBatch]);
+        usedInBatch.push(username);
+        const email = `${username.toLowerCase()}@fake.bidprix.com`;
+
+        // 1. Create user record
+        const { data: newUserData, error: ue } = await supabase
+          .from('users')
+          .insert([{ username, email }])
+          .select()
+          .single();
+        if (ue || !newUserData) { console.error('User insert failed:', ue); continue; }
+
+        const userId = newUserData.id;
+
+        // 2. Create garage for this user + league
+        const { data: garageData, error: ge } = await supabase
+          .from('garages')
+          .insert([{ user_id: userId, league_id: league.id, remaining_budget: spendingLimit }])
+          .select()
+          .single();
+        if (ge || !garageData) { console.error('Garage insert failed:', ge); continue; }
+
+        // 3. Join the league
+        const { error: me } = await supabase
+          .from('league_members')
+          .insert([{ league_id: league.id, user_id: userId, total_score: 0 }]);
+        if (me) { console.error('League member insert failed:', me); }
+
+        // 4. Auto-pick cars (mirrors app constraints exactly)
+        let carsPicked = 0;
+        let remainingBudget = spendingLimit;
+
+        if (seedConfig.autoPick && availableAuctions.length > 0) {
+          // Shuffle auctions for random selection
+          const shuffled = [...availableAuctions];
+          for (let j = shuffled.length - 1; j > 0; j--) {
+            const k = Math.floor(Math.random() * (j + 1));
+            [shuffled[j], shuffled[k]] = [shuffled[k], shuffled[j]];
+          }
+
+          // Target 3–7 cars (random within available)
+          const targetCars = Math.min(7, Math.max(3, Math.floor(Math.random() * 5) + 3));
+          const garageCarRows = [];
+
+          for (const auction of shuffled) {
+            if (carsPicked >= 7) break; // app hard limit
+            if (carsPicked >= targetCars) break;
+            // Use price_at_48h as purchase_price (same as app's draftPrice = auction.baselinePrice)
+            const purchasePrice = auction.price_at_48h;
+            if (!purchasePrice || purchasePrice > remainingBudget) continue;
+            garageCarRows.push({ garage_id: garageData.id, auction_id: auction.auction_id, purchase_price: purchasePrice });
+            remainingBudget -= purchasePrice;
+            carsPicked++;
+          }
+
+          if (garageCarRows.length > 0) {
+            const { error: carsError } = await supabase.from('garage_cars').insert(garageCarRows);
+            if (carsError) console.error('Garage cars insert failed:', carsError);
+            else {
+              // Update remaining budget in garage
+              await supabase.from('garages').update({ remaining_budget: remainingBudget }).eq('id', garageData.id);
+            }
+          }
+        }
+
+        totalCars += carsPicked;
+        createdPlayers.push(username);
+      }
+
+      const msg = seedConfig.autoPick
+        ? `Seeded ${createdPlayers.length} fake players into "${league.name}" with ${totalCars} total cars picked.`
+        : `Seeded ${createdPlayers.length} fake players into "${league.name}" (no cars picked).`;
+      setSeedResult({ success: true, message: msg, players: createdPlayers });
+      loadAllData();
+    } catch (err) {
+      setSeedResult({ success: false, message: 'Error: ' + err.message });
+    } finally {
+      setSeeding(false);
     }
   };
 
@@ -1534,10 +1701,16 @@ const AdminPortal = () => {
         {/* USERS TAB */}
         {activeTab === 'users' && (
           <div>
-            <button onClick={() => setShowAddUser(!showAddUser)}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex items-center gap-2 mb-6">
-              <Plus size={20} /> Add User
-            </button>
+            <div className="flex gap-3 mb-6">
+              <button onClick={() => { setShowAddUser(!showAddUser); setShowSeedUsers(false); setSeedResult(null); }}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex items-center gap-2">
+                <Plus size={20} /> Add User
+              </button>
+              <button onClick={() => { setShowSeedUsers(!showSeedUsers); setShowAddUser(false); setSeedResult(null); }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded flex items-center gap-2">
+                <Users size={20} /> Seed Fake Players
+              </button>
+            </div>
 
             {showAddUser && (
               <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 mb-6">
@@ -1558,6 +1731,69 @@ const AdminPortal = () => {
                     Cancel
                   </button>
                 </div>
+              </div>
+            )}
+
+            {showSeedUsers && (
+              <div className="bg-slate-800 p-6 rounded-lg border border-indigo-700 mb-6">
+                <h3 className="text-xl font-bold mb-1 text-indigo-300">Seed Fake Players</h3>
+                <p className="text-slate-400 text-sm mb-4">
+                  Creates realistic-looking fake players and joins them to a league. Usernames are generated to look like real users (e.g. JakeM, SarahK42).
+                </p>
+                <div className="grid grid-cols-1 gap-4 mb-4 sm:grid-cols-3">
+                  <div>
+                    <label className="text-slate-400 text-sm mb-1 block">League *</label>
+                    <select value={seedConfig.leagueId}
+                      onChange={(e) => setSeedConfig({...seedConfig, leagueId: e.target.value})}
+                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full">
+                      <option value="">-- Select a league --</option>
+                      {leagues.map(l => (
+                        <option key={l.id} value={l.id}>{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-slate-400 text-sm mb-1 block">Number of players (1–20)</label>
+                    <input type="number" min={1} max={20} value={seedConfig.count}
+                      onChange={(e) => setSeedConfig({...seedConfig, count: e.target.value})}
+                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full" />
+                  </div>
+                  <div className="flex items-end pb-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={seedConfig.autoPick}
+                        onChange={(e) => setSeedConfig({...seedConfig, autoPick: e.target.checked})}
+                        className="w-4 h-4 accent-indigo-500" />
+                      <span className="text-slate-300 text-sm">Auto-pick cars (3–7 per player)</span>
+                    </label>
+                  </div>
+                </div>
+                {seedConfig.autoPick && (
+                  <p className="text-slate-500 text-xs mb-4">
+                    Cars are picked using the same rules as the app: draft price (price_at_48h) within the league spending limit, max 7 cars.
+                  </p>
+                )}
+                <div className="flex gap-3 mb-4">
+                  <button onClick={handleSeedFakeUsers} disabled={seeding}
+                    className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded flex items-center gap-2">
+                    {seeding ? <><RefreshCw size={16} className="animate-spin" /> Seeding...</> : <><Play size={16} /> Seed Players</>}
+                  </button>
+                  <button onClick={() => { setShowSeedUsers(false); setSeedResult(null); }}
+                    className="bg-slate-700 hover:bg-slate-600 text-white px-6 py-2 rounded">
+                    Cancel
+                  </button>
+                </div>
+                {seedResult && (
+                  <div className={`p-4 rounded-lg border ${seedResult.success ? 'bg-green-900/30 border-green-700' : 'bg-red-900/30 border-red-700'}`}>
+                    <p className={`font-semibold ${seedResult.success ? 'text-green-300' : 'text-red-300'}`}>
+                      {seedResult.message}
+                    </p>
+                    {seedResult.success && seedResult.players?.length > 0 && (
+                      <p className="text-slate-400 text-sm mt-2">
+                        Players created: {seedResult.players.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
