@@ -12,11 +12,10 @@ const FAKE_FIRST_NAMES = [
   'Carolyn','Diana','Tina','Michelle','Nicole','Stephanie','Holly','Amber','Dana','Andrea'
 ];
 const FAKE_LAST_INITIALS = ['A','B','C','D','E','F','G','H','J','K','L','M','N','P','R','S','T','W'];
-const FAKE_SUFFIXES = ['','_cars','88','42','99','21','7','_bids','_garage'];
+const FAKE_SUFFIXES = ['','88','42','99','21','7'];
 
 function generateFakeUsername(existingUsernames) {
   const used = new Set(existingUsernames);
-  // Build all combinations, shuffle, find first unused
   const combos = [];
   for (const first of FAKE_FIRST_NAMES) {
     for (const last of FAKE_LAST_INITIALS) {
@@ -747,30 +746,59 @@ const AdminPortal = () => {
         availableAuctions = auctionData || [];
       }
 
-      // Collect existing usernames so we don't duplicate
-      const existingUsernames = users.map(u => u.username);
-      const usedInBatch = [];
+      // Split into reused fake users vs brand-new users
+      // Fake users have emails ending in @fake.bidprix.com
+      const fakeUsers = users.filter(u => u.email?.endsWith('@fake.bidprix.com'));
+
+      // Who is already in this league?
+      const { data: existingMembers } = await supabase
+        .from('league_members')
+        .select('user_id')
+        .eq('league_id', league.id);
+      const alreadyInLeague = new Set((existingMembers || []).map(m => m.user_id));
+
+      // Fake users eligible to be reused (not already in this league)
+      const reusableFakeUsers = fakeUsers.filter(u => !alreadyInLeague.has(u.id));
+
+      // Shuffle reusable pool
+      for (let i = reusableFakeUsers.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [reusableFakeUsers[i], reusableFakeUsers[j]] = [reusableFakeUsers[j], reusableFakeUsers[i]];
+      }
+
+      const allUsernames = users.map(u => u.username);
+      const newInBatch = [];
 
       let totalCars = 0;
       const createdPlayers = [];
 
       for (let i = 0; i < count; i++) {
-        // Generate a unique username
-        const username = generateFakeUsername([...existingUsernames, ...usedInBatch]);
-        usedInBatch.push(username);
-        const email = `${username.toLowerCase()}@fake.bidprix.com`;
+        let userId, username;
 
-        // 1. Create user record
-        const { data: newUserData, error: ue } = await supabase
-          .from('users')
-          .insert([{ username, email }])
-          .select()
-          .single();
-        if (ue || !newUserData) { console.error('User insert failed:', ue); continue; }
+        // Reuse an existing fake user ~50% of the time when pool is available
+        const canReuse = reusableFakeUsers.length > 0;
+        const shouldReuse = canReuse && Math.random() < 0.5;
 
-        const userId = newUserData.id;
+        if (shouldReuse) {
+          const existing = reusableFakeUsers.shift(); // take from front (already shuffled)
+          userId = existing.id;
+          username = existing.username;
+        } else {
+          // Create a new fake user
+          username = generateFakeUsername([...allUsernames, ...newInBatch]);
+          newInBatch.push(username);
+          const email = `${username.toLowerCase()}@fake.bidprix.com`;
 
-        // 2. Create garage for this user + league
+          const { data: newUserData, error: ue } = await supabase
+            .from('users')
+            .insert([{ username, email }])
+            .select()
+            .single();
+          if (ue || !newUserData) { console.error('User insert failed:', ue); continue; }
+          userId = newUserData.id;
+        }
+
+        // Create garage for this user + league
         const { data: garageData, error: ge } = await supabase
           .from('garages')
           .insert([{ user_id: userId, league_id: league.id, remaining_budget: spendingLimit }])
@@ -778,44 +806,69 @@ const AdminPortal = () => {
           .single();
         if (ge || !garageData) { console.error('Garage insert failed:', ge); continue; }
 
-        // 3. Join the league
+        // Join the league
         const { error: me } = await supabase
           .from('league_members')
           .insert([{ league_id: league.id, user_id: userId, total_score: 0 }]);
         if (me) { console.error('League member insert failed:', me); }
 
-        // 4. Auto-pick cars (mirrors app constraints exactly)
+        // Auto-pick exactly 7 cars, spending at least half the budget
         let carsPicked = 0;
         let remainingBudget = spendingLimit;
+        const halfBudget = spendingLimit / 2;
 
         if (seedConfig.autoPick && availableAuctions.length > 0) {
-          // Shuffle auctions for random selection
+          // Shuffle for randomness, then sort most-expensive-first so we naturally
+          // exceed the 50% minimum spend requirement
           const shuffled = [...availableAuctions];
           for (let j = shuffled.length - 1; j > 0; j--) {
             const k = Math.floor(Math.random() * (j + 1));
             [shuffled[j], shuffled[k]] = [shuffled[k], shuffled[j]];
           }
+          // Stable-sort by price desc so expensive picks come first
+          shuffled.sort((a, b) => (b.price_at_48h || 0) - (a.price_at_48h || 0));
 
-          // Target 3–7 cars (random within available)
-          const targetCars = Math.min(7, Math.max(3, Math.floor(Math.random() * 5) + 3));
           const garageCarRows = [];
+          let totalSpent = 0;
 
           for (const auction of shuffled) {
-            if (carsPicked >= 7) break; // app hard limit
-            if (carsPicked >= targetCars) break;
-            // Use price_at_48h as purchase_price (same as app's draftPrice = auction.baselinePrice)
+            if (carsPicked >= 7) break; // app hard limit: max 7 cars
             const purchasePrice = auction.price_at_48h;
             if (!purchasePrice || purchasePrice > remainingBudget) continue;
             garageCarRows.push({ garage_id: garageData.id, auction_id: auction.auction_id, purchase_price: purchasePrice });
             remainingBudget -= purchasePrice;
+            totalSpent += purchasePrice;
             carsPicked++;
+          }
+
+          // If we have 7 cars but still under half budget, swap cheapest picks for
+          // the next most-expensive affordable cars not already selected
+          if (carsPicked === 7 && totalSpent < halfBudget) {
+            const selectedIds = new Set(garageCarRows.map(r => r.auction_id));
+            const candidates = availableAuctions
+              .filter(a => !selectedIds.has(a.auction_id) && a.price_at_48h)
+              .sort((a, b) => (b.price_at_48h || 0) - (a.price_at_48h || 0));
+            for (const candidate of candidates) {
+              if (totalSpent >= halfBudget) break;
+              // Find the cheapest current pick to swap out
+              const cheapestIdx = garageCarRows.reduce(
+                (minIdx, r, idx) => r.purchase_price < garageCarRows[minIdx].purchase_price ? idx : minIdx, 0
+              );
+              const cheapest = garageCarRows[cheapestIdx];
+              // Only swap if the candidate is pricier and fits in budget after swap
+              const budgetAfterSwap = remainingBudget + cheapest.purchase_price - candidate.price_at_48h;
+              if (candidate.price_at_48h > cheapest.purchase_price && budgetAfterSwap >= 0) {
+                totalSpent = totalSpent - cheapest.purchase_price + candidate.price_at_48h;
+                remainingBudget = budgetAfterSwap;
+                garageCarRows[cheapestIdx] = { garage_id: garageData.id, auction_id: candidate.auction_id, purchase_price: candidate.price_at_48h };
+              }
+            }
           }
 
           if (garageCarRows.length > 0) {
             const { error: carsError } = await supabase.from('garage_cars').insert(garageCarRows);
             if (carsError) console.error('Garage cars insert failed:', carsError);
             else {
-              // Update remaining budget in garage
               await supabase.from('garages').update({ remaining_budget: remainingBudget }).eq('id', garageData.id);
             }
           }
@@ -1763,13 +1816,13 @@ const AdminPortal = () => {
                       <input type="checkbox" checked={seedConfig.autoPick}
                         onChange={(e) => setSeedConfig({...seedConfig, autoPick: e.target.checked})}
                         className="w-4 h-4 accent-indigo-500" />
-                      <span className="text-slate-300 text-sm">Auto-pick cars (3–7 per player)</span>
+                      <span className="text-slate-300 text-sm">Auto-pick cars (exactly 7 per player)</span>
                     </label>
                   </div>
                 </div>
                 {seedConfig.autoPick && (
                   <p className="text-slate-500 text-xs mb-4">
-                    Cars are picked using the same rules as the app: draft price (price_at_48h) within the league spending limit, max 7 cars.
+                    Each player will pick exactly 7 cars spending at least 50% of the league budget — same rules as the app. Existing fake players may be reused across leagues to look natural.
                   </p>
                 )}
                 <div className="flex gap-3 mb-4">
