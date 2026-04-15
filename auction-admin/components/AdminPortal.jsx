@@ -878,13 +878,20 @@ const AdminPortal = () => {
         }
 
         totalCars += carsPicked;
-        createdPlayers.push(username);
+        createdPlayers.push({ username, carsPicked });
       }
 
-      const msg = seedConfig.autoPick
-        ? `Seeded ${createdPlayers.length} fake players into "${league.name}" with ${totalCars} total cars picked.`
-        : `Seeded ${createdPlayers.length} fake players into "${league.name}" (no cars picked).`;
-      setSeedResult({ success: true, message: msg, players: createdPlayers });
+      let msg;
+      if (seedConfig.autoPick) {
+        const shortfall = createdPlayers.filter(p => p.carsPicked < 7);
+        msg = `Seeded ${createdPlayers.length} fake players into "${league.name}" — ${totalCars} total cars picked.`;
+        if (shortfall.length > 0) {
+          msg += ` Warning: ${shortfall.length} player(s) got fewer than 7 cars (${shortfall.map(p => `${p.username}: ${p.carsPicked}`).join(', ')}) — not enough affordable auctions available.`;
+        }
+      } else {
+        msg = `Seeded ${createdPlayers.length} fake players into "${league.name}" (no cars picked).`;
+      }
+      setSeedResult({ success: true, message: msg, players: createdPlayers.map(p => p.username) });
       loadAllData();
     } catch (err) {
       setSeedResult({ success: false, message: 'Error: ' + err.message });
