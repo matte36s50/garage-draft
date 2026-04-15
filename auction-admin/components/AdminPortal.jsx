@@ -720,7 +720,7 @@ const AdminPortal = () => {
       if (!league) { alert('League not found'); setSeeding(false); return; }
       const spendingLimit = league.spending_limit || 175000;
 
-      // Fetch available auctions for this league
+      // Fetch available auctions for this league — mirrors main app rules exactly
       let availableAuctions = [];
       if (league.use_manual_auctions) {
         // Manual leagues: auctions explicitly assigned to this league
@@ -732,14 +732,17 @@ const AdminPortal = () => {
           .map(r => r.auctions)
           .filter(a => a && a.price_at_48h != null && a.final_price == null);
       } else {
-        // Standard leagues: all active auctions with a draft price set.
-        // We intentionally don't restrict to the 4-5 day window here because
-        // seeding with only that narrow slice often yields fewer than 7 cars.
+        // Standard leagues: same 4-5 day window the main app uses
+        const now = Math.floor(Date.now() / 1000);
+        const minEnd = now + 4 * 24 * 60 * 60;
+        const maxEnd = now + 5 * 24 * 60 * 60;
         const { data: auctionData } = await supabase
           .from('auctions')
           .select('*')
           .not('price_at_48h', 'is', null)
-          .is('final_price', null);
+          .is('final_price', null)
+          .gte('timestamp_end', minEnd)
+          .lte('timestamp_end', maxEnd);
         availableAuctions = auctionData || [];
       }
 
