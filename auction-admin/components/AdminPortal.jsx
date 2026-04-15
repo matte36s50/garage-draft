@@ -720,7 +720,7 @@ const AdminPortal = () => {
       if (!league) { alert('League not found'); setSeeding(false); return; }
       const spendingLimit = league.spending_limit || 175000;
 
-      // Fetch available auctions for this league — mirrors main app rules exactly
+      // Fetch available auctions for this league
       let availableAuctions = [];
       if (league.use_manual_auctions) {
         // Manual leagues: auctions explicitly assigned to this league
@@ -732,17 +732,14 @@ const AdminPortal = () => {
           .map(r => r.auctions)
           .filter(a => a && a.price_at_48h != null && a.final_price == null);
       } else {
-        // Standard leagues: same 4-5 day window the main app uses
-        const now = Math.floor(Date.now() / 1000);
-        const minEnd = now + 4 * 24 * 60 * 60;
-        const maxEnd = now + 5 * 24 * 60 * 60;
+        // Standard leagues: all active auctions with a draft price set.
+        // We intentionally don't restrict to the 4-5 day window here because
+        // seeding with only that narrow slice often yields fewer than 7 cars.
         const { data: auctionData } = await supabase
           .from('auctions')
           .select('*')
           .not('price_at_48h', 'is', null)
-          .is('final_price', null)
-          .gte('timestamp_end', minEnd)
-          .lte('timestamp_end', maxEnd);
+          .is('final_price', null);
         availableAuctions = auctionData || [];
       }
 
@@ -878,13 +875,20 @@ const AdminPortal = () => {
         }
 
         totalCars += carsPicked;
-        createdPlayers.push(username);
+        createdPlayers.push({ username, carsPicked });
       }
 
-      const msg = seedConfig.autoPick
-        ? `Seeded ${createdPlayers.length} fake players into "${league.name}" with ${totalCars} total cars picked.`
-        : `Seeded ${createdPlayers.length} fake players into "${league.name}" (no cars picked).`;
-      setSeedResult({ success: true, message: msg, players: createdPlayers });
+      let msg;
+      if (seedConfig.autoPick) {
+        const shortfall = createdPlayers.filter(p => p.carsPicked < 7);
+        msg = `Seeded ${createdPlayers.length} fake players into "${league.name}" — ${totalCars} total cars picked.`;
+        if (shortfall.length > 0) {
+          msg += ` Warning: ${shortfall.length} player(s) got fewer than 7 cars (${shortfall.map(p => `${p.username}: ${p.carsPicked}`).join(', ')}) — not enough affordable auctions available.`;
+        }
+      } else {
+        msg = `Seeded ${createdPlayers.length} fake players into "${league.name}" (no cars picked).`;
+      }
+      setSeedResult({ success: true, message: msg, players: createdPlayers.map(p => p.username) });
       loadAllData();
     } catch (err) {
       setSeedResult({ success: false, message: 'Error: ' + err.message });
