@@ -815,52 +815,55 @@ const AdminPortal = () => {
         // Auto-pick exactly 7 cars, spending at least half the budget
         let carsPicked = 0;
         let remainingBudget = spendingLimit;
-        const halfBudget = spendingLimit / 2;
 
         if (seedConfig.autoPick && availableAuctions.length > 0) {
-          // Shuffle for randomness, then sort most-expensive-first so we naturally
-          // exceed the 50% minimum spend requirement
-          const shuffled = [...availableAuctions];
-          for (let j = shuffled.length - 1; j > 0; j--) {
+          const halfBudget = spendingLimit / 2;
+
+          // Filter to auctions with a valid draft price
+          const eligible = availableAuctions.filter(a => a.price_at_48h && a.price_at_48h > 0);
+
+          // Shuffle randomly — sorting expensive-first would exhaust the budget
+          // before we could pick 7 cars, so we randomize instead
+          for (let j = eligible.length - 1; j > 0; j--) {
             const k = Math.floor(Math.random() * (j + 1));
-            [shuffled[j], shuffled[k]] = [shuffled[k], shuffled[j]];
+            [eligible[j], eligible[k]] = [eligible[k], eligible[j]];
           }
-          // Stable-sort by price desc so expensive picks come first
-          shuffled.sort((a, b) => (b.price_at_48h || 0) - (a.price_at_48h || 0));
 
           const garageCarRows = [];
           let totalSpent = 0;
 
-          for (const auction of shuffled) {
-            if (carsPicked >= 7) break; // app hard limit: max 7 cars
-            const purchasePrice = auction.price_at_48h;
-            if (!purchasePrice || purchasePrice > remainingBudget) continue;
-            garageCarRows.push({ garage_id: garageData.id, auction_id: auction.auction_id, purchase_price: purchasePrice });
-            remainingBudget -= purchasePrice;
-            totalSpent += purchasePrice;
+          // Greedy pick up to 7 cars within budget
+          for (const auction of eligible) {
+            if (carsPicked >= 7) break;
+            const price = auction.price_at_48h;
+            if (price > remainingBudget) continue;
+            garageCarRows.push({ garage_id: garageData.id, auction_id: auction.auction_id, purchase_price: price });
+            remainingBudget -= price;
+            totalSpent += price;
             carsPicked++;
           }
 
-          // If we have 7 cars but still under half budget, swap cheapest picks for
-          // the next most-expensive affordable cars not already selected
-          if (carsPicked === 7 && totalSpent < halfBudget) {
+          // Enforce 50% minimum spend: swap cheapest picks for pricier alternatives
+          if (garageCarRows.length > 0 && totalSpent < halfBudget) {
             const selectedIds = new Set(garageCarRows.map(r => r.auction_id));
-            const candidates = availableAuctions
-              .filter(a => !selectedIds.has(a.auction_id) && a.price_at_48h)
-              .sort((a, b) => (b.price_at_48h || 0) - (a.price_at_48h || 0));
-            for (const candidate of candidates) {
+            // Unselected cars sorted most-expensive first for upgrading
+            const upgrades = eligible
+              .filter(a => !selectedIds.has(a.auction_id))
+              .sort((a, b) => b.price_at_48h - a.price_at_48h);
+
+            for (const upgrade of upgrades) {
               if (totalSpent >= halfBudget) break;
-              // Find the cheapest current pick to swap out
-              const cheapestIdx = garageCarRows.reduce(
-                (minIdx, r, idx) => r.purchase_price < garageCarRows[minIdx].purchase_price ? idx : minIdx, 0
-              );
-              const cheapest = garageCarRows[cheapestIdx];
-              // Only swap if the candidate is pricier and fits in budget after swap
-              const budgetAfterSwap = remainingBudget + cheapest.purchase_price - candidate.price_at_48h;
-              if (candidate.price_at_48h > cheapest.purchase_price && budgetAfterSwap >= 0) {
-                totalSpent = totalSpent - cheapest.purchase_price + candidate.price_at_48h;
-                remainingBudget = budgetAfterSwap;
-                garageCarRows[cheapestIdx] = { garage_id: garageData.id, auction_id: candidate.auction_id, purchase_price: candidate.price_at_48h };
+              // Find cheapest current pick
+              let cheapestIdx = 0;
+              for (let k = 1; k < garageCarRows.length; k++) {
+                if (garageCarRows[k].purchase_price < garageCarRows[cheapestIdx].purchase_price) cheapestIdx = k;
+              }
+              const diff = upgrade.price_at_48h - garageCarRows[cheapestIdx].purchase_price;
+              // Only swap if the upgrade is pricier and the extra cost fits in budget
+              if (diff > 0 && totalSpent + diff <= spendingLimit) {
+                totalSpent += diff;
+                remainingBudget -= diff;
+                garageCarRows[cheapestIdx] = { garage_id: garageData.id, auction_id: upgrade.auction_id, purchase_price: upgrade.price_at_48h };
               }
             }
           }
