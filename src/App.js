@@ -577,6 +577,7 @@ export default function BidPrixApp() {
         endTime: endDate,
         auctionEnded: auctionEnded,
         finalPrice: auction.final_price ? parseFloat(auction.final_price) : null,
+        reserveNotMet: auction.reserve_not_met === true,
       }
       
       console.log('✅ Active bonus car loaded:', bonusCarData)
@@ -875,7 +876,7 @@ export default function BidPrixApp() {
             timeLeft: calculateTimeLeft(auction?.timestamp_end ? new Date(auction.timestamp_end * 1000) : null),
             timestampEnd: auction?.timestamp_end || null,
             auctionEnded: auctionEnded,
-            reserveNotMet: auctionEnded && !auction?.final_price,
+            reserveNotMet: auction?.reserve_not_met === true,
           }
         })
         setGarage(garageCars)
@@ -2324,8 +2325,10 @@ export default function BidPrixApp() {
                   {bonusCar.auctionEnded ? (
                     bonusCar.finalPrice ? (
                       <div className="text-green-700 font-semibold">Final: ${bonusCar.finalPrice.toLocaleString()}</div>
-                    ) : (
+                    ) : bonusCar.reserveNotMet ? (
                       <div className="text-bpRed">Reserve Not Met</div>
+                    ) : (
+                      <div className="text-bpInk/50">Pending</div>
                     )
                   ) : (
                     <div>Current: ${bonusCar.currentBid.toLocaleString()}</div>
@@ -2403,8 +2406,10 @@ export default function BidPrixApp() {
                         {car.auctionEnded ? (
                           car.finalPrice ? (
                             <div className="text-green-700 font-semibold">Final: ${car.finalPrice.toLocaleString()}</div>
-                          ) : (
+                          ) : car.reserveNotMet ? (
                             <div className="text-bpRed">Reserve Not Met</div>
+                          ) : (
+                            <div className="text-bpInk/50">Pending</div>
                           )
                         ) : (
                           <div>Current: ${car.currentBid.toLocaleString()}</div>
