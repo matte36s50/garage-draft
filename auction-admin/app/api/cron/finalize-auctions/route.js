@@ -223,19 +223,43 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
     const now = Math.floor(Date.now() / 1000);
     const cutoff = now - (minAgeMinutes * 60);
 
-    const { data: auctions, error: fetchError } = await supabase
+    // Auctions that ended > minAgeMinutes ago, have no final price, and haven't been confirmed RNM
+    const { data: unfinalized, error: fetchError } = await supabase
       .from('auctions')
       .select('auction_id, title, url, current_bid, timestamp_end')
-      .lt('timestamp_end', cutoff)  // Ended more than minAgeMinutes ago
-      .is('final_price', null)           // No final price yet
-      .eq('reserve_not_met', false)      // Skip already-confirmed reserve-not-met auctions
-      .not('url', 'is', null)            // Has a URL to scrape
+      .lt('timestamp_end', cutoff)
+      .is('final_price', null)
+      .eq('reserve_not_met', false)
+      .not('url', 'is', null)
       .order('timestamp_end', { ascending: false })
-      .limit(100);
+      .limit(90);
 
     if (fetchError) {
       console.error('Error fetching auctions:', fetchError);
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    }
+
+    // Also re-check auctions flagged reserve_not_met within the last 30 days —
+    // the scraper may have caught the page before BaT finalized the sale result.
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60);
+    const { data: recheck, error: recheckError } = await supabase
+      .from('auctions')
+      .select('auction_id, title, url, current_bid, timestamp_end')
+      .lt('timestamp_end', cutoff)
+      .gte('timestamp_end', thirtyDaysAgo)
+      .is('final_price', null)
+      .eq('reserve_not_met', true)
+      .not('url', 'is', null)
+      .order('timestamp_end', { ascending: false })
+      .limit(10);
+
+    const seen = new Set();
+    const auctions = [];
+    for (const a of [...(unfinalized || []), ...(recheck || [])]) {
+      if (!seen.has(a.auction_id)) {
+        seen.add(a.auction_id);
+        auctions.push(a);
+      }
     }
 
     if (!auctions || auctions.length === 0) {
@@ -299,7 +323,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       if (status === 'sold' && price && price > 0) {
         const { error: updateError } = await supabase
           .from('auctions')
-          .update({ final_price: price })
+          .update({ final_price: price, reserve_not_met: false })
           .eq('auction_id', auction.auction_id);
 
         if (updateError) {
