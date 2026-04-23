@@ -223,13 +223,15 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
     const now = Math.floor(Date.now() / 1000);
     const cutoff = now - (minAgeMinutes * 60);
 
-    // Auctions that ended > minAgeMinutes ago, have no final price, and haven't been confirmed RNM
+    // Auctions that ended > minAgeMinutes ago, have no final price, and haven't been confirmed RNM.
+    // Use `not('reserve_not_met', 'is', true)` instead of `.eq('reserve_not_met', false)` so that
+    // rows where reserve_not_met IS NULL are also included (NULL = false is NULL in SQL, not TRUE).
     const { data: unfinalized, error: fetchError } = await supabase
       .from('auctions')
       .select('auction_id, title, url, current_bid, timestamp_end')
       .lt('timestamp_end', cutoff)
       .is('final_price', null)
-      .eq('reserve_not_met', false)
+      .not('reserve_not_met', 'is', true)
       .not('url', 'is', null)
       .order('timestamp_end', { ascending: false })
       .limit(90);
@@ -248,7 +250,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       .lt('timestamp_end', cutoff)
       .gte('timestamp_end', thirtyDaysAgo)
       .is('final_price', null)
-      .eq('reserve_not_met', true)
+      .is('reserve_not_met', true)
       .not('url', 'is', null)
       .order('timestamp_end', { ascending: false })
       .limit(10);
