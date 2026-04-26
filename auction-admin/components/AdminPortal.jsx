@@ -3,24 +3,28 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Search, RefreshCw, Users, Trophy, Car, DollarSign, Upload, Download, CheckCircle, Play, Zap, Edit, Link } from 'lucide-react';
 import AuctionAnalytics from './AuctionAnalytics';
 
-// Realistic fake player name pool for seeding
-const FAKE_FIRST_NAMES = [
-  'Jake','Matt','Chris','Ryan','Mike','Tom','Dave','Nick','Alex','Brian',
-  'Steve','Dan','Eric','Kevin','Mark','Kyle','Sean','Josh','Adam','Tyler',
-  'Aaron','Derek','Greg','Scott','Brad','Jeff','Tony','Rob','Sam','Jason',
-  'Lisa','Sarah','Megan','Kate','Amy','Rachel','Kelly','Lauren','Ashley','Jen',
-  'Carolyn','Diana','Tina','Michelle','Nicole','Stephanie','Holly','Amber','Dana','Andrea'
+// BaT-style username pool for seeding — first name + car model/code + optional year
+const BAT_FIRST_NAMES = [
+  'Sam','Bill','Jack','Dave','Mike','Tom','Rick','Jim','Bob','Dan',
+  'Rob','Matt','Chris','Pete','Greg','Ed','Frank','Tony','Phil','Ken',
+  'Steve','Gary','Scott','Mark','Brian','Jeff','Alan','Paul','Ray','Tim',
+  'Pat','Hank','Bud','Walt','Sal','Vin','Gus','Hal','Chet','Wes'
 ];
-const FAKE_LAST_INITIALS = ['A','B','C','D','E','F','G','H','J','K','L','M','N','P','R','S','T','W'];
-const FAKE_SUFFIXES = ['','88','42','99','21','7'];
+const BAT_CAR_CODES = [
+  '911','M3','M5','E30','E46','Vette','GT3','RS','Targa','944',
+  '356','C4','C2','Turbo','GTR','GTS','Z06','Dino','Bimmer','2002',
+  'CSL','Camaro','Boss','Alpina','F40','308','328','Testarossa','M6','507',
+  'Mach1','Stingray','Boxster','Cayman','914','928','968','Countach','Miura','Daytona'
+];
+const BAT_YEARS = ['', '62', '63', '67', '69', '72', '73', '76', '84', '85', '86', '88', '91', '93', '95'];
 
 function generateFakeUsername(existingUsernames) {
   const used = new Set(existingUsernames);
   const combos = [];
-  for (const first of FAKE_FIRST_NAMES) {
-    for (const last of FAKE_LAST_INITIALS) {
-      for (const suffix of FAKE_SUFFIXES) {
-        combos.push(`${first}${last}${suffix}`);
+  for (const first of BAT_FIRST_NAMES) {
+    for (const car of BAT_CAR_CODES) {
+      for (const year of BAT_YEARS) {
+        combos.push(`${first}${car}${year}`);
       }
     }
   }
