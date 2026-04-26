@@ -99,6 +99,11 @@ const AdminPortal = () => {
   const [updatingAuctionId, setUpdatingAuctionId] = useState(null);
   const [runningAutoFinalizer, setRunningAutoFinalizer] = useState(false);
   const [autoFinalizerResult, setAutoFinalizerResult] = useState(null);
+  const [finalizeEventFilter, setFinalizeEventFilter] = useState('');
+  const [finalizedAuctions, setFinalizedAuctions] = useState([]);
+  const [editingFinalizedId, setEditingFinalizedId] = useState(null);
+  const [editFinalPriceInputs, setEditFinalPriceInputs] = useState({});
+  const [showEditFinalized, setShowEditFinalized] = useState(false);
 
   useEffect(() => {
     loadAllData();
@@ -301,6 +306,51 @@ const AdminPortal = () => {
       setEndedAuctions(data || []);
     } catch (error) {
       console.error('Error loading ended auctions:', error);
+    }
+  };
+
+  // Load recently finalized auctions (have a final_price set) for editing
+  const loadFinalizedAuctions = async () => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data, error } = await supabase
+        .from('auctions')
+        .select('*')
+        .not('final_price', 'is', null)
+        .order('timestamp_end', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      setFinalizedAuctions(data || []);
+    } catch (error) {
+      console.error('Error loading finalized auctions:', error);
+    }
+  };
+
+  // Edit an already-finalized price
+  const handleEditFinalizedPrice = async (auctionId) => {
+    const newPrice = editFinalPriceInputs[auctionId];
+    if (!newPrice || parseFloat(newPrice) <= 0) {
+      alert('Please enter a valid price');
+      return;
+    }
+    setEditingFinalizedId(auctionId);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase
+        .from('auctions')
+        .update({ final_price: parseFloat(newPrice) })
+        .eq('auction_id', auctionId);
+      if (error) throw error;
+      setFinalizedAuctions(prev =>
+        prev.map(a => a.auction_id === auctionId ? { ...a, final_price: parseFloat(newPrice) } : a)
+      );
+      setEditFinalPriceInputs(prev => { const n = { ...prev }; delete n[auctionId]; return n; });
+      alert(`Final price updated to $${parseFloat(newPrice).toLocaleString()}`);
+    } catch (error) {
+      console.error('Error editing final price:', error);
+      alert('Failed to update: ' + error.message);
+    } finally {
+      setEditingFinalizedId(null);
     }
   };
 
@@ -1677,91 +1727,204 @@ const AdminPortal = () => {
               </div>
             )}
 
-            {endedAuctions.length === 0 ? (
-              <div className="bg-slate-800 p-8 rounded-lg border border-slate-700 text-center">
-                <CheckCircle size={48} className="mx-auto text-green-500 mb-4" />
-                <div className="text-slate-400 text-lg">All caught up!</div>
-                <p className="text-slate-500 text-sm mt-2">
-                  No ended auctions need final prices at this time.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {endedAuctions.map(auction => (
-                  <div key={auction.auction_id} className="bg-slate-800 p-6 rounded-lg border border-slate-700">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <h3 className="text-xl font-bold text-white">{auction.title}</h3>
-                        <div className="flex gap-4 mt-2 text-slate-400 text-sm">
-                          <span>{auction.year}</span>
-                          <span>•</span>
-                          <span>{auction.make} {auction.model}</span>
-                          <span>•</span>
-                          <span className="text-orange-400">{formatRelativeTime(auction.timestamp_end)}</span>
-                        </div>
-                        <div className="flex gap-6 mt-3">
-                          {auction.price_at_48h && (
-                            <div>
-                              <div className="text-slate-400 text-xs">Draft Price (48h)</div>
-                              <div className="text-white font-semibold">${auction.price_at_48h?.toLocaleString()}</div>
-                            </div>
-                          )}
-                          {auction.current_bid && (
-                            <div>
-                              <div className="text-slate-400 text-xs">Last Bid</div>
-                              <div className="text-yellow-400 font-semibold">${parseFloat(auction.current_bid)?.toLocaleString()}</div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-2 items-end">
-                        <span className="text-xs text-slate-500">{auction.auction_id}</span>
-                        {auction.url && (
-                          <a href={auction.url} target="_blank" rel="noopener noreferrer"
-                            className="text-blue-400 hover:text-blue-300 text-sm">View on BaT →</a>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-4 pt-4 border-t border-slate-700">
-                      <div className="flex items-center gap-4">
-                        <div className="flex-1">
-                          <label className="text-slate-400 text-sm mb-1 block">Final Sale Price ($)</label>
-                          <input
-                            type="number"
-                            placeholder="Enter final price..."
-                            value={finalPriceInputs[auction.auction_id] || ''}
-                            onChange={(e) => setFinalPriceInputs(prev => ({
-                              ...prev,
-                              [auction.auction_id]: e.target.value
-                            }))}
-                            className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full"
-                            disabled={updatingAuctionId === auction.auction_id}
-                          />
-                        </div>
-                        <div className="flex gap-2 pt-6">
-                          <button
-                            onClick={() => handleUpdateFinalPrice(auction.auction_id)}
-                            disabled={updatingAuctionId === auction.auction_id || !finalPriceInputs[auction.auction_id]}
-                            className="bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded flex items-center gap-2"
-                          >
-                            <CheckCircle size={18} />
-                            {updatingAuctionId === auction.auction_id ? 'Saving...' : 'Set Final Price'}
-                          </button>
-                          <button
-                            onClick={() => handleMarkReserveNotMet(auction.auction_id)}
-                            disabled={updatingAuctionId === auction.auction_id}
-                            className="bg-orange-600 hover:bg-orange-700 disabled:bg-slate-600 text-white px-4 py-2 rounded"
-                          >
-                            Reserve Not Met
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            {/* Event filter — only shown when there are auctions with an auction_reference */}
+            {endedAuctions.some(a => a.auction_reference) && (
+              <div className="mb-4 flex items-center gap-3">
+                <label className="text-slate-400 text-sm whitespace-nowrap">Filter by event:</label>
+                <select
+                  value={finalizeEventFilter}
+                  onChange={(e) => setFinalizeEventFilter(e.target.value)}
+                  className="bg-slate-700 text-white px-3 py-2 rounded border border-slate-600 text-sm"
+                >
+                  <option value="">All events</option>
+                  {[...new Set(endedAuctions.map(a => a.auction_reference).filter(Boolean))].sort().map(ref => (
+                    <option key={ref} value={ref}>{ref}</option>
+                  ))}
+                </select>
+                {finalizeEventFilter && (
+                  <button
+                    onClick={() => setFinalizeEventFilter('')}
+                    className="text-slate-400 hover:text-white text-sm underline"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
             )}
+
+            {(() => {
+              const filtered = finalizeEventFilter
+                ? endedAuctions.filter(a => a.auction_reference === finalizeEventFilter)
+                : endedAuctions;
+              return filtered.length === 0 ? (
+                <div className="bg-slate-800 p-8 rounded-lg border border-slate-700 text-center">
+                  <CheckCircle size={48} className="mx-auto text-green-500 mb-4" />
+                  <div className="text-slate-400 text-lg">All caught up!</div>
+                  <p className="text-slate-500 text-sm mt-2">
+                    {finalizeEventFilter
+                      ? `No pending auctions for "${finalizeEventFilter}".`
+                      : 'No ended auctions need final prices at this time.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filtered.map(auction => (
+                    <div key={auction.auction_id} className="bg-slate-800 p-6 rounded-lg border border-slate-700">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h3 className="text-xl font-bold text-white">{auction.title}</h3>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-slate-400 text-sm">
+                            <span>{auction.year}</span>
+                            <span>•</span>
+                            <span>{auction.make} {auction.model}</span>
+                            <span>•</span>
+                            <span className="text-orange-400">{formatRelativeTime(auction.timestamp_end)}</span>
+                            {auction.auction_reference && (
+                              <>
+                                <span>•</span>
+                                <span className="text-blue-400">{auction.auction_reference}</span>
+                              </>
+                            )}
+                          </div>
+                          <div className="flex gap-6 mt-3">
+                            {auction.price_at_48h && (
+                              <div>
+                                <div className="text-slate-400 text-xs">Draft Price (48h)</div>
+                                <div className="text-white font-semibold">${auction.price_at_48h?.toLocaleString()}</div>
+                              </div>
+                            )}
+                            {auction.current_bid && (
+                              <div>
+                                <div className="text-slate-400 text-xs">Last Bid</div>
+                                <div className="text-yellow-400 font-semibold">${parseFloat(auction.current_bid)?.toLocaleString()}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-2 items-end">
+                          <span className="text-xs text-slate-500">{auction.auction_id}</span>
+                          {auction.url && (
+                            <a href={auction.url} target="_blank" rel="noopener noreferrer"
+                              className="text-blue-400 hover:text-blue-300 text-sm">View on BaT →</a>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-4 border-t border-slate-700">
+                        <div className="flex items-center gap-4">
+                          <div className="flex-1">
+                            <label className="text-slate-400 text-sm mb-1 block">Final Sale Price ($)</label>
+                            <input
+                              type="number"
+                              placeholder="Enter final price..."
+                              value={finalPriceInputs[auction.auction_id] || ''}
+                              onChange={(e) => setFinalPriceInputs(prev => ({
+                                ...prev,
+                                [auction.auction_id]: e.target.value
+                              }))}
+                              className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full"
+                              disabled={updatingAuctionId === auction.auction_id}
+                            />
+                          </div>
+                          <div className="flex gap-2 pt-6">
+                            <button
+                              onClick={() => handleUpdateFinalPrice(auction.auction_id)}
+                              disabled={updatingAuctionId === auction.auction_id || !finalPriceInputs[auction.auction_id]}
+                              className="bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded flex items-center gap-2"
+                            >
+                              <CheckCircle size={18} />
+                              {updatingAuctionId === auction.auction_id ? 'Saving...' : 'Set Final Price'}
+                            </button>
+                            <button
+                              onClick={() => handleMarkReserveNotMet(auction.auction_id)}
+                              disabled={updatingAuctionId === auction.auction_id}
+                              className="bg-orange-600 hover:bg-orange-700 disabled:bg-slate-600 text-white px-4 py-2 rounded"
+                            >
+                              Reserve Not Met
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Edit Finalized Prices — collapsible section for correcting already-set prices */}
+            <div className="mt-8 border-t border-slate-700 pt-6">
+              <button
+                onClick={() => {
+                  setShowEditFinalized(prev => !prev);
+                  if (!showEditFinalized && finalizedAuctions.length === 0) loadFinalizedAuctions();
+                }}
+                className="flex items-center gap-2 text-slate-300 hover:text-white font-semibold text-base"
+              >
+                <Edit size={18} className={showEditFinalized ? 'text-yellow-400' : 'text-slate-400'} />
+                {showEditFinalized ? 'Hide' : 'Show'} Finalized Auctions (Edit Prices)
+              </button>
+
+              {showEditFinalized && (
+                <div className="mt-4">
+                  <p className="text-slate-400 text-sm mb-4">
+                    Use this section to correct a finalized price that was entered incorrectly.
+                  </p>
+                  <div className="flex gap-2 mb-4">
+                    <button
+                      onClick={loadFinalizedAuctions}
+                      className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded flex items-center gap-2 text-sm"
+                    >
+                      <RefreshCw size={14} /> Refresh
+                    </button>
+                  </div>
+                  {finalizedAuctions.length === 0 ? (
+                    <div className="text-slate-500 text-sm">No finalized auctions found.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {finalizedAuctions.map(auction => (
+                        <div key={auction.auction_id} className="bg-slate-800/70 p-4 rounded-lg border border-slate-600">
+                          <div className="flex justify-between items-start gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-white font-semibold truncate">{auction.title}</div>
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-slate-400 text-xs">
+                                <span>{auction.year} {auction.make} {auction.model}</span>
+                                {auction.auction_reference && (
+                                  <span className="text-blue-400">{auction.auction_reference}</span>
+                                )}
+                              </div>
+                              <div className="mt-1 text-green-400 text-sm font-semibold">
+                                Current: ${parseFloat(auction.final_price).toLocaleString()}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <input
+                                type="number"
+                                placeholder="New price..."
+                                value={editFinalPriceInputs[auction.auction_id] || ''}
+                                onChange={(e) => setEditFinalPriceInputs(prev => ({
+                                  ...prev,
+                                  [auction.auction_id]: e.target.value
+                                }))}
+                                className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-36 text-sm"
+                                disabled={editingFinalizedId === auction.auction_id}
+                              />
+                              <button
+                                onClick={() => handleEditFinalizedPrice(auction.auction_id)}
+                                disabled={editingFinalizedId === auction.auction_id || !editFinalPriceInputs[auction.auction_id]}
+                                className="bg-yellow-600 hover:bg-yellow-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-3 py-2 rounded text-sm flex items-center gap-1"
+                              >
+                                <Edit size={14} />
+                                {editingFinalizedId === auction.auction_id ? 'Saving...' : 'Update'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
