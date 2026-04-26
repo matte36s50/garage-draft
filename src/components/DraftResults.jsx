@@ -127,7 +127,7 @@ function DraftResults({ supabase, selectedLeague, draftStatus, getDefaultCarImag
     return (
       <div className="text-center py-16 text-bpCream/50">
         <Users size={40} className="mx-auto mb-3" />
-        <p>Select a league to view draft picks.</p>
+        <p>Select an auction to view draft picks.</p>
       </div>
     )
   }
@@ -191,7 +191,7 @@ function DraftResults({ supabase, selectedLeague, draftStatus, getDefaultCarImag
       {!loading && !error && byAuction.length === 0 && (
         <div className="text-center py-16 text-bpCream/50">
           <Car size={40} className="mx-auto mb-3" />
-          <p>No picks found for this league yet.</p>
+          <p>No picks found for this auction yet.</p>
         </div>
       )}
 

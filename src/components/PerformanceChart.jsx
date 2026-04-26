@@ -235,7 +235,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
             dataKey="marketAvg"
             stroke="#22C55E"
             strokeWidth={2}
-            name="League Avg"
+            name="Auction Avg"
             strokeDasharray="3 3"
             dot={false}
           />
@@ -253,7 +253,7 @@ export default function PerformanceChart({ supabase, leagueId, userId }) {
           <div className="text-2xl font-bold text-green-400">
             ${(latestData.marketAvg || 0).toLocaleString()}
           </div>
-          <div className="text-sm text-slate-400 mt-1">League Avg</div>
+          <div className="text-sm text-slate-400 mt-1">Auction Avg</div>
         </div>
         <div className="text-center p-4 bg-slate-700/50 rounded-lg border border-slate-600">
           <div className="text-2xl font-bold text-slate-200">

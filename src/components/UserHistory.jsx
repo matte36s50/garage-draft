@@ -44,7 +44,7 @@ export default function UserHistory({ supabase, user }) {
 
       if (error) {
         console.error('Error fetching history:', error);
-        setFetchError(error.message || 'Failed to load league history');
+        setFetchError(error.message || 'Failed to load auction history');
         setResults([]);
         return;
       }
@@ -66,7 +66,7 @@ export default function UserHistory({ supabase, user }) {
       }
     } catch (error) {
       console.error('Failed to fetch history:', error);
-      setFetchError(error.message || 'Failed to load league history');
+      setFetchError(error.message || 'Failed to load auction history');
     } finally {
       setLoading(false);
     }
@@ -121,7 +121,7 @@ export default function UserHistory({ supabase, user }) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight text-bpCream">My History</h2>
-          <p className="text-sm text-bpCream/70">Your completed leagues and results</p>
+          <p className="text-sm text-bpCream/70">Your completed auctions and results</p>
         </div>
         <Clock className="text-bpGold" size={24} />
       </div>
@@ -131,7 +131,7 @@ export default function UserHistory({ supabase, user }) {
         <div className="bg-white/5 border border-white/10 rounded-xl p-4">
           <div className="flex items-center gap-2 text-bpGray text-xs mb-1">
             <Target size={14} />
-            <span>Leagues Played</span>
+            <span>Auctions Played</span>
           </div>
           <div className="text-2xl font-bold text-bpCream">{stats.totalLeagues}</div>
         </div>
@@ -167,7 +167,7 @@ export default function UserHistory({ supabase, user }) {
 
       {/* League Results List */}
       <div>
-        <h3 className="text-lg font-semibold text-bpCream mb-3">Completed Leagues</h3>
+        <h3 className="text-lg font-semibold text-bpCream mb-3">Completed Auctions</h3>
 
         {fetchError ? (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-8 text-center">
@@ -178,9 +178,9 @@ export default function UserHistory({ supabase, user }) {
         ) : results.length === 0 ? (
           <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center">
             <Trophy className="mx-auto text-bpGray mb-3" size={40} />
-            <p className="text-bpGray">No completed leagues yet</p>
+            <p className="text-bpGray">No completed auctions yet</p>
             <p className="text-bpGray/70 text-sm mt-1">
-              Your league history will appear here once leagues are completed
+              Your auction history will appear here once auctions are completed
             </p>
           </div>
         ) : (
@@ -202,7 +202,7 @@ export default function UserHistory({ supabase, user }) {
                           <Trophy className="text-bpGold flex-shrink-0" size={18} />
                         )}
                         <h4 className="font-semibold text-bpCream truncate">
-                          {league?.name || 'Unknown League'}
+                          {league?.name || 'Unknown Auction'}
                         </h4>
                       </div>
 
