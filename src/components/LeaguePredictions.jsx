@@ -58,7 +58,7 @@ export default function LeaguePredictions({ supabase, leagueId, currentUserId, b
             <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
             <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
           </svg>
-          <h3 className="text-xl font-bold text-bpCream">League Predictions</h3>
+          <h3 className="text-xl font-bold text-bpCream">Auction Predictions</h3>
         </div>
         <div className="text-center py-4">
           <svg className="animate-spin h-6 w-6 mx-auto text-bpGold" fill="none" viewBox="0 0 24 24">
@@ -89,7 +89,7 @@ export default function LeaguePredictions({ supabase, leagueId, currentUserId, b
             <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
             <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
           </svg>
-          <h3 className="text-xl font-bold text-bpCream">League Predictions</h3>
+          <h3 className="text-xl font-bold text-bpCream">Auction Predictions</h3>
         </div>
         <p className="text-bpGray text-center py-4">No predictions submitted yet.</p>
       </div>
@@ -108,7 +108,7 @@ export default function LeaguePredictions({ supabase, leagueId, currentUserId, b
           <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
           <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
         </svg>
-        <h3 className="text-xl font-bold text-bpCream">League Bonus Car Predictions</h3>
+        <h3 className="text-xl font-bold text-bpCream">Auction Bonus Car Predictions</h3>
       </div>
 
       {/* Bonus Car Info */}

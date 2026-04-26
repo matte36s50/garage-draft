@@ -260,7 +260,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
     const end = new Date(endTime);
     const diff = +end - +now;
 
-    if (diff <= 0) return { ended: true, text: 'League Ended' };
+    if (diff <= 0) return { ended: true, text: 'Auction Ended' };
 
     const days = Math.floor(diff / 86400000);
     const hours = Math.floor((diff % 86400000) / 3600000);
@@ -353,15 +353,15 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold mb-3 text-bpCream">Join a League to Get Started</h1>
+        <h1 className="text-2xl font-bold mb-3 text-bpCream">Join an Auction to Get Started</h1>
         <p className="text-bpGray mb-8 leading-relaxed">
-          Pick a league, draft your dream garage of 7 cars, and compete against friends to see who can predict the market best.
+          Pick an auction, draft your dream garage of 7 cars, and compete against friends to see who can predict the market best.
         </p>
         <button
           onClick={() => onNavigate('leagues')}
           className="inline-flex items-center justify-center rounded-md px-8 py-3 font-semibold bg-bpCream text-bpInk hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 transition shadow-lg text-lg"
         >
-          Join a League →
+          Join an Auction →
         </button>
       </div>
     );
@@ -441,7 +441,7 @@ export default function Dashboard({ supabase, user, leagues, selectedLeague, onL
                     ? 'text-orange-300'
                     : 'text-slate-300'
                 }`}>
-                  {timeRemaining.ended ? 'League Ended' : 'Time Left:'}
+                  {timeRemaining.ended ? 'Auction Ended' : 'Time Left:'}
                 </span>
                 <span className="text-bpCream font-bold">
                   {timeRemaining.text}

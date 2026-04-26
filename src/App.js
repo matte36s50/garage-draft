@@ -160,7 +160,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
                     />
                     <div className="absolute left-0 mt-2 min-w-[320px] bg-bpNavy border border-bpCream/20 rounded-lg shadow-xl z-50 overflow-hidden">
                       <div className="px-4 py-2.5 border-b border-bpCream/10">
-                        <span className="text-xs text-bpCream/60 font-medium uppercase tracking-wide">Switch League</span>
+                        <span className="text-xs text-bpCream/60 font-medium uppercase tracking-wide">Switch Auction</span>
                       </div>
                       <div className="max-h-72 overflow-y-auto">
                         {userLeagues.map((league) => {
@@ -197,7 +197,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
                           }}
                           className="text-xs text-bpGold hover:underline"
                         >
-                          Browse more leagues
+                          Browse more auctions
                         </button>
                       </div>
                     </div>
@@ -223,7 +223,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
               className={`hover:text-bpCream/90 transition ${currentScreen === 'cars' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
               onClick={() => onNavigate && onNavigate('cars')}
             >
-              Auctions
+              Cars
             </button>
             <button
               className={`hover:text-bpCream/90 transition ${currentScreen === 'leaderboard' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
@@ -241,7 +241,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
               className={`hover:text-bpCream/90 transition ${currentScreen === 'leagues' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
               onClick={() => onNavigate && onNavigate('leagues')}
             >
-              Leagues
+              Auctions
             </button>
             <button
               className={`hover:text-bpCream/90 transition ${currentScreen === 'history' ? 'text-bpCream font-semibold' : 'text-bpGray'}`}
@@ -342,7 +342,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
             onClick={() => onNavigate && onNavigate('cars')}
           >
             <DollarSign size={20} />
-            <span className="text-[10px]">Auctions</span>
+            <span className="text-[10px]">Cars</span>
           </button>
           <button
             className={`flex flex-col items-center gap-1 px-3 py-1 ${currentScreen === 'leaderboard' ? 'text-bpGold' : 'text-bpGray'}`}
@@ -356,7 +356,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
             onClick={() => onNavigate && onNavigate('leagues')}
           >
             <Users size={20} />
-            <span className="text-[10px]">Leagues</span>
+            <span className="text-[10px]">Auctions</span>
           </button>
           <button
             className={`flex flex-col items-center gap-1 px-3 py-1 ${currentScreen === 'history' ? 'text-bpGold' : 'text-bpGray'}`}
@@ -893,7 +893,7 @@ export default function BidPrixApp() {
     
     const draftStatus = getDraftStatus(league)
     if (draftStatus.status !== 'open') {
-      alert(`Cannot join league: ${draftStatus.message}`)
+      alert(`Cannot join auction: ${draftStatus.message}`)
       return
     }
     
@@ -927,7 +927,7 @@ export default function BidPrixApp() {
         .from('league_members')
         .insert([{ league_id: league.id, user_id: user.id, total_score: 0 }])
       
-      if (me) { alert('Error joining league: '+me.message); return }
+      if (me) { alert('Error joining auction: '+me.message); return }
       
       updateSelectedLeague(league)
       setUserGarageId(g.id)
@@ -941,8 +941,8 @@ export default function BidPrixApp() {
       updateCurrentScreen('cars')
       
     } catch (error) {
-      console.error('Error joining league:', error)
-      alert('Error joining league')
+      console.error('Error joining auction:', error)
+      alert('Error joining auction')
     }
   }
 
@@ -1018,7 +1018,7 @@ export default function BidPrixApp() {
     // Validate the auction is in the current league's allowed pool
     const isAuctionInLeaguePool = auctions.some(a => a.id === auction.id)
     if (!isAuctionInLeaguePool) {
-      alert('Error: This car is not part of the current league\'s auction pool.')
+      alert('Error: This car is not part of the current auction pool.')
       return
     }
 
@@ -1306,9 +1306,9 @@ export default function BidPrixApp() {
               <div className="w-12 h-12 rounded-full bg-bpNavy flex items-center justify-center mb-4">
                 <Users className="text-bpGold" size={24} />
               </div>
-              <h3 className="text-xl font-bold text-bpInk mb-3">1. Join a League</h3>
+              <h3 className="text-xl font-bold text-bpInk mb-3">1. Join an Auction</h3>
               <p className="text-bpInk/70">
-                Create or join a league with friends. Each league runs for one week with live BaT auctions.
+                Create or join an auction with friends. Each auction runs for one week with live BaT auctions.
               </p>
             </Card>
 
@@ -1318,7 +1318,7 @@ export default function BidPrixApp() {
               </div>
               <h3 className="text-xl font-bold text-bpInk mb-3">2. Build Your Garage</h3>
               <p className="text-bpInk/70">
-                Draft 7 cars within your league's budget. Spend at least 50% of your budget to qualify! Lock in your prices on day 2 of each auction. Plus predict the bonus car!
+                Draft 7 cars within your auction's budget. Spend at least 50% of your budget to qualify! Lock in your prices on day 2 of each auction. Plus predict the bonus car!
               </p>
             </Card>
 
@@ -1347,11 +1347,11 @@ export default function BidPrixApp() {
                 <ul className="space-y-2 text-bpInk/80 text-sm">
                   <li className="flex items-start gap-2">
                     <span className="text-bpInk font-bold">•</span>
-                    <span><strong>League budget</strong> - Each league sets its own spending limit. Must spend at least 50% to qualify</span>
+                    <span><strong>Auction budget</strong> - Each auction sets its own spending limit. Must spend at least 50% to qualify</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-bpInk font-bold">•</span>
-                    <span><strong>24-hour draft window</strong> - Pick your cars when leagues open</span>
+                    <span><strong>24-hour draft window</strong> - Pick your cars when auctions open</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-bpInk font-bold">•</span>
@@ -1437,7 +1437,7 @@ export default function BidPrixApp() {
             Ready to Race the Market?
           </h2>
           <p className="text-xl text-bpCream/80 mb-8">
-            Join a league, draft your garage, and prove you can predict the market better than anyone.
+            Join an auction, draft your garage, and prove you can predict the market better than anyone.
           </p>
           <button
             onClick={onGetStarted}
@@ -1776,11 +1776,11 @@ export default function BidPrixApp() {
         userLeagues={userLeagues}
         onLeagueChange={updateSelectedLeague}
       >
-        <h2 className="text-2xl font-extrabold tracking-tight mb-4">Join a League</h2>
+        <h2 className="text-2xl font-extrabold tracking-tight mb-4">Join an Auction</h2>
         <div className="grid sm:grid-cols-2 gap-4">
           {leagues.length === 0 && (
             <Card className="p-6 text-bpInk/80">
-              <p>No public leagues yet. Check back soon.</p>
+              <p>No public auctions yet. Check back soon.</p>
             </Card>
           )}
           {leagues.map(l => {
@@ -1816,7 +1816,7 @@ export default function BidPrixApp() {
                     <span className="text-lg">${(l.spending_limit || 200000).toLocaleString()} Budget</span>
                   </div>
                   <p className="text-xs text-center text-bpInk/70 mt-1">
-                    Maximum spending limit for this league
+                    Maximum spending limit for this auction
                   </p>
                 </div>
 
@@ -1832,7 +1832,7 @@ export default function BidPrixApp() {
                     </PrimaryButton>
                   ) : canJoin ? (
                     <PrimaryButton className="flex-1" onClick={() => joinLeague(l)}>
-                      Join League
+                      Join Auction
                     </PrimaryButton>
                   ) : (
                     <PrimaryButton className="flex-1 opacity-50 cursor-not-allowed" disabled>
@@ -2150,7 +2150,7 @@ export default function BidPrixApp() {
                     <div className="flex gap-1 flex-shrink-0">
                       {a.manually_added && (
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-purple-500/15 text-purple-700 border border-purple-500/30">
-                          <Target size={12}/> Bonus League
+                          <Target size={12}/> Bonus Auction
                         </span>
                       )}
                       {a.trending && (
@@ -2486,8 +2486,8 @@ export default function BidPrixApp() {
         onLeagueChange={updateSelectedLeague}
       >
         <div className="max-w-2xl mx-auto">
-          <h2 className="text-2xl font-extrabold tracking-tight mb-4">Select a League</h2>
-          <p className="text-bpCream/70 mb-6">Choose a league to view the leaderboard</p>
+          <h2 className="text-2xl font-extrabold tracking-tight mb-4">Select an Auction</h2>
+          <p className="text-bpCream/70 mb-6">Choose an auction to view the leaderboard</p>
           
           <div className="space-y-4">
             {leagues.map(league => (
@@ -2943,7 +2943,7 @@ export default function BidPrixApp() {
           <Card className="p-8 text-bpInk/80 flex items-center justify-center">
             <div className="text-center">
               <Trophy className="mx-auto mb-2 text-bpInk/60" size={48} />
-              <p>No standings yet. Join the league and draft your garage!</p>
+              <p>No standings yet. Join the auction and draft your garage!</p>
             </div>
           </Card>
         )}

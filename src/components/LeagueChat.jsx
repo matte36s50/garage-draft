@@ -161,7 +161,7 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
         "
       >
         <MessageCircle className="w-5 h-5 text-bpGold" />
-        <span className="font-medium hidden sm:inline">League Chat</span>
+        <span className="font-medium hidden sm:inline">Auction Chat</span>
         {unreadCount > 0 && (
           <span className="
             absolute -top-1 -right-1
@@ -192,7 +192,7 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
         <div className="flex items-center gap-2">
           <MessageCircle className="w-5 h-5 text-bpGold" />
           <div>
-            <h3 className="font-semibold text-bpCream text-sm">League Chat</h3>
+            <h3 className="font-semibold text-bpCream text-sm">Auction Chat</h3>
             <p className="text-xs text-gray-400 truncate max-w-[150px]">
               {leagueName || 'Chat'}
             </p>
