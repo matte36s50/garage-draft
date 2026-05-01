@@ -29,6 +29,11 @@ const USER_AGENTS = [
 /**
  * Extract final price from BaT HTML
  * Supports multiple currencies: USD, EUR, GBP, CAD, AUD, CHF
+ *
+ * Strategy (in order):
+ * 1. Check og:description / meta description (plain text, most reliable)
+ * 2. Match against raw HTML (handles simple inline text and <strong> tags)
+ * 3. Strip all HTML tags, then match (handles price split across elements)
  */
 function extractPriceFromHtml(html) {
   // Check for withdrawn/cancelled listings first
@@ -44,87 +49,118 @@ function extractPriceFromHtml(html) {
     }
   }
 
-  // Currency patterns - supports USD, EUR, GBP, CAD, AUD, CHF
-  const salePatterns = [
-    // USD patterns
+  // Parse a raw price string to an integer, handling locale formats
+  function parsePrice(priceStr, currency) {
+    if (currency === 'EUR' && priceStr.includes('.') && priceStr.includes(',')) {
+      priceStr = priceStr.replace(/\./g, '').replace(',', '.');
+    } else if (currency === 'CHF') {
+      priceStr = priceStr.replace(/'/g, '');
+    }
+    priceStr = priceStr.replace(/,/g, '');
+    if (priceStr.includes('.')) priceStr = priceStr.split('.')[0];
+    const price = parseInt(priceStr, 10);
+    return price > 0 ? price : null;
+  }
+
+  // Text-only sale patterns (applied to plain text / stripped HTML)
+  const saleTextPatterns = [
     { pattern: /Sold\s+for\s+(?:USD\s+)?\$\s*([\d,]+)/i, currency: 'USD' },
     { pattern: /Bid\s+to\s+(?:USD\s+)?\$\s*([\d,]+)/i, currency: 'USD' },
     { pattern: /Winning\s+bid\s+(?:of\s+)?(?:USD\s+)?\$\s*([\d,]+)/i, currency: 'USD' },
-
-    // EUR patterns
     { pattern: /Sold\s+for\s+EUR\s*€?\s*([\d,\.]+)/i, currency: 'EUR' },
     { pattern: /Bid\s+to\s+EUR\s*€?\s*([\d,\.]+)/i, currency: 'EUR' },
-
-    // GBP patterns
     { pattern: /Sold\s+for\s+GBP\s*£?\s*([\d,]+)/i, currency: 'GBP' },
     { pattern: /Bid\s+to\s+GBP\s*£?\s*([\d,]+)/i, currency: 'GBP' },
-
-    // CAD patterns
     { pattern: /Sold\s+for\s+CAD\s*\$?\s*([\d,]+)/i, currency: 'CAD' },
     { pattern: /Bid\s+to\s+CAD\s*\$?\s*([\d,]+)/i, currency: 'CAD' },
-
-    // AUD patterns
     { pattern: /Sold\s+for\s+AUD\s*\$?\s*([\d,]+)/i, currency: 'AUD' },
     { pattern: /Bid\s+to\s+AUD\s*\$?\s*([\d,]+)/i, currency: 'AUD' },
-
-    // CHF patterns (Swiss use ' as thousands separator)
     { pattern: /Sold\s+for\s+CHF\s*([\d,']+)/i, currency: 'CHF' },
     { pattern: /Bid\s+to\s+CHF\s*([\d,']+)/i, currency: 'CHF' },
-
-    // Generic symbol patterns (fallback)
     { pattern: /Sold\s+for\s+€\s*([\d,\.]+)/i, currency: 'EUR' },
     { pattern: /Bid\s+to\s+€\s*([\d,\.]+)/i, currency: 'EUR' },
     { pattern: /Sold\s+for\s+£\s*([\d,]+)/i, currency: 'GBP' },
     { pattern: /Bid\s+to\s+£\s*([\d,]+)/i, currency: 'GBP' },
-
-    // Strong tag patterns
-    { pattern: /<strong>\s*(?:USD\s+)?\$\s*([\d,]+)\s*<\/strong>/i, currency: 'USD' },
-    { pattern: /<strong>\s*EUR\s*€?\s*([\d,\.]+)\s*<\/strong>/i, currency: 'EUR' },
   ];
 
-  for (const { pattern, currency } of salePatterns) {
-    const match = html.match(pattern);
-    if (match) {
-      let priceStr = match[1];
-
-      // Handle different number formats
-      if (currency === 'EUR' && priceStr.includes('.') && priceStr.includes(',')) {
-        // European format: 120.000,00 -> 120000
-        priceStr = priceStr.replace(/\./g, '').replace(',', '.');
-      } else if (currency === 'CHF') {
-        // Swiss format: 120'000 -> 120000
-        priceStr = priceStr.replace(/'/g, '');
-      }
-
-      // Remove commas and get integer part
-      priceStr = priceStr.replace(/,/g, '');
-      if (priceStr.includes('.')) {
-        priceStr = priceStr.split('.')[0];
-      }
-
-      const price = parseInt(priceStr, 10);
-      if (price > 0) {
-        console.log(`   💰 Found: ${currency} ${price.toLocaleString()} (sold)`);
-        return { price, status: 'sold', currency };
-      }
-    }
-  }
-
-  // Check for "High Bid" (reserve not met)
-  const highBidPatterns = [
+  const highBidTextPatterns = [
     { pattern: /High\s+Bid\s+(?:USD\s+)?\$\s*([\d,]+)/i, currency: 'USD' },
     { pattern: /High\s+Bid\s+EUR\s*€?\s*([\d,\.]+)/i, currency: 'EUR' },
     { pattern: /Reserve\s+Not\s+Met.*?\$\s*([\d,]+)/i, currency: 'USD' },
   ];
 
-  for (const { pattern, currency } of highBidPatterns) {
-    const match = html.match(pattern);
-    if (match) {
-      const price = parseInt(match[1].replace(/,/g, ''), 10);
-      console.log(`   ⚠️ Found: ${currency} ${price.toLocaleString()} (reserve not met)`);
-      return { price, status: 'no_sale', currency };
+  function matchText(text) {
+    for (const { pattern, currency } of saleTextPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const price = parsePrice(match[1], currency);
+        if (price) {
+          console.log(`   💰 Found: ${currency} ${price.toLocaleString()} (sold)`);
+          return { price, status: 'sold', currency };
+        }
+      }
+    }
+    for (const { pattern, currency } of highBidTextPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const price = parsePrice(match[1], currency);
+        if (price) {
+          console.log(`   ⚠️ Found: ${currency} ${price.toLocaleString()} (reserve not met)`);
+          return { price, status: 'no_sale', currency };
+        }
+      }
+    }
+    return null;
+  }
+
+  // --- Pass 1: meta description / og:description (plain text, no tag noise) ---
+  const metaRegexes = [
+    /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)/i,
+    /<meta[^>]+content=["']([^"']+)[^>]+property=["']og:description["']/i,
+    /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)/i,
+    /<meta[^>]+content=["']([^"']+)[^>]+name=["']description["']/i,
+    /<meta[^>]+name=["']twitter:description["'][^>]+content=["']([^"']+)/i,
+    /<meta[^>]+content=["']([^"']+)[^>]+name=["']twitter:description["']/i,
+  ];
+  for (const regex of metaRegexes) {
+    const m = html.match(regex);
+    if (m) {
+      const result = matchText(m[1]);
+      if (result) { console.log('   (matched via meta tag)'); return result; }
     }
   }
+
+  // --- Pass 2: raw HTML (handles inline text and <strong> wrapping) ---
+  // Also add <strong>-specific patterns for cases where "Sold for" text and
+  // the price are split by a tag boundary.
+  const rawHtmlPatterns = [
+    { pattern: /<strong>\s*(?:USD\s+)?\$\s*([\d,]+)\s*<\/strong>/i, currency: 'USD' },
+    { pattern: /<strong>\s*EUR\s*€?\s*([\d,\.]+)\s*<\/strong>/i, currency: 'EUR' },
+    { pattern: /<strong>\s*GBP\s*£?\s*([\d,]+)\s*<\/strong>/i, currency: 'GBP' },
+    { pattern: /<strong>\s*CAD\s*\$?\s*([\d,]+)\s*<\/strong>/i, currency: 'CAD' },
+    { pattern: /<strong>\s*AUD\s*\$?\s*([\d,]+)\s*<\/strong>/i, currency: 'AUD' },
+  ];
+  // Try text patterns on raw HTML first (works when price is plain inline text)
+  const rawResult = matchText(html);
+  if (rawResult) return rawResult;
+  // Then try strong-tag patterns
+  for (const { pattern, currency } of rawHtmlPatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      const price = parsePrice(match[1], currency);
+      if (price) {
+        console.log(`   💰 Found: ${currency} ${price.toLocaleString()} (sold, via <strong>)`);
+        return { price, status: 'sold', currency };
+      }
+    }
+  }
+
+  // --- Pass 3: strip all HTML tags, retry text patterns ---
+  // Handles prices split across multiple elements, e.g.:
+  //   "Sold for <span>USD</span> <strong>$32,944</strong>"
+  const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ');
+  const strippedResult = matchText(stripped);
+  if (strippedResult) { console.log('   (matched after stripping HTML tags)'); return strippedResult; }
 
   return { price: null, status: null, currency: null };
 }
@@ -169,9 +205,12 @@ async function scrapeAuctionPrice(url) {
       return { price, status, currency, error: null };
     }
 
-    // Debug: log any amounts found
+    // Debug: log context around "sold" to help diagnose format changes
+    const soldContext = html.match(/.{0,60}sold.{0,60}/i)?.[0]?.replace(/\s+/g, ' ');
     const amountMatches = html.match(/[\$€£][\d,\.]+/g)?.slice(0, 5);
-    console.log(`   ⚠️ No price pattern matched. Sample amounts: ${amountMatches?.join(', ') || 'none'}`);
+    console.log(`   ⚠️ No price pattern matched.`);
+    console.log(`      Sold context: ${soldContext || 'none'}`);
+    console.log(`      Sample amounts: ${amountMatches?.join(', ') || 'none'}`);
 
     return { price: null, status: null, currency: null, error: 'No price pattern matched' };
 
