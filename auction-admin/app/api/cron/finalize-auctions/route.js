@@ -6,10 +6,14 @@ import { NextResponse } from 'next/server';
  *
  * Scrapes BringATrailer pages to get final sale prices for ended auctions.
  *
- * HOW TO USE:
- * - Manual: GET /api/cron/finalize-auctions?secret=YOUR_CRON_SECRET
- * - Scheduled: Set up Vercel Cron or external service (cron-job.org, etc.)
- * - Recommended schedule: Every 30 minutes or hourly
+ * SCHEDULING — add this to the same external cron service (cron-job.org, etc.)
+ * you already use for update-performance:
+ *   URL:      https://bid-prix-admin.vercel.app/api/cron/finalize-auctions
+ *   Method:   GET
+ *   Schedule: Every 30 minutes  (0,30 * * * *)
+ *   Header:   Authorization: Bearer <CRON_SECRET>   (if CRON_SECRET env var is set)
+ *
+ * Manual trigger from admin UI: POST /api/cron/finalize-auctions (no auth needed)
  */
 
 function getSupabaseClient() {
