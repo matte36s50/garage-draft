@@ -191,7 +191,9 @@ async function scrapeAuctionPrice(url) {
     }
 
     if (response.status === 404) {
-      return { price: null, status: 'withdrawn', currency: null, error: null };
+      // Don't mark as withdrawn — BaT sometimes 404s on valid ended listings.
+      // Leave final_price NULL so the next cron run retries.
+      return { price: null, status: null, currency: null, error: '404 Not Found' };
     }
 
     if (!response.ok) {
@@ -276,8 +278,9 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       .is('final_price', null)
       .not('reserve_not_met', 'is', true)
       .not('url', 'is', null)
+      .ilike('url', '%bringatrailer.com%')
       .order('timestamp_end', { ascending: false })
-      .limit(90);
+      .limit(200);
 
     if (fetchError) {
       console.error('Error fetching auctions:', fetchError);
@@ -326,14 +329,10 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       skipped: []
     };
 
-    // Filter to only BaT URLs. The `manual_` prefix on auction_id just means
-    // the auction was bulk-imported (e.g. CSV) rather than fetched via API —
-    // it can still be a real BaT listing with a scrapeable URL.
-    const batAuctions = auctions.filter(a =>
-      a.url && a.url.includes('bringatrailer.com')
-    );
+    // DB query already filters to bringatrailer.com URLs only.
+    const batAuctions = auctions || [];
 
-    console.log(`📋 Found ${batAuctions.length} BaT auctions to process (filtered from ${auctions.length})`);
+    console.log(`📋 Found ${batAuctions.length} BaT auctions to process`);
 
     for (let i = 0; i < batAuctions.length; i++) {
       const auction = batAuctions[i];
