@@ -322,11 +322,11 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       skipped: []
     };
 
-    // Filter to only BaT URLs (skip manual auctions and other sites)
+    // Filter to only BaT URLs. The `manual_` prefix on auction_id just means
+    // the auction was bulk-imported (e.g. CSV) rather than fetched via API —
+    // it can still be a real BaT listing with a scrapeable URL.
     const batAuctions = auctions.filter(a =>
-      a.url &&
-      a.url.includes('bringatrailer.com') &&
-      !a.auction_id?.startsWith('manual_')
+      a.url && a.url.includes('bringatrailer.com')
     );
 
     console.log(`📋 Found ${batAuctions.length} BaT auctions to process (filtered from ${auctions.length})`);
