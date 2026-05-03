@@ -166,6 +166,15 @@ function extractPriceFromHtml(html) {
   const strippedResult = matchText(stripped);
   if (strippedResult) { console.log('   (matched after stripping HTML tags)'); return strippedResult; }
 
+  // --- Pass 4: reserve not met with no extractable price ---
+  // Broad Arrow and other non-standard BaT-hosted auctions may show
+  // "Reserve Not Met" without the high bid in a parseable format.
+  // Mark as no_sale so the auction is resolved and removed from the queue.
+  if (/reserve\s+not\s+met/i.test(stripped)) {
+    console.log('   ⚠️ Detected: Reserve Not Met (no price found)');
+    return { price: null, status: 'no_sale', currency: null };
+  }
+
   return { price: null, status: null, currency: null };
 }
 
@@ -389,23 +398,24 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
         continue;
       }
 
-      // Handle reserve not met - update current_bid and flag reserve_not_met.
+      // Handle reserve not met - flag reserve_not_met so this auction is
+      // permanently resolved and won't reappear in the Finalize tab.
       // final_price stays NULL so scoring applies the 25% penalty correctly.
-      // reserve_not_met = true prevents this auction from reappearing in the
-      // Finalize tab or being re-scraped on subsequent cron runs.
+      // If we have a high bid price, also update current_bid for scoring.
       if (status === 'no_sale') {
-        // Update current_bid with the high bid so scoring can use it,
-        // and set reserve_not_met so this auction is permanently resolved.
+        const updateData = { reserve_not_met: true };
+        if (price) updateData.current_bid = price;
+
         await supabase
           .from('auctions')
-          .update({ current_bid: price, reserve_not_met: true })
+          .update(updateData)
           .eq('auction_id', auction.auction_id);
 
-        console.log(`   ⚠️ Reserve not met - updated current_bid to ${price.toLocaleString()}`);
+        console.log(`   ⚠️ Reserve not met${price ? ` - updated current_bid to ${price.toLocaleString()}` : ' (no price found)'}`);
         results.noSale.push({
           id: auction.auction_id,
           title: auction.title,
-          highBid: price
+          highBid: price || null
         });
         continue;
       }
