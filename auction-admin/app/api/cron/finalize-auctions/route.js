@@ -40,18 +40,9 @@ const USER_AGENTS = [
  * 3. Strip all HTML tags, then match (handles price split across elements)
  */
 function extractPriceFromHtml(html) {
-  // Check for withdrawn/cancelled listings first
-  const withdrawnPatterns = [
-    /listing\s+(?:has\s+been\s+)?(?:withdrawn|cancelled|removed)/i,
-    /auction\s+(?:has\s+been\s+)?(?:withdrawn|cancelled|ended\s+early)/i,
-    /this\s+listing\s+is\s+no\s+longer\s+available/i,
-  ];
-
-  for (const pattern of withdrawnPatterns) {
-    if (pattern.test(html)) {
-      return { price: null, status: 'withdrawn', currency: null };
-    }
-  }
+  // NOTE: withdrawn check is intentionally at the END (after all price passes).
+  // Car descriptions often contain words like "removed", "cancelled" — a sold
+  // price should always take priority over a withdrawn signal.
 
   // Parse a raw price string to an integer, handling locale formats
   function parsePrice(priceStr, currency) {
@@ -173,6 +164,22 @@ function extractPriceFromHtml(html) {
   if (/reserve\s+not\s+met/i.test(stripped)) {
     console.log('   ⚠️ Detected: Reserve Not Met (no price found)');
     return { price: null, status: 'no_sale', currency: null };
+  }
+
+  // --- Pass 5: withdrawn/cancelled (last resort — price always wins) ---
+  // Only flag as withdrawn when NO price was found anywhere on the page.
+  // "removed" is intentionally excluded — it's too common in car descriptions.
+  const withdrawnPatterns = [
+    { pattern: /listing\s+(?:has\s+been\s+)?(?:withdrawn|cancelled)/i, label: 'listing withdrawn/cancelled' },
+    { pattern: /auction\s+(?:has\s+been\s+)?(?:withdrawn|cancelled|ended\s+early)/i, label: 'auction ended early' },
+    { pattern: /this\s+listing\s+is\s+no\s+longer\s+available/i, label: 'no longer available' },
+    { pattern: /page\s+(?:was\s+)?not\s+found/i, label: 'page not found' },
+  ];
+  for (const { pattern, label } of withdrawnPatterns) {
+    if (pattern.test(stripped)) {
+      console.log(`   🚫 Withdrawn signal: "${label}"`);
+      return { price: null, status: 'withdrawn', currency: null };
+    }
   }
 
   return { price: null, status: null, currency: null };
@@ -423,6 +430,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       .is('final_price', null)
       .is('reserve_not_met', true)
       .not('url', 'is', null)
+      .ilike('url', '%bringatrailer.com%')
       .order('timestamp_end', { ascending: false })
       .limit(10);
 
