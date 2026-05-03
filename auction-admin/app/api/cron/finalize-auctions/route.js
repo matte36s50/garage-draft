@@ -156,6 +156,80 @@ function extractPriceFromHtml(html) {
 }
 
 /**
+ * Try to extract price from BaT's embedded JSON blobs.
+ *
+ * BaT bakes auction data into the page as JavaScript variables — the same
+ * technique their live scraper uses to read bringatrailer.com/auctions/.
+ * Individual listing pages have similar script tags with final sale data.
+ *
+ * Returns { price, status, currency } or null if inconclusive.
+ */
+function extractPriceFromBatJson(html) {
+  // Candidate JS variable patterns BaT might use on listing pages
+  const varPatterns = [
+    /var\s+listingInitialData\s*=\s*(\{[\s\S]*?\});\s*(?:\/\/|var\s|\n)/,
+    /var\s+auctionInitialData\s*=\s*(\{[\s\S]*?\});\s*(?:\/\/|var\s|\n)/,
+    /var\s+listingData\s*=\s*(\{[\s\S]*?\});\s*(?:\/\/|var\s|\n)/,
+    /var\s+auctionData\s*=\s*(\{[\s\S]*?\});\s*(?:\/\/|var\s|\n)/,
+    /var\s+BATListing\s*=\s*(\{[\s\S]*?\});\s*(?:\/\/|var\s|\n)/,
+    /window\.__listing\s*=\s*(\{[\s\S]*?\});\s*(?:\/\/|var\s|\n)/,
+  ];
+
+  // Also check for BaT theme script tags (same pattern as auctions listing page)
+  const scriptTagPatterns = [
+    /<script[^>]+id=["']bat-theme-listing[^"']*["'][^>]*>([\s\S]*?)<\/script>/i,
+    /<script[^>]+id=["']bat-listing[^"']*["'][^>]*>([\s\S]*?)<\/script>/i,
+    /<script[^>]+id=["']bat-theme-auction[^"']*["'][^>]*>([\s\S]*?)<\/script>/i,
+  ];
+
+  const candidates = [];
+
+  for (const pattern of varPatterns) {
+    const m = html.match(pattern);
+    if (m) candidates.push({ source: pattern.source.slice(4, 30), json: m[1] });
+  }
+
+  for (const pattern of scriptTagPatterns) {
+    const m = html.match(pattern);
+    if (m) {
+      // Extract JSON object from script content
+      const jsonMatch = m[1].match(/(\{[\s\S]*\})/);
+      if (jsonMatch) candidates.push({ source: 'script-tag', json: jsonMatch[1] });
+    }
+  }
+
+  for (const { source, json } of candidates) {
+    let data;
+    try { data = JSON.parse(json); } catch { continue; }
+
+    const keys = Object.keys(data);
+    console.log(`   📦 BaT JS var (${source}) keys: ${keys.slice(0, 15).join(', ')}`);
+
+    const soldPrice = data.sold_price ?? data.sale_price ?? data.final_price ??
+                      data.auction_price ?? data.bid_amount ?? data.winning_bid;
+    const currency = ((data.currency || data.sold_currency || 'USD')).toUpperCase();
+    const isRnm = !!(data.reserve_not_met || data.no_sale || data.status === 'no_sale');
+
+    if (soldPrice && soldPrice > 0) {
+      const price = parseInt(soldPrice, 10);
+      if (isRnm) {
+        console.log(`   ⚠️ BaT JSON: ${currency} ${price.toLocaleString()} (reserve not met)`);
+        return { price, status: 'no_sale', currency };
+      }
+      console.log(`   💰 BaT JSON: ${currency} ${price.toLocaleString()} (sold)`);
+      return { price, status: 'sold', currency };
+    }
+    if (isRnm) {
+      console.log('   ⚠️ BaT JSON: reserve not met (no price)');
+      return { price: null, status: 'no_sale', currency: null };
+    }
+    console.log(`   📦 BaT JSON: status=${data.status} sold_price=${data.sold_price} bid_amount=${data.bid_amount}`);
+  }
+
+  return null;
+}
+
+/**
  * Try to extract price from BaT's embedded __NEXT_DATA__ JSON blob.
  * Returns { price, status, currency } or null if inconclusive.
  */
@@ -266,7 +340,11 @@ async function scrapeAuctionPrice(url) {
       return { price: null, status: null, currency: null, error: 'Cloudflare blocked' };
     }
 
-    // Pass 0: __NEXT_DATA__ JSON (most reliable)
+    // Pass 0a: BaT embedded JS variables (same technique as live bid scraper)
+    const batJsonResult = extractPriceFromBatJson(html);
+    if (batJsonResult) return { ...batJsonResult, error: null };
+
+    // Pass 0b: __NEXT_DATA__ JSON (if BaT uses Next.js rendering)
     const nextDataResult = extractPriceFromNextData(html);
     if (nextDataResult) return { ...nextDataResult, error: null };
 
@@ -281,8 +359,10 @@ async function scrapeAuctionPrice(url) {
     const soldContext = stripped.match(/.{0,80}sold.{0,80}/i)?.[0]?.replace(/\s+/g, ' ');
     const amountMatches = stripped.match(/[\$€£][\d,\.]+/g)?.slice(0, 5);
     const pageTitle = html.match(/<title[^>]*>([^<]{1,120})<\/title>/i)?.[1];
+    const scriptIds = [...html.matchAll(/<script[^>]+id=["']([^"']+)["']/gi)].map(m => m[1]);
     console.log(`   ⚠️ No price found — will retry next run`);
     console.log(`      Page title: ${pageTitle || 'none'}`);
+    console.log(`      Script tag IDs: ${scriptIds.join(', ') || 'none'}`);
     console.log(`      Sold context: ${soldContext || 'none'}`);
     console.log(`      Sample amounts: ${amountMatches?.join(', ') || 'none'}`);
     console.log(`      HTML length: ${html.length} chars`);
