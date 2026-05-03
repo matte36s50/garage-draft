@@ -14,6 +14,11 @@ import { NextResponse } from 'next/server';
  *   Header:   Authorization: Bearer <CRON_SECRET>   (if CRON_SECRET env var is set)
  *
  * Manual trigger from admin UI: POST /api/cron/finalize-auctions (no auth needed)
+ *
+ * OUTCOMES per auction:
+ *   Sold           → sets final_price
+ *   Reserve Not Met → sets reserve_not_met = true (keeps final_price NULL for scoring)
+ *   Anything else  → no DB change, retries next run
  */
 
 function getSupabaseClient() {
@@ -23,7 +28,6 @@ function getSupabaseClient() {
   );
 }
 
-// User agents to rotate through
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
@@ -31,20 +35,11 @@ const USER_AGENTS = [
 ];
 
 /**
- * Extract final price from BaT HTML
- * Supports multiple currencies: USD, EUR, GBP, CAD, AUD, CHF
- *
- * Strategy (in order):
- * 1. Check og:description / meta description (plain text, most reliable)
- * 2. Match against raw HTML (handles simple inline text and <strong> tags)
- * 3. Strip all HTML tags, then match (handles price split across elements)
+ * Extract final price from BaT HTML via regex.
+ * Only returns 'sold' or 'no_sale' — never 'withdrawn'.
+ * If neither signal is found, returns { price: null, status: null }.
  */
 function extractPriceFromHtml(html) {
-  // NOTE: withdrawn check is intentionally at the END (after all price passes).
-  // Car descriptions often contain words like "removed", "cancelled" — a sold
-  // price should always take priority over a withdrawn signal.
-
-  // Parse a raw price string to an integer, handling locale formats
   function parsePrice(priceStr, currency) {
     if (currency === 'EUR' && priceStr.includes('.') && priceStr.includes(',')) {
       priceStr = priceStr.replace(/\./g, '').replace(',', '.');
@@ -57,7 +52,6 @@ function extractPriceFromHtml(html) {
     return price > 0 ? price : null;
   }
 
-  // Text-only sale patterns (applied to plain text / stripped HTML)
   const saleTextPatterns = [
     { pattern: /Sold\s+for\s+(?:USD\s+)?\$\s*([\d,]+)/i, currency: 'USD' },
     { pattern: /Bid\s+to\s+(?:USD\s+)?\$\s*([\d,]+)/i, currency: 'USD' },
@@ -108,7 +102,7 @@ function extractPriceFromHtml(html) {
     return null;
   }
 
-  // --- Pass 1: meta description / og:description (plain text, no tag noise) ---
+  // Pass 1: meta description / og:description (plain text, most reliable)
   const metaRegexes = [
     /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)/i,
     /<meta[^>]+content=["']([^"']+)[^>]+property=["']og:description["']/i,
@@ -125,21 +119,18 @@ function extractPriceFromHtml(html) {
     }
   }
 
-  // --- Pass 2: raw HTML (handles inline text and <strong> wrapping) ---
-  // Also add <strong>-specific patterns for cases where "Sold for" text and
-  // the price are split by a tag boundary.
-  const rawHtmlPatterns = [
+  // Pass 2: raw HTML text patterns + <strong> tag patterns
+  const rawResult = matchText(html);
+  if (rawResult) return rawResult;
+
+  const strongPatterns = [
     { pattern: /<strong>\s*(?:USD\s+)?\$\s*([\d,]+)\s*<\/strong>/i, currency: 'USD' },
     { pattern: /<strong>\s*EUR\s*€?\s*([\d,\.]+)\s*<\/strong>/i, currency: 'EUR' },
     { pattern: /<strong>\s*GBP\s*£?\s*([\d,]+)\s*<\/strong>/i, currency: 'GBP' },
     { pattern: /<strong>\s*CAD\s*\$?\s*([\d,]+)\s*<\/strong>/i, currency: 'CAD' },
     { pattern: /<strong>\s*AUD\s*\$?\s*([\d,]+)\s*<\/strong>/i, currency: 'AUD' },
   ];
-  // Try text patterns on raw HTML first (works when price is plain inline text)
-  const rawResult = matchText(html);
-  if (rawResult) return rawResult;
-  // Then try strong-tag patterns
-  for (const { pattern, currency } of rawHtmlPatterns) {
+  for (const { pattern, currency } of strongPatterns) {
     const match = html.match(pattern);
     if (match) {
       const price = parsePrice(match[1], currency);
@@ -150,36 +141,15 @@ function extractPriceFromHtml(html) {
     }
   }
 
-  // --- Pass 3: strip all HTML tags, retry text patterns ---
-  // Handles prices split across multiple elements, e.g.:
-  //   "Sold for <span>USD</span> <strong>$32,944</strong>"
+  // Pass 3: strip all HTML tags, retry (handles price split across elements)
   const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ');
   const strippedResult = matchText(stripped);
   if (strippedResult) { console.log('   (matched after stripping HTML tags)'); return strippedResult; }
 
-  // --- Pass 4: reserve not met with no extractable price ---
-  // Broad Arrow and other non-standard BaT-hosted auctions may show
-  // "Reserve Not Met" without the high bid in a parseable format.
-  // Mark as no_sale so the auction is resolved and removed from the queue.
+  // Pass 4: reserve not met with no extractable price
   if (/reserve\s+not\s+met/i.test(stripped)) {
     console.log('   ⚠️ Detected: Reserve Not Met (no price found)');
     return { price: null, status: 'no_sale', currency: null };
-  }
-
-  // --- Pass 5: withdrawn/cancelled (last resort — price always wins) ---
-  // Only flag as withdrawn when NO price was found anywhere on the page.
-  // "removed" is intentionally excluded — it's too common in car descriptions.
-  const withdrawnPatterns = [
-    { pattern: /listing\s+(?:has\s+been\s+)?(?:withdrawn|cancelled)/i, label: 'listing withdrawn/cancelled' },
-    { pattern: /auction\s+(?:has\s+been\s+)?(?:withdrawn|cancelled|ended\s+early)/i, label: 'auction ended early' },
-    { pattern: /this\s+listing\s+is\s+no\s+longer\s+available/i, label: 'no longer available' },
-    { pattern: /page\s+(?:was\s+)?not\s+found/i, label: 'page not found' },
-  ];
-  for (const { pattern, label } of withdrawnPatterns) {
-    if (pattern.test(stripped)) {
-      console.log(`   🚫 Withdrawn signal: "${label}"`);
-      return { price: null, status: 'withdrawn', currency: null };
-    }
   }
 
   return { price: null, status: null, currency: null };
@@ -187,7 +157,7 @@ function extractPriceFromHtml(html) {
 
 /**
  * Try to extract price from BaT's embedded __NEXT_DATA__ JSON blob.
- * Returns { price, status, currency } or null if not found / not applicable.
+ * Returns { price, status, currency } or null if inconclusive.
  */
 function extractPriceFromNextData(html) {
   const match = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([^<]{10,})<\/script>/i);
@@ -202,17 +172,14 @@ function extractPriceFromNextData(html) {
 
   const listing = nextData?.props?.pageProps?.listing;
   if (!listing) {
-    // Log top-level keys so we can see the structure in Vercel logs
     const pagePropsKeys = Object.keys(nextData?.props?.pageProps || {});
     console.log(`   📦 __NEXT_DATA__ pageProps keys: ${pagePropsKeys.join(', ')}`);
     return null;
   }
 
-  // Log listing keys once so we can see BaT's field names in logs
   const listingKeys = Object.keys(listing);
   console.log(`   📦 __NEXT_DATA__ listing keys: ${listingKeys.slice(0, 20).join(', ')}`);
 
-  // BaT field names (try all plausible variants)
   const soldPrice =
     listing.sold_price ??
     listing.sale_price ??
@@ -237,18 +204,6 @@ function extractPriceFromNextData(html) {
     listing.reserve_status === 'no_sale'
   );
 
-  const isWithdrawn = !!(
-    listing.withdrawn ||
-    listing.cancelled ||
-    listing.status === 'withdrawn' ||
-    listing.status === 'cancelled'
-  );
-
-  if (isWithdrawn) {
-    console.log('   🚫 __NEXT_DATA__: listing withdrawn');
-    return { price: null, status: 'withdrawn', currency: null };
-  }
-
   if (soldPrice && soldPrice > 0) {
     const price = parseInt(soldPrice, 10);
     if (isRnm) {
@@ -264,19 +219,18 @@ function extractPriceFromNextData(html) {
     return { price: null, status: 'no_sale', currency: null };
   }
 
-  // Have __NEXT_DATA__ but no conclusive result — log status/bid fields for debugging
   console.log(`   📦 __NEXT_DATA__ status=${listing.status} sold_price=${listing.sold_price} bid_amount=${listing.bid_amount}`);
   return null;
 }
 
 /**
- * Scrape a single BaT auction page
+ * Fetch a BaT listing page and return { price, status, currency, error }.
+ * status is 'sold', 'no_sale', or null (= inconclusive, retry next run).
  */
 async function scrapeAuctionPrice(url) {
   try {
     await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500));
 
-    // Full browser headers to reduce Cloudflare blocking
     const headers = {
       'User-Agent': USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -294,23 +248,13 @@ async function scrapeAuctionPrice(url) {
     console.log(`   🌐 Fetching: ${url}`);
     const response = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
 
-    if (response.status === 403) {
-      return { price: null, status: null, currency: null, error: '403 Forbidden - blocked' };
-    }
-
-    if (response.status === 404) {
-      // Don't mark as withdrawn — BaT sometimes 404s on valid ended listings.
-      // Leave final_price NULL so the next cron run retries.
-      return { price: null, status: null, currency: null, error: '404 Not Found' };
-    }
-
     if (!response.ok) {
       return { price: null, status: null, currency: null, error: `HTTP ${response.status}` };
     }
 
     const html = await response.text();
 
-    // Detect Cloudflare bot challenge (returns 200 OK but serves a JS challenge page)
+    // Cloudflare challenge page — 200 OK but no real content
     if (
       /Just a moment\.\.\./i.test(html) ||
       /Checking your browser before accessing/i.test(html) ||
@@ -318,39 +262,32 @@ async function scrapeAuctionPrice(url) {
       /_cf_chl_opt\s*=/i.test(html) ||
       /challenge-platform\/h\/[bg]/i.test(html)
     ) {
-      console.log('   🛡️ Cloudflare challenge page detected — scraper IP is blocked');
+      console.log('   🛡️ Cloudflare challenge page detected');
       return { price: null, status: null, currency: null, error: 'Cloudflare blocked' };
     }
 
-    // Pass 0: __NEXT_DATA__ JSON (structured data, most reliable when present)
+    // Pass 0: __NEXT_DATA__ JSON (most reliable)
     const nextDataResult = extractPriceFromNextData(html);
-    if (nextDataResult) {
-      return { ...nextDataResult, error: null };
-    }
+    if (nextDataResult) return { ...nextDataResult, error: null };
 
-    // Passes 1-4: regex-based HTML extraction (fallback)
+    // Passes 1-4: regex-based HTML extraction
     const { price, status, currency } = extractPriceFromHtml(html);
-
-    if (status === 'withdrawn') {
-      return { price: null, status: 'withdrawn', currency: null, error: null };
-    }
-
-    if (price) {
+    if (price || status === 'no_sale') {
       return { price, status, currency, error: null };
     }
 
-    // Debug: log context around "sold" to help diagnose format changes
+    // Nothing found — log debug info and retry next run
     const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ');
     const soldContext = stripped.match(/.{0,80}sold.{0,80}/i)?.[0]?.replace(/\s+/g, ' ');
     const amountMatches = stripped.match(/[\$€£][\d,\.]+/g)?.slice(0, 5);
     const pageTitle = html.match(/<title[^>]*>([^<]{1,120})<\/title>/i)?.[1];
-    console.log(`   ⚠️ No price pattern matched.`);
+    console.log(`   ⚠️ No price found — will retry next run`);
     console.log(`      Page title: ${pageTitle || 'none'}`);
     console.log(`      Sold context: ${soldContext || 'none'}`);
     console.log(`      Sample amounts: ${amountMatches?.join(', ') || 'none'}`);
     console.log(`      HTML length: ${html.length} chars`);
 
-    return { price: null, status: null, currency: null, error: 'No price pattern matched' };
+    return { price: null, status: null, currency: null, error: 'No price found' };
 
   } catch (error) {
     if (error.name === 'TimeoutError') {
@@ -361,7 +298,6 @@ async function scrapeAuctionPrice(url) {
 }
 
 export async function GET(request) {
-  // Verify cron secret for security (only for GET - external cron calls)
   const authHeader = request.headers.get('authorization');
   const { searchParams } = new URL(request.url);
   const secretParam = searchParams.get('secret');
@@ -370,7 +306,6 @@ export async function GET(request) {
   if (cronSecret) {
     const isValidHeader = authHeader === `Bearer ${cronSecret}`;
     const isValidParam = secretParam === cronSecret;
-
     if (!isValidHeader && !isValidParam) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -381,28 +316,23 @@ export async function GET(request) {
 
 // POST doesn't require auth - called from admin UI which is already protected
 export async function POST(request) {
-  // Manual admin trigger: only skip auctions that ended in the last 5 minutes
-  // (BaT updates pages within minutes of auction end, so no need for 2-hour wait)
   return runFinalizer({ minAgeMinutes: 5 });
 }
 
 async function runFinalizer({ minAgeMinutes = 120 } = {}) {
   const supabase = getSupabaseClient();
 
-  console.log('=' .repeat(50));
+  console.log('='.repeat(50));
   console.log('🚀 Auction Finalizer - Starting');
   console.log(`🕐 Time: ${new Date().toISOString()}`);
   console.log(`⏱️ Min age: ${minAgeMinutes} minutes`);
-  console.log('=' .repeat(50));
+  console.log('='.repeat(50));
 
   try {
-    // Get auctions that ended more than minAgeMinutes ago but have no final_price
     const now = Math.floor(Date.now() / 1000);
     const cutoff = now - (minAgeMinutes * 60);
 
-    // Auctions that ended > minAgeMinutes ago, have no final price, and haven't been confirmed RNM.
-    // Use `not('reserve_not_met', 'is', true)` instead of `.eq('reserve_not_met', false)` so that
-    // rows where reserve_not_met IS NULL are also included (NULL = false is NULL in SQL, not TRUE).
+    // Auctions ended > minAgeMinutes ago, no final price, not already flagged RNM
     const { data: unfinalized, error: fetchError } = await supabase
       .from('auctions')
       .select('auction_id, title, url, current_bid, timestamp_end')
@@ -419,10 +349,10 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
     }
 
-    // Also re-check auctions flagged reserve_not_met within the last 30 days —
-    // the scraper may have caught the page before BaT finalized the sale result.
+    // Re-check reserve_not_met auctions from the last 30 days — the scraper may
+    // have flagged RNM before BaT finalized the result and a sale could have gone through.
     const thirtyDaysAgo = now - (30 * 24 * 60 * 60);
-    const { data: recheck, error: recheckError } = await supabase
+    const { data: recheck } = await supabase
       .from('auctions')
       .select('auction_id, title, url, current_bid, timestamp_end')
       .lt('timestamp_end', cutoff)
@@ -443,33 +373,18 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       }
     }
 
-    if (!auctions || auctions.length === 0) {
+    if (auctions.length === 0) {
       console.log('📭 No auctions need finalization');
-      return NextResponse.json({
-        success: true,
-        message: 'No auctions to finalize',
-        processed: 0
-      });
+      return NextResponse.json({ success: true, message: 'No auctions to finalize', processed: 0 });
     }
 
-    console.log(`📋 Found ${auctions.length} auctions to process`);
+    console.log(`📋 Found ${auctions.length} BaT auctions to process`);
 
-    const results = {
-      successful: [],
-      withdrawn: [],
-      noSale: [],
-      failed: [],
-      skipped: []
-    };
+    const results = { successful: [], noSale: [], pending: [], skipped: [] };
 
-    // DB query already filters to bringatrailer.com URLs only.
-    const batAuctions = auctions || [];
-
-    console.log(`📋 Found ${batAuctions.length} BaT auctions to process`);
-
-    for (let i = 0; i < batAuctions.length; i++) {
-      const auction = batAuctions[i];
-      console.log(`\n[${i + 1}/${batAuctions.length}] ${auction.title?.slice(0, 60)}`);
+    for (let i = 0; i < auctions.length; i++) {
+      const auction = auctions[i];
+      console.log(`\n[${i + 1}/${auctions.length}] ${auction.title?.slice(0, 60)}`);
       console.log(`   ID: ${auction.auction_id}`);
 
       if (!auction.url) {
@@ -480,119 +395,63 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
 
       const { price, status, currency, error } = await scrapeAuctionPrice(auction.url);
 
-      // Handle withdrawn/cancelled auctions
-      if (status === 'withdrawn') {
-        // Mark with final_price = 0 so it won't be retried
-        await supabase
-          .from('auctions')
-          .update({ final_price: 0 })
-          .eq('auction_id', auction.auction_id);
-
-        console.log(`   🚫 Marked as withdrawn`);
-        results.withdrawn.push({
-          id: auction.auction_id,
-          title: auction.title
-        });
-        continue;
-      }
-
-      // Handle successful sale
-      if (status === 'sold' && price && price > 0) {
+      if (status === 'sold' && price > 0) {
         const { error: updateError } = await supabase
           .from('auctions')
           .update({ final_price: price, reserve_not_met: false })
           .eq('auction_id', auction.auction_id);
 
         if (updateError) {
-          console.log(`   ❌ DB Update failed: ${updateError.message}`);
-          results.failed.push({
-            id: auction.auction_id,
-            title: auction.title,
-            error: `DB update failed: ${updateError.message}`
-          });
+          console.log(`   ❌ DB update failed: ${updateError.message}`);
+          results.pending.push({ id: auction.auction_id, title: auction.title, error: updateError.message });
         } else {
-          console.log(`   ✅ Updated: ${currency || 'USD'} ${price.toLocaleString()}`);
-          results.successful.push({
-            id: auction.auction_id,
-            title: auction.title,
-            finalPrice: price,
-            currency: currency || 'USD'
-          });
+          console.log(`   ✅ Sold: ${currency || 'USD'} ${price.toLocaleString()}`);
+          results.successful.push({ id: auction.auction_id, title: auction.title, finalPrice: price, currency: currency || 'USD' });
         }
         continue;
       }
 
-      // Handle reserve not met - flag reserve_not_met so this auction is
-      // permanently resolved and won't reappear in the Finalize tab.
-      // final_price stays NULL so scoring applies the 25% penalty correctly.
-      // If we have a high bid price, also update current_bid for scoring.
       if (status === 'no_sale') {
         const updateData = { reserve_not_met: true };
         if (price) updateData.current_bid = price;
-
-        await supabase
-          .from('auctions')
-          .update(updateData)
-          .eq('auction_id', auction.auction_id);
-
-        console.log(`   ⚠️ Reserve not met${price ? ` - updated current_bid to ${price.toLocaleString()}` : ' (no price found)'}`);
-        results.noSale.push({
-          id: auction.auction_id,
-          title: auction.title,
-          highBid: price || null
-        });
+        await supabase.from('auctions').update(updateData).eq('auction_id', auction.auction_id);
+        console.log(`   ⚠️ Reserve not met${price ? ` — high bid ${price.toLocaleString()}` : ''}`);
+        results.noSale.push({ id: auction.auction_id, title: auction.title, highBid: price || null });
         continue;
       }
 
-      // Failed to parse
-      console.log(`   ❌ Failed: ${error}`);
-      results.failed.push({
-        id: auction.auction_id,
-        title: auction.title,
-        error: error
-      });
+      // No definitive result — leave final_price NULL, retry next run
+      console.log(`   🔄 Pending: ${error || 'no price found yet'}`);
+      results.pending.push({ id: auction.auction_id, title: auction.title, error: error || 'no price found' });
     }
 
-    // Summary
     const successCount = results.successful.length;
-    const withdrawnCount = results.withdrawn.length;
     const noSaleCount = results.noSale.length;
-    const failCount = results.failed.length;
+    const pendingCount = results.pending.length;
     const skipCount = results.skipped.length;
-    const total = successCount + withdrawnCount + noSaleCount + failCount + skipCount;
-    const processedCount = successCount + withdrawnCount + noSaleCount;
-    const successRate = total > 0 ? Math.round(processedCount / total * 100) : 0;
+    const total = successCount + noSaleCount + pendingCount + skipCount;
+    const resolvedCount = successCount + noSaleCount;
+    const successRate = total > 0 ? Math.round(resolvedCount / total * 100) : 0;
 
-    console.log('\n' + '=' .repeat(50));
+    console.log('\n' + '='.repeat(50));
     console.log('📊 SUMMARY');
     console.log(`   ✅ Sold (updated):    ${successCount}`);
-    console.log(`   🚫 Withdrawn:         ${withdrawnCount}`);
     console.log(`   ⚠️  Reserve not met:  ${noSaleCount}`);
-    console.log(`   ❌ Failed:            ${failCount}`);
+    console.log(`   🔄 Pending (retry):   ${pendingCount}`);
     console.log(`   ⏭️ Skipped:           ${skipCount}`);
-    console.log(`   📈 Success rate:      ${successRate}%`);
-    console.log('=' .repeat(50));
+    console.log(`   📈 Resolved rate:     ${successRate}%`);
+    console.log('='.repeat(50));
 
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
       processed: total,
-      stats: {
-        sold: successCount,
-        withdrawn: withdrawnCount,
-        noSale: noSaleCount,
-        failed: failCount,
-        skipped: skipCount
-      },
-      successful: successCount,
-      failed: failCount,
+      stats: { sold: successCount, noSale: noSaleCount, pending: pendingCount, skipped: skipCount },
       successRate,
       results: {
         successful: results.successful.slice(0, 10),
-        withdrawn: results.withdrawn.slice(0, 10),
         noSale: results.noSale.slice(0, 10),
-        failed: results.failed.slice(0, 10),
-        skipped: results.skipped.slice(0, 10)
+        pending: results.pending.slice(0, 10),
       }
     });
 
