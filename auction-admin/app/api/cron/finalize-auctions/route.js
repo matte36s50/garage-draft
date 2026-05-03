@@ -179,24 +179,116 @@ function extractPriceFromHtml(html) {
 }
 
 /**
+ * Try to extract price from BaT's embedded __NEXT_DATA__ JSON blob.
+ * Returns { price, status, currency } or null if not found / not applicable.
+ */
+function extractPriceFromNextData(html) {
+  const match = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([^<]{10,})<\/script>/i);
+  if (!match) return null;
+
+  let nextData;
+  try {
+    nextData = JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+
+  const listing = nextData?.props?.pageProps?.listing;
+  if (!listing) {
+    // Log top-level keys so we can see the structure in Vercel logs
+    const pagePropsKeys = Object.keys(nextData?.props?.pageProps || {});
+    console.log(`   📦 __NEXT_DATA__ pageProps keys: ${pagePropsKeys.join(', ')}`);
+    return null;
+  }
+
+  // Log listing keys once so we can see BaT's field names in logs
+  const listingKeys = Object.keys(listing);
+  console.log(`   📦 __NEXT_DATA__ listing keys: ${listingKeys.slice(0, 20).join(', ')}`);
+
+  // BaT field names (try all plausible variants)
+  const soldPrice =
+    listing.sold_price ??
+    listing.sale_price ??
+    listing.final_price ??
+    listing.auction_price ??
+    listing.bid_amount ??
+    listing.winning_bid ??
+    listing.current_bid;
+
+  const currency = (
+    listing.currency ||
+    listing.sold_currency ||
+    listing.bid_currency ||
+    'USD'
+  ).toUpperCase();
+
+  const isRnm = !!(
+    listing.reserve_not_met ||
+    listing.no_sale ||
+    listing.status === 'no_sale' ||
+    listing.reserve_status === 'not_met' ||
+    listing.reserve_status === 'no_sale'
+  );
+
+  const isWithdrawn = !!(
+    listing.withdrawn ||
+    listing.cancelled ||
+    listing.status === 'withdrawn' ||
+    listing.status === 'cancelled'
+  );
+
+  if (isWithdrawn) {
+    console.log('   🚫 __NEXT_DATA__: listing withdrawn');
+    return { price: null, status: 'withdrawn', currency: null };
+  }
+
+  if (soldPrice && soldPrice > 0) {
+    const price = parseInt(soldPrice, 10);
+    if (isRnm) {
+      console.log(`   ⚠️ __NEXT_DATA__: ${currency} ${price.toLocaleString()} (reserve not met)`);
+      return { price, status: 'no_sale', currency };
+    }
+    console.log(`   💰 __NEXT_DATA__: ${currency} ${price.toLocaleString()} (sold)`);
+    return { price, status: 'sold', currency };
+  }
+
+  if (isRnm) {
+    console.log('   ⚠️ __NEXT_DATA__: reserve not met (no price)');
+    return { price: null, status: 'no_sale', currency: null };
+  }
+
+  // Have __NEXT_DATA__ but no conclusive result — log status/bid fields for debugging
+  console.log(`   📦 __NEXT_DATA__ status=${listing.status} sold_price=${listing.sold_price} bid_amount=${listing.bid_amount}`);
+  return null;
+}
+
+/**
  * Scrape a single BaT auction page
  */
 async function scrapeAuctionPrice(url) {
   try {
-    // Reduced delay - still polite but faster
     await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500));
 
+    // Full browser headers to reduce Cloudflare blocking
     const headers = {
       'User-Agent': USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9,de;q=0.8,fr;q=0.7',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
     };
 
     console.log(`   🌐 Fetching: ${url}`);
     const response = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
 
     if (response.status === 403) {
-      return { price: null, status: null, currency: null, error: '403 Forbidden - might be blocked' };
+      return { price: null, status: null, currency: null, error: '403 Forbidden - blocked' };
     }
 
     if (response.status === 404) {
@@ -210,6 +302,26 @@ async function scrapeAuctionPrice(url) {
     }
 
     const html = await response.text();
+
+    // Detect Cloudflare bot challenge (returns 200 OK but serves a JS challenge page)
+    if (
+      /Just a moment\.\.\./i.test(html) ||
+      /Checking your browser before accessing/i.test(html) ||
+      /cf-browser-verification/i.test(html) ||
+      /_cf_chl_opt\s*=/i.test(html) ||
+      /challenge-platform\/h\/[bg]/i.test(html)
+    ) {
+      console.log('   🛡️ Cloudflare challenge page detected — scraper IP is blocked');
+      return { price: null, status: null, currency: null, error: 'Cloudflare blocked' };
+    }
+
+    // Pass 0: __NEXT_DATA__ JSON (structured data, most reliable when present)
+    const nextDataResult = extractPriceFromNextData(html);
+    if (nextDataResult) {
+      return { ...nextDataResult, error: null };
+    }
+
+    // Passes 1-4: regex-based HTML extraction (fallback)
     const { price, status, currency } = extractPriceFromHtml(html);
 
     if (status === 'withdrawn') {
@@ -221,11 +333,15 @@ async function scrapeAuctionPrice(url) {
     }
 
     // Debug: log context around "sold" to help diagnose format changes
-    const soldContext = html.match(/.{0,60}sold.{0,60}/i)?.[0]?.replace(/\s+/g, ' ');
-    const amountMatches = html.match(/[\$€£][\d,\.]+/g)?.slice(0, 5);
+    const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ');
+    const soldContext = stripped.match(/.{0,80}sold.{0,80}/i)?.[0]?.replace(/\s+/g, ' ');
+    const amountMatches = stripped.match(/[\$€£][\d,\.]+/g)?.slice(0, 5);
+    const pageTitle = html.match(/<title[^>]*>([^<]{1,120})<\/title>/i)?.[1];
     console.log(`   ⚠️ No price pattern matched.`);
+    console.log(`      Page title: ${pageTitle || 'none'}`);
     console.log(`      Sold context: ${soldContext || 'none'}`);
     console.log(`      Sample amounts: ${amountMatches?.join(', ') || 'none'}`);
+    console.log(`      HTML length: ${html.length} chars`);
 
     return { price: null, status: null, currency: null, error: 'No price pattern matched' };
 
