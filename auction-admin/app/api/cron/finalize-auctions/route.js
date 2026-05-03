@@ -156,6 +156,78 @@ function extractPriceFromHtml(html) {
 }
 
 /**
+ * Extract price from Schema.org JSON-LD structured data.
+ * BaT embeds <script type="application/ld+json"> on all listing pages.
+ * Completed (sold) auctions include {"@type":"Offer","priceCurrency":"USD","price":32944}.
+ * Returns { price, currency } if a positive price is found, or null.
+ */
+function extractPriceFromSchemaOrg(html) {
+  const scriptMatches = [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+  for (const m of scriptMatches) {
+    let data;
+    try { data = JSON.parse(m[1]); } catch { continue; }
+
+    const offerBlocks = [];
+    if (data['@type'] === 'Offer') offerBlocks.push(data);
+    if (data.offers) {
+      const o = data.offers;
+      if (Array.isArray(o)) offerBlocks.push(...o);
+      else offerBlocks.push(o);
+    }
+    if (Array.isArray(data['@graph'])) {
+      for (const node of data['@graph']) {
+        if (node['@type'] === 'Offer') offerBlocks.push(node);
+        if (node.offers) {
+          const o = node.offers;
+          if (Array.isArray(o)) offerBlocks.push(...o);
+          else offerBlocks.push(o);
+        }
+      }
+    }
+
+    for (const offer of offerBlocks) {
+      const price = offer.price;
+      const currency = (offer.priceCurrency || 'USD').toUpperCase();
+      if (price !== undefined && price !== null) {
+        const numericPrice = parseInt(price, 10);
+        if (numericPrice > 0) {
+          console.log(`   💰 Schema.org JSON-LD: ${currency} ${numericPrice.toLocaleString()}`);
+          return { price: numericPrice, currency };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract price and status from the page <title>.
+ * BaT title for sold auctions: "1987 Porsche 944 Turbo ... - sold for $32,944 on April 30, 2026"
+ * Returns { price, status, currency } or null.
+ */
+function extractPriceFromPageTitle(html) {
+  const titleMatch = html.match(/<title[^>]*>([^<]{1,300})<\/title>/i);
+  if (!titleMatch) return null;
+  const title = titleMatch[1];
+
+  const soldMatch = title.match(/sold\s+for\s+(?:USD\s+)?\$\s*([\d,]+)/i);
+  if (soldMatch) {
+    const price = parseInt(soldMatch[1].replace(/,/g, ''), 10);
+    if (price > 0) {
+      console.log(`   💰 Page title: USD ${price.toLocaleString()} (sold)`);
+      return { price, status: 'sold', currency: 'USD' };
+    }
+  }
+
+  if (/reserve\s+not\s+met/i.test(title)) {
+    console.log('   ⚠️ Page title: Reserve not met');
+    return { price: null, status: 'no_sale', currency: null };
+  }
+
+  return null;
+}
+
+/**
  * Try to extract price from BaT's embedded JSON blobs.
  *
  * BaT bakes auction data into the page as JavaScript variables — the same
@@ -340,11 +412,26 @@ async function scrapeAuctionPrice(url) {
       return { price: null, status: null, currency: null, error: 'Cloudflare blocked' };
     }
 
-    // Pass 0a: BaT embedded JS variables (same technique as live bid scraper)
+    // Pass 0 (Schema.org): most reliable — BaT bakes final price into JSON-LD on completed listings
+    const schemaOrg = extractPriceFromSchemaOrg(html);
+    if (schemaOrg) {
+      const strippedForRnm = html.replace(/<[^>]+>/g, ' ');
+      if (/reserve\s+not\s+met/i.test(strippedForRnm)) {
+        console.log('   ⚠️ Schema.org price present but page shows Reserve Not Met');
+        return { price: schemaOrg.price, status: 'no_sale', currency: schemaOrg.currency, error: null };
+      }
+      return { price: schemaOrg.price, status: 'sold', currency: schemaOrg.currency, error: null };
+    }
+
+    // Pass 0a (page title): "sold for $32,944 on April 30, 2026" — clear plain-text signal
+    const titleResult = extractPriceFromPageTitle(html);
+    if (titleResult) return { ...titleResult, error: null };
+
+    // Pass 0b: BaT embedded JS variables (same technique as live bid scraper)
     const batJsonResult = extractPriceFromBatJson(html);
     if (batJsonResult) return { ...batJsonResult, error: null };
 
-    // Pass 0b: __NEXT_DATA__ JSON (if BaT uses Next.js rendering)
+    // Pass 0c: __NEXT_DATA__ JSON (if BaT uses Next.js rendering)
     const nextDataResult = extractPriceFromNextData(html);
     if (nextDataResult) return { ...nextDataResult, error: null };
 
