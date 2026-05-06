@@ -156,24 +156,35 @@ function extractPriceFromHtml(html) {
 }
 
 /**
+ * Parse the __NEXT_DATA__ JSON blob embedded in a BaT page.
+ * Returns the parsed listing object or null.
+ */
+function parseNextDataListing(html) {
+  const match = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([^<]{10,})<\/script>/i);
+  if (!match) return null;
+  try {
+    const data = JSON.parse(match[1]);
+    return data?.props?.pageProps?.listing ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Try to extract price from BaT's embedded __NEXT_DATA__ JSON blob.
  * Returns { price, status, currency } or null if inconclusive.
  */
 function extractPriceFromNextData(html) {
-  const match = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([^<]{10,})<\/script>/i);
-  if (!match) return null;
-
-  let nextData;
-  try {
-    nextData = JSON.parse(match[1]);
-  } catch {
-    return null;
-  }
-
-  const listing = nextData?.props?.pageProps?.listing;
+  const listing = parseNextDataListing(html);
   if (!listing) {
-    const pagePropsKeys = Object.keys(nextData?.props?.pageProps || {});
-    console.log(`   📦 __NEXT_DATA__ pageProps keys: ${pagePropsKeys.join(', ')}`);
+    const match = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([^<]{10,})<\/script>/i);
+    if (match) {
+      try {
+        const data = JSON.parse(match[1]);
+        const pagePropsKeys = Object.keys(data?.props?.pageProps || {});
+        console.log(`   📦 __NEXT_DATA__ pageProps keys: ${pagePropsKeys.join(', ')}`);
+      } catch { /* ignore */ }
+    }
     return null;
   }
 
@@ -224,6 +235,32 @@ function extractPriceFromNextData(html) {
 }
 
 /**
+ * Extract make, model, and year from a BaT listing's __NEXT_DATA__ JSON blob.
+ * Returns { make, model, year } with any found fields, or null if nothing useful found.
+ */
+function extractMakeModelFromNextData(html) {
+  const listing = parseNextDataListing(html);
+  if (!listing) return null;
+
+  const year = listing.year ?? listing.model_year ?? listing.vehicle_year ?? null;
+  const make = listing.make ?? listing.manufacturer ?? listing.vehicle_make ?? null;
+  const model =
+    listing.model ??
+    listing.model_name ??
+    listing.vehicle_model ??
+    listing.specs?.model ??
+    null;
+
+  if (!make && !model && !year) return null;
+
+  return {
+    year: year ? parseInt(year, 10) : null,
+    make: make ? String(make).trim() : null,
+    model: model ? String(model).trim() : null,
+  };
+}
+
+/**
  * Fetch a BaT listing page and return { price, status, currency, error }.
  * status is 'sold', 'no_sale', or null (= inconclusive, retry next run).
  */
@@ -268,12 +305,14 @@ async function scrapeAuctionPrice(url) {
 
     // Pass 0: __NEXT_DATA__ JSON (most reliable)
     const nextDataResult = extractPriceFromNextData(html);
-    if (nextDataResult) return { ...nextDataResult, error: null };
+    // Always try to extract make/model from __NEXT_DATA__ regardless of price result
+    const makeModel = extractMakeModelFromNextData(html);
+    if (nextDataResult) return { ...nextDataResult, makeModel, error: null };
 
     // Passes 1-4: regex-based HTML extraction
     const { price, status, currency } = extractPriceFromHtml(html);
     if (price || status === 'no_sale') {
-      return { price, status, currency, error: null };
+      return { price, status, currency, makeModel, error: null };
     }
 
     // Nothing found — log debug info and retry next run
@@ -287,13 +326,13 @@ async function scrapeAuctionPrice(url) {
     console.log(`      Sample amounts: ${amountMatches?.join(', ') || 'none'}`);
     console.log(`      HTML length: ${html.length} chars`);
 
-    return { price: null, status: null, currency: null, error: 'No price found' };
+    return { price: null, status: null, currency: null, makeModel, error: 'No price found' };
 
   } catch (error) {
     if (error.name === 'TimeoutError') {
-      return { price: null, status: null, currency: null, error: 'Timeout' };
+      return { price: null, status: null, currency: null, makeModel: null, error: 'Timeout' };
     }
-    return { price: null, status: null, currency: null, error: error.message?.slice(0, 100) };
+    return { price: null, status: null, currency: null, makeModel: null, error: error.message?.slice(0, 100) };
   }
 }
 
@@ -335,7 +374,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
     // Auctions ended > minAgeMinutes ago, no final price, not already flagged RNM
     const { data: unfinalized, error: fetchError } = await supabase
       .from('auctions')
-      .select('auction_id, title, url, current_bid, timestamp_end')
+      .select('auction_id, title, url, current_bid, timestamp_end, make, model, year')
       .lt('timestamp_end', cutoff)
       .is('final_price', null)
       .not('reserve_not_met', 'is', true)
@@ -354,7 +393,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
     const thirtyDaysAgo = now - (30 * 24 * 60 * 60);
     const { data: recheck } = await supabase
       .from('auctions')
-      .select('auction_id, title, url, current_bid, timestamp_end')
+      .select('auction_id, title, url, current_bid, timestamp_end, make, model, year')
       .lt('timestamp_end', cutoff)
       .gte('timestamp_end', thirtyDaysAgo)
       .is('final_price', null)
@@ -372,7 +411,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
     // RNM → flip to reserve_not_met=true/final_price=null.
     const { data: suspiciousWithdrawn } = await supabase
       .from('auctions')
-      .select('auction_id, title, url, current_bid, timestamp_end')
+      .select('auction_id, title, url, current_bid, timestamp_end, make, model, year')
       .lt('timestamp_end', cutoff)
       .gte('timestamp_end', thirtyDaysAgo)
       .eq('final_price', 0)
@@ -411,12 +450,23 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
         continue;
       }
 
-      const { price, status, currency, error } = await scrapeAuctionPrice(auction.url);
+      const { price, status, currency, makeModel, error } = await scrapeAuctionPrice(auction.url);
+
+      // Build opportunistic make/model/year fields — only fill nulls, never overwrite existing data
+      const makeModelUpdate = {};
+      if (makeModel) {
+        if (makeModel.make && !auction.make) makeModelUpdate.make = makeModel.make;
+        if (makeModel.model && !auction.model) makeModelUpdate.model = makeModel.model;
+        if (makeModel.year && !auction.year) makeModelUpdate.year = makeModel.year;
+        if (Object.keys(makeModelUpdate).length > 0) {
+          console.log(`   🏷️ Make/model: ${makeModelUpdate.make || '—'} / ${makeModelUpdate.model || '—'} / ${makeModelUpdate.year || '—'}`);
+        }
+      }
 
       if (status === 'sold' && price > 0) {
         const { error: updateError } = await supabase
           .from('auctions')
-          .update({ final_price: price, reserve_not_met: false })
+          .update({ final_price: price, reserve_not_met: false, ...makeModelUpdate })
           .eq('auction_id', auction.auction_id);
 
         if (updateError) {
@@ -431,7 +481,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
 
       if (status === 'no_sale') {
         // final_price: null clears any stale 0 value left by old withdrawn-detection code
-        const updateData = { reserve_not_met: true, final_price: null };
+        const updateData = { reserve_not_met: true, final_price: null, ...makeModelUpdate };
         if (price) updateData.current_bid = price;
         await supabase.from('auctions').update(updateData).eq('auction_id', auction.auction_id);
         console.log(`   ⚠️ Reserve not met${price ? ` — high bid ${price.toLocaleString()}` : ''}`);
@@ -439,7 +489,12 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
         continue;
       }
 
-      // No definitive result — leave final_price NULL, retry next run
+      // No definitive price result — but still persist make/model if we found them
+      if (Object.keys(makeModelUpdate).length > 0) {
+        await supabase.from('auctions').update(makeModelUpdate).eq('auction_id', auction.auction_id);
+      }
+
+      // Leave final_price NULL, retry next run
       console.log(`   🔄 Pending: ${error || 'no price found yet'}`);
       results.pending.push({ id: auction.auction_id, title: auction.title, error: error || 'no price found' });
     }
