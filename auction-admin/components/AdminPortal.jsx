@@ -104,10 +104,16 @@ const AdminPortal = () => {
   const [editingFinalizedId, setEditingFinalizedId] = useState(null);
   const [editFinalPriceInputs, setEditFinalPriceInputs] = useState({});
   const [showEditFinalized, setShowEditFinalized] = useState(false);
+  const [auctionHealth, setAuctionHealth] = useState(null);
+  const [loadingHealth, setLoadingHealth] = useState(false);
 
   useEffect(() => {
     loadAllData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'finalize' && !auctionHealth) loadAuctionHealth();
+  }, [activeTab]);
 
   // Helper function to format relative time
   const formatRelativeTime = (timestampSeconds) => {
@@ -309,6 +315,20 @@ const AdminPortal = () => {
     }
   };
 
+  // Pull a snapshot of the BaT finalization loop (stuck pile + 30-day breakdown).
+  const loadAuctionHealth = async () => {
+    setLoadingHealth(true);
+    try {
+      const response = await fetch('/api/admin/auction-health');
+      const data = await response.json();
+      setAuctionHealth(response.ok ? data : { error: data.error || 'Failed to load' });
+    } catch (error) {
+      setAuctionHealth({ error: error.message });
+    } finally {
+      setLoadingHealth(false);
+    }
+  };
+
   // Load recently finalized auctions (have a final_price set) for editing
   const loadFinalizedAuctions = async () => {
     try {
@@ -410,8 +430,9 @@ const AdminPortal = () => {
           details: result
         });
 
-        // Reload the ended auctions list
+        // Reload the ended auctions list and refresh health snapshot
         await loadEndedAuctions();
+        await loadAuctionHealth();
       } else {
         setAutoFinalizerResult({
           success: false,
@@ -1692,6 +1713,109 @@ const AdminPortal = () => {
                 </button>
               </div>
             </div>
+
+            {/* BaT finalization health snapshot */}
+            {(() => {
+              if (loadingHealth && !auctionHealth) {
+                return (
+                  <div className="mb-6 p-4 rounded-lg border border-slate-700 bg-slate-800/40 text-slate-400 text-sm">
+                    Loading auction health...
+                  </div>
+                );
+              }
+              if (!auctionHealth) return null;
+              if (auctionHealth.error) {
+                return (
+                  <div className="mb-6 p-4 rounded-lg border border-red-700 bg-red-900/30 text-red-300 text-sm">
+                    Health check failed: {auctionHealth.error}
+                  </div>
+                );
+              }
+
+              const tone = {
+                healthy: 'border-green-700 bg-green-900/20',
+                warning: 'border-yellow-700 bg-yellow-900/20',
+                critical: 'border-red-700 bg-red-900/30',
+              }[auctionHealth.status] || 'border-slate-700 bg-slate-800/40';
+
+              const headline = {
+                healthy: 'BaT finalization loop healthy',
+                warning: 'Finalization is running behind',
+                critical: 'Finalization appears stalled',
+              }[auctionHealth.status] || 'Auction health';
+
+              const b = auctionHealth.last30Days || {};
+              const ls = auctionHealth.lastSold;
+
+              return (
+                <div className={`mb-6 p-4 rounded-lg border ${tone}`}>
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <div className="text-white font-semibold">{headline}</div>
+                      <div className="text-slate-400 text-xs mt-1">
+                        Updated {new Date(auctionHealth.timestamp).toLocaleTimeString()} · BaT auctions only
+                      </div>
+                    </div>
+                    <button
+                      onClick={loadAuctionHealth}
+                      disabled={loadingHealth}
+                      className="text-slate-300 hover:text-white text-sm flex items-center gap-1"
+                    >
+                      <RefreshCw size={14} className={loadingHealth ? 'animate-spin' : ''} /> Refresh
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div className="bg-slate-900/40 rounded p-3">
+                      <div className="text-slate-400 text-xs">Stuck pile</div>
+                      <div className="text-white text-2xl font-bold">{auctionHealth.stuck.count}</div>
+                      <div className="text-slate-500 text-xs">ended &gt;2h ago, no result</div>
+                    </div>
+                    <div className="bg-slate-900/40 rounded p-3">
+                      <div className="text-slate-400 text-xs">Oldest stuck</div>
+                      <div className="text-white text-2xl font-bold">
+                        {auctionHealth.stuck.count > 0 ? `${auctionHealth.stuck.oldestHoursOverdue}h` : '—'}
+                      </div>
+                      <div className="text-slate-500 text-xs">overdue (cron health)</div>
+                    </div>
+                    <div className="bg-slate-900/40 rounded p-3">
+                      <div className="text-slate-400 text-xs">Sold (30d)</div>
+                      <div className="text-white text-2xl font-bold">{b.sold ?? 0}</div>
+                      <div className="text-slate-500 text-xs">
+                        RNM {b.reserveNotMet ?? 0} · withdrawn {b.withdrawn ?? 0}
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/40 rounded p-3">
+                      <div className="text-slate-400 text-xs">Last sale closed</div>
+                      <div className="text-white text-base font-semibold truncate">
+                        {ls ? `$${ls.final_price.toLocaleString()}` : '—'}
+                      </div>
+                      <div className="text-slate-500 text-xs truncate">
+                        {ls ? `${ls.hours_since_end}h ago · ${ls.title?.slice(0, 28) || ls.auction_id}` : 'no sales recorded'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {auctionHealth.stuck.count > 0 && auctionHealth.stuck.sample?.length > 0 && (
+                    <details className="mt-3">
+                      <summary className="text-slate-300 text-sm cursor-pointer hover:text-white">
+                        Show {Math.min(auctionHealth.stuck.count, 10)} oldest stuck auction(s)
+                      </summary>
+                      <ul className="mt-2 ml-4 list-disc text-slate-400 text-xs space-y-1">
+                        {auctionHealth.stuck.sample.map((s) => (
+                          <li key={s.auction_id}>
+                            <a href={s.url} target="_blank" rel="noreferrer" className="hover:text-white underline">
+                              {s.title?.slice(0, 70) || s.auction_id}
+                            </a>
+                            <span className="text-slate-500"> — {s.hours_overdue}h overdue</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Auto-finalizer result message */}
             {autoFinalizerResult && (
