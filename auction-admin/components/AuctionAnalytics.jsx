@@ -129,6 +129,8 @@ export default function AuctionAnalytics() {
   const [activeSection, setActiveSection] = useState('overview'); // 'overview' | 'byMake' | 'financial'
   const [makeSortField, setMakeSortField] = useState('count');
   const [makeSortDir, setMakeSortDir] = useState('desc');
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -151,6 +153,28 @@ export default function AuctionAnalytics() {
   };
 
   useEffect(() => { loadData(); }, [limit]);
+
+  const runBackfill = async (dryRun = false) => {
+    setBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const res = await fetch('/api/admin/backfill-makes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 100, dry_run: dryRun }),
+      });
+      const data = await res.json();
+      setBackfillResult(data);
+      if (!dryRun && data.updated > 0) {
+        // Reload auction data to reflect updates
+        loadData();
+      }
+    } catch (err) {
+      setBackfillResult({ error: err.message });
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   // Derive unique makes for datalist
   const makes = useMemo(() => [...new Set(auctions.map(a => a.make).filter(Boolean))].sort(), [auctions]);
@@ -391,7 +415,7 @@ export default function AuctionAnalytics() {
           </h2>
           <p className="text-slate-400 text-sm mt-0.5">Completed auctions — estimate vs. final price analysis</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap justify-end">
           <select
             value={limit}
             onChange={e => setLimit(Number(e.target.value))}
@@ -403,6 +427,15 @@ export default function AuctionAnalytics() {
             <option value={1000}>Last 1000</option>
           </select>
           <button
+            onClick={() => runBackfill(false)}
+            disabled={backfilling}
+            title="Fill in missing make/model/year for auctions with null values"
+            className="bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white px-3 py-1.5 rounded flex items-center gap-2 text-sm"
+          >
+            <Car size={14} className={backfilling ? 'animate-pulse' : ''} />
+            {backfilling ? 'Backfilling…' : 'Backfill Makes'}
+          </button>
+          <button
             onClick={loadData}
             className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded flex items-center gap-2 text-sm"
           >
@@ -411,6 +444,41 @@ export default function AuctionAnalytics() {
           </button>
         </div>
       </div>
+
+      {/* Backfill result banner */}
+      {backfillResult && (
+        <div className={`rounded-lg p-4 flex items-start justify-between gap-4 text-sm ${
+          backfillResult.error
+            ? 'bg-red-900/40 border border-red-700 text-red-300'
+            : 'bg-purple-900/40 border border-purple-700 text-purple-200'
+        }`}>
+          <div>
+            {backfillResult.error ? (
+              <span>Backfill error: {backfillResult.error}</span>
+            ) : (
+              <span>
+                Backfill complete — <strong>{backfillResult.updated}</strong> updated,{' '}
+                <strong>{backfillResult.failed}</strong> failed,{' '}
+                <strong>{backfillResult.skipped}</strong> skipped
+                {backfillResult.dry_run && ' (dry run — no changes written)'}
+              </span>
+            )}
+            {backfillResult.results && backfillResult.results.filter(r => r.updated).length > 0 && (
+              <div className="mt-2 space-y-0.5 max-h-32 overflow-y-auto">
+                {backfillResult.results.filter(r => r.updated).slice(0, 10).map(r => (
+                  <div key={r.auction_id} className="text-xs text-purple-300 font-mono">
+                    {r.found?.make || '?'} / {r.found?.model || '?'} / {r.found?.year || '?'} — {r.title?.slice(0, 50)}
+                  </div>
+                ))}
+                {backfillResult.updated > 10 && (
+                  <div className="text-xs text-purple-400">…and {backfillResult.updated - 10} more</div>
+                )}
+              </div>
+            )}
+          </div>
+          <button onClick={() => setBackfillResult(null)} className="text-purple-400 hover:text-white flex-shrink-0">✕</button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-slate-800 rounded-lg p-4">
