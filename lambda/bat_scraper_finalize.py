@@ -27,19 +27,14 @@ def extract_price_from_html(html_content: str):
 
     Returns:
         (price:int|None, status:str, currency:str|None)
-        status: "sold", "no_sale", "withdrawn", or None
-    """
+        status: "sold", "no_sale", or None
 
-    # Check for withdrawn/cancelled listings first
-    withdrawn_patterns = [
-        r'listing\s+(?:has\s+been\s+)?(?:withdrawn|cancelled|removed)',
-        r'auction\s+(?:has\s+been\s+)?(?:withdrawn|cancelled|ended\s+early)',
-        r'this\s+listing\s+is\s+no\s+longer\s+available',
-    ]
-    for pattern in withdrawn_patterns:
-        if re.search(pattern, html_content, re.IGNORECASE):
-            print("   🚫 Detected: Withdrawn/Cancelled listing")
-            return None, "withdrawn", None
+    NOTE: We deliberately do NOT auto-detect "withdrawn" anymore. The previous
+    regex was matching loose words like "removed" / "cancelled" / "ended early"
+    in unrelated copy (comments, related-listing blurbs) and converting valid
+    reserve-not-met auctions into final_price=0 withdrawns. Withdrawals are
+    rare; an admin can mark them manually from the Finalize tab.
+    """
 
     # Currency patterns - order matters (most specific first)
     # Format: (pattern, currency_code)
@@ -158,17 +153,17 @@ def scrape_auction_price(auction_url: str):
             return None, None, None, "403 Forbidden"
 
         if resp.status_code == 404:
-            print("   ⚠️ 404 Not Found - listing may be removed")
-            return None, "withdrawn", None, None
+            # Don't auto-mark as withdrawn — BaT returns 404 transiently for
+            # valid listings (Cloudflare interstitials, geo blocks, slug edits).
+            # Leave for retry; admin can manually mark withdrawn if needed.
+            print("   ⚠️ 404 Not Found - will retry next run")
+            return None, None, None, "404 Not Found"
 
         if resp.status_code != 200:
             print(f"   ⚠️ HTTP {resp.status_code}")
             return None, None, None, f"HTTP {resp.status_code}"
 
         price, status, currency = extract_price_from_html(resp.text)
-
-        if status == "withdrawn":
-            return None, "withdrawn", None, None
 
         if price and price > 0:
             return price, status, currency, None
@@ -267,33 +262,6 @@ def update_auction_price(auction_id: str, final_price: int, currency: str = "USD
         return False
 
 
-def mark_auction_withdrawn(auction_id: str) -> bool:
-    """
-    Mark an auction as withdrawn by setting final_price to 0.
-    This prevents it from being retried.
-    """
-    url = f"{SUPABASE_URL}/rest/v1/auctions"
-    params = {"auction_id": f"eq.{auction_id}"}
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal",
-    }
-    # Using 0 as a marker for withdrawn
-    data = {"final_price": 0}
-
-    try:
-        resp = requests.patch(url, headers=headers, params=params, json=data, timeout=20)
-        if resp.status_code in (200, 204):
-            print(f"   🚫 Marked as withdrawn: {auction_id}")
-            return True
-        return False
-    except Exception as e:
-        print(f"   ❌ Error marking withdrawn: {str(e)}")
-        return False
-
-
 def update_high_bid(auction_id: str, high_bid: int) -> bool:
     """
     Update the current_bid for a reserve-not-met auction.
@@ -339,7 +307,6 @@ def lambda_handler(event, context):
     stats = {
         "success": 0,
         "no_sale": 0,
-        "withdrawn": 0,
         "failed": 0,
     }
     errors = []
@@ -360,10 +327,7 @@ def lambda_handler(event, context):
 
         price, status, currency, err = scrape_auction_price(auction_url)
 
-        if status == "withdrawn":
-            mark_auction_withdrawn(auction_id)
-            stats["withdrawn"] += 1
-        elif status == "sold" and price and price > 0:
+        if status == "sold" and price and price > 0:
             if update_auction_price(auction_id, price, currency or "USD"):
                 stats["success"] += 1
             else:
@@ -385,7 +349,6 @@ def lambda_handler(event, context):
     print("\n" + "=" * 60)
     print("📊 SUMMARY")
     print(f"   ✅ Sold (updated):    {stats['success']}")
-    print(f"   🚫 Withdrawn:         {stats['withdrawn']}")
     print(f"   ⚠️  Reserve not met:  {stats['no_sale']}")
     print(f"   ❌ Failed:            {stats['failed']}")
     print(f"   📈 Success rate:      {success_rate}%")

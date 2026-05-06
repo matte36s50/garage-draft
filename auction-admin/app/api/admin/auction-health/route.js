@@ -10,6 +10,11 @@ import { NextResponse } from 'next/server';
  *   - hours overdue of the oldest stuck auction (proxy for "is the cron running?")
  *   - 30-day end-state breakdown (sold / reserve_not_met / withdrawn / stuck / pending)
  *   - the most recent sold auction (proxy for last successful finalization)
+ *   - chat-loop check: of drafted+sold auctions in last 7 days, how many got a
+ *     league_messages 'system_auction_ended' row (the SQL trigger fires per
+ *     garage_car, so this only counts auctions someone actually drafted)
+ *   - suspicious withdrawns: final_price=0 but current_bid>0 (the lambda's
+ *     withdrawn detection has been over-classifying; these are likely RNM)
  *
  * The auctions table has no updated_at column, so freshness is inferred from
  * timestamp_end. If the oldest stuck auction is <4h overdue, the 30-min cron is
@@ -29,6 +34,7 @@ export async function GET() {
   const supabase = getSupabaseClient();
   const now = Math.floor(Date.now() / 1000);
   const twoHoursAgo = now - 2 * 60 * 60;
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60;
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60;
 
   try {
@@ -99,9 +105,108 @@ export async function GET() {
         }
       : null;
 
+    // Chat-loop check: drafted + sold in the last 7 days should have a
+    // 'system_auction_ended' message in league_messages. The SQL trigger only
+    // fires per garage_cars row, so we scope to auctions someone drafted.
+    const { data: drafted, error: draftedErr } = await supabase
+      .from('garage_cars')
+      .select('auction_id, auctions!inner(auction_id, title, final_price, timestamp_end)')
+      .gte('auctions.timestamp_end', sevenDaysAgo)
+      .lt('auctions.timestamp_end', now)
+      .gt('auctions.final_price', 0)
+      .limit(2000);
+
+    if (draftedErr) throw draftedErr;
+
+    const draftedSoldById = new Map();
+    for (const row of drafted || []) {
+      const a = row.auctions;
+      if (a && !draftedSoldById.has(a.auction_id)) {
+        draftedSoldById.set(a.auction_id, a);
+      }
+    }
+    const draftedSoldIds = [...draftedSoldById.keys()];
+
+    let chatLoop = { draftedSold: 0, chatPosted: 0, missing: [] };
+    if (draftedSoldIds.length > 0) {
+      const notified = new Set();
+      const chunkSize = 100;
+      for (let i = 0; i < draftedSoldIds.length; i += chunkSize) {
+        const slice = draftedSoldIds.slice(i, i + chunkSize);
+        const { data: msgs, error: msgErr } = await supabase
+          .from('league_messages')
+          .select('metadata')
+          .eq('message_type', 'system_auction_ended')
+          .in('metadata->>auction_id', slice);
+        if (msgErr) throw msgErr;
+        for (const m of msgs || []) {
+          const id = m.metadata?.auction_id;
+          if (id) notified.add(id);
+        }
+      }
+
+      const missing = [];
+      for (const id of draftedSoldIds) {
+        if (!notified.has(id)) {
+          const a = draftedSoldById.get(id);
+          missing.push({
+            auction_id: id,
+            title: a.title,
+            final_price: Number(a.final_price),
+            ended_at: new Date(a.timestamp_end * 1000).toISOString(),
+            hours_since_end: Math.round((now - a.timestamp_end) / 3600),
+          });
+        }
+      }
+      missing.sort((a, b) => b.hours_since_end - a.hours_since_end);
+
+      chatLoop = {
+        draftedSold: draftedSoldIds.length,
+        chatPosted: notified.size,
+        missing: missing.slice(0, 10),
+        missingCount: missing.length,
+      };
+    }
+
+    // Suspicious withdrawns: final_price=0 but had bidding activity (current_bid>0).
+    // The python lambda's withdrawn regex + 404-handler is over-classifying these;
+    // they should almost certainly be reserve_not_met instead.
+    const { data: suspicious, error: susErr } = await supabase
+      .from('auctions')
+      .select('auction_id, title, url, current_bid, timestamp_end')
+      .eq('final_price', 0)
+      .gt('current_bid', 0)
+      .gte('timestamp_end', thirtyDaysAgo)
+      .order('timestamp_end', { ascending: false })
+      .limit(50);
+
+    if (susErr) throw susErr;
+
+    const { count: suspiciousCount, error: susCountErr } = await supabase
+      .from('auctions')
+      .select('auction_id', { count: 'exact', head: true })
+      .eq('final_price', 0)
+      .gt('current_bid', 0)
+      .gte('timestamp_end', thirtyDaysAgo);
+
+    if (susCountErr) throw susCountErr;
+
+    const suspiciousWithdrawn = {
+      count: suspiciousCount || 0,
+      sample: (suspicious || []).map((r) => ({
+        auction_id: r.auction_id,
+        title: r.title,
+        url: r.url,
+        current_bid: Number(r.current_bid),
+        ended_at: new Date(r.timestamp_end * 1000).toISOString(),
+      })),
+    };
+
     let status = 'healthy';
     if (stuckCount > 0 && oldestStuckHoursOverdue >= 24) status = 'critical';
     else if (stuckCount > 0 && oldestStuckHoursOverdue >= 4) status = 'warning';
+    else if (chatLoop.missingCount > 0) status = 'warning';
+    else if (suspiciousWithdrawn.count > 0) status = 'warning';
 
     return NextResponse.json({
       timestamp: new Date().toISOString(),
@@ -119,6 +224,8 @@ export async function GET() {
       },
       last30Days: breakdown,
       lastSold,
+      chatLoop,
+      suspiciousWithdrawn,
     });
   } catch (error) {
     console.error('Auction health error:', error);
