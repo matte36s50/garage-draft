@@ -329,6 +329,23 @@ const AdminPortal = () => {
     }
   };
 
+  // Flip an over-classified withdrawn (final_price=0) back to reserve_not_met.
+  const handleReclassifyWithdrawn = async (auctionId) => {
+    if (!confirm('Reclassify this auction as Reserve Not Met? It will be removed from the Withdrawn list and the 25% penalty will apply in scoring.')) return;
+    try {
+      const response = await fetch('/api/admin/reclassify-withdrawn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auction_id: auctionId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed');
+      await loadAuctionHealth();
+    } catch (error) {
+      alert('Reclassify failed: ' + error.message);
+    }
+  };
+
   // Load recently finalized auctions (have a final_price set) for editing
   const loadFinalizedAuctions = async () => {
     try {
@@ -1765,7 +1782,7 @@ const AdminPortal = () => {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                     <div className="bg-slate-900/40 rounded p-3">
                       <div className="text-slate-400 text-xs">Stuck pile</div>
                       <div className="text-white text-2xl font-bold">{auctionHealth.stuck.count}</div>
@@ -1782,19 +1799,34 @@ const AdminPortal = () => {
                       <div className="text-slate-400 text-xs">Sold (30d)</div>
                       <div className="text-white text-2xl font-bold">{b.sold ?? 0}</div>
                       <div className="text-slate-500 text-xs">
-                        RNM {b.reserveNotMet ?? 0} · withdrawn {b.withdrawn ?? 0}
+                        RNM {b.reserveNotMet ?? 0} · wdrn {b.withdrawn ?? 0}
                       </div>
                     </div>
                     <div className="bg-slate-900/40 rounded p-3">
-                      <div className="text-slate-400 text-xs">Last sale closed</div>
-                      <div className="text-white text-base font-semibold truncate">
-                        {ls ? `$${ls.final_price.toLocaleString()}` : '—'}
+                      <div className="text-slate-400 text-xs">Chat loop (7d)</div>
+                      <div className="text-white text-2xl font-bold">
+                        {auctionHealth.chatLoop?.chatPosted ?? 0}/{auctionHealth.chatLoop?.draftedSold ?? 0}
                       </div>
-                      <div className="text-slate-500 text-xs truncate">
-                        {ls ? `${ls.hours_since_end}h ago · ${ls.title?.slice(0, 28) || ls.auction_id}` : 'no sales recorded'}
+                      <div className="text-slate-500 text-xs">
+                        {(auctionHealth.chatLoop?.missingCount ?? 0) === 0
+                          ? 'all sold→chat posted'
+                          : `${auctionHealth.chatLoop.missingCount} missing chat msg`}
                       </div>
                     </div>
+                    <div className="bg-slate-900/40 rounded p-3">
+                      <div className="text-slate-400 text-xs">Susp. withdrawn</div>
+                      <div className="text-white text-2xl font-bold">
+                        {auctionHealth.suspiciousWithdrawn?.count ?? 0}
+                      </div>
+                      <div className="text-slate-500 text-xs">$0 final but had bids</div>
+                    </div>
                   </div>
+
+                  {ls && (
+                    <div className="mt-2 text-xs text-slate-500">
+                      Last sale closed: ${ls.final_price.toLocaleString()} · {ls.hours_since_end}h ago · {ls.title?.slice(0, 60) || ls.auction_id}
+                    </div>
+                  )}
 
                   {auctionHealth.stuck.count > 0 && auctionHealth.stuck.sample?.length > 0 && (
                     <details className="mt-3">
@@ -1808,6 +1840,54 @@ const AdminPortal = () => {
                               {s.title?.slice(0, 70) || s.auction_id}
                             </a>
                             <span className="text-slate-500"> — {s.hours_overdue}h overdue</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+
+                  {(auctionHealth.chatLoop?.missingCount ?? 0) > 0 && (
+                    <details className="mt-3">
+                      <summary className="text-slate-300 text-sm cursor-pointer hover:text-white">
+                        Show {Math.min(auctionHealth.chatLoop.missingCount, 10)} sold auction(s) missing a chat message
+                      </summary>
+                      <div className="text-slate-500 text-xs mt-1 ml-4">
+                        Drafted+sold but the SQL trigger never posted system_auction_ended. Re-saving final_price will refire the trigger.
+                      </div>
+                      <ul className="mt-2 ml-4 list-disc text-slate-400 text-xs space-y-1">
+                        {auctionHealth.chatLoop.missing.map((m) => (
+                          <li key={m.auction_id}>
+                            {m.title?.slice(0, 60) || m.auction_id}
+                            <span className="text-slate-500"> — sold ${m.final_price.toLocaleString()}, {m.hours_since_end}h ago</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+
+                  {(auctionHealth.suspiciousWithdrawn?.count ?? 0) > 0 && (
+                    <details className="mt-3" open>
+                      <summary className="text-slate-300 text-sm cursor-pointer hover:text-white">
+                        Show {Math.min(auctionHealth.suspiciousWithdrawn.count, 50)} suspicious withdrawn auction(s)
+                      </summary>
+                      <div className="text-slate-500 text-xs mt-1 ml-4">
+                        These have final_price=0 but received bids. Almost certainly should be Reserve Not Met.
+                      </div>
+                      <ul className="mt-2 ml-4 text-slate-400 text-xs space-y-1">
+                        {auctionHealth.suspiciousWithdrawn.sample.map((s) => (
+                          <li key={s.auction_id} className="flex items-center justify-between gap-3 py-1">
+                            <span className="truncate">
+                              <a href={s.url} target="_blank" rel="noreferrer" className="hover:text-white underline">
+                                {s.title?.slice(0, 60) || s.auction_id}
+                              </a>
+                              <span className="text-slate-500"> — high bid ${s.current_bid.toLocaleString()}</span>
+                            </span>
+                            <button
+                              onClick={() => handleReclassifyWithdrawn(s.auction_id)}
+                              className="bg-amber-700 hover:bg-amber-600 text-white px-2 py-1 rounded text-xs whitespace-nowrap"
+                            >
+                              Mark RNM
+                            </button>
                           </li>
                         ))}
                       </ul>
