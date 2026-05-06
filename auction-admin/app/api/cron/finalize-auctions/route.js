@@ -364,9 +364,27 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       .order('timestamp_end', { ascending: false })
       .limit(10);
 
+    // Re-scrape "suspicious withdrawn" auctions (final_price=0, had bids).
+    // Old lambda code used to set final_price=0 for detected withdrawals, but that
+    // regex was too aggressive and caught sold/RNM auctions. These are invisible to
+    // the normal finalizer query (which filters on final_price IS NULL), so we
+    // re-scrape them here to reclassify properly: sold → set real price,
+    // RNM → flip to reserve_not_met=true/final_price=null.
+    const { data: suspiciousWithdrawn } = await supabase
+      .from('auctions')
+      .select('auction_id, title, url, current_bid, timestamp_end')
+      .lt('timestamp_end', cutoff)
+      .gte('timestamp_end', thirtyDaysAgo)
+      .eq('final_price', 0)
+      .gt('current_bid', 0)
+      .not('url', 'is', null)
+      .ilike('url', '%bringatrailer.com%')
+      .order('timestamp_end', { ascending: false })
+      .limit(20);
+
     const seen = new Set();
     const auctions = [];
-    for (const a of [...(unfinalized || []), ...(recheck || [])]) {
+    for (const a of [...(unfinalized || []), ...(recheck || []), ...(suspiciousWithdrawn || [])]) {
       if (!seen.has(a.auction_id)) {
         seen.add(a.auction_id);
         auctions.push(a);
@@ -412,7 +430,8 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       }
 
       if (status === 'no_sale') {
-        const updateData = { reserve_not_met: true };
+        // final_price: null clears any stale 0 value left by old withdrawn-detection code
+        const updateData = { reserve_not_met: true, final_price: null };
         if (price) updateData.current_bid = price;
         await supabase.from('auctions').update(updateData).eq('auction_id', auction.auction_id);
         console.log(`   ⚠️ Reserve not met${price ? ` — high bid ${price.toLocaleString()}` : ''}`);
