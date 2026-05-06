@@ -179,6 +179,12 @@ export default function AuctionAnalytics() {
   // Derive unique makes for datalist
   const makes = useMemo(() => [...new Set(auctions.map(a => a.make).filter(Boolean))].sort(), [auctions]);
 
+  // Derive unique auction references for dropdown, sorted alphabetically
+  const auctionRefs = useMemo(() =>
+    [...new Set(auctions.map(a => a.auction_reference).filter(Boolean))].sort(),
+    [auctions]
+  );
+
   // Filtered auctions
   const filtered = useMemo(() => {
     return auctions.filter(a => {
@@ -186,7 +192,7 @@ export default function AuctionAnalytics() {
       if (searchModel && !a.model?.toLowerCase().includes(searchModel.toLowerCase())) return false;
       if (searchYear && String(a.year) !== searchYear) return false;
       if (searchTitle && !a.title?.toLowerCase().includes(searchTitle.toLowerCase())) return false;
-      if (searchRef && !a.auction_reference?.toLowerCase().includes(searchRef.toLowerCase()) && !a.auction_id?.toLowerCase().includes(searchRef.toLowerCase())) return false;
+      if (searchRef && a.auction_reference !== searchRef) return false;
       return true;
     });
   }, [auctions, searchMake, searchModel, searchYear, searchTitle, searchRef]);
@@ -528,13 +534,17 @@ export default function AuctionAnalytics() {
             />
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Auction Reference / ID</label>
-            <input
+            <label className="text-xs text-slate-500 mb-1 block">Auction Reference</label>
+            <select
               value={searchRef}
               onChange={e => setSearchRef(e.target.value)}
-              placeholder="e.g. bat-12345"
-              className="w-full bg-slate-700 border border-slate-600 text-white rounded px-3 py-1.5 text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500"
-            />
+              className="w-full bg-slate-700 border border-slate-600 text-white rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+            >
+              <option value="">All events</option>
+              {auctionRefs.map(ref => (
+                <option key={ref} value={ref}>{ref}</option>
+              ))}
+            </select>
           </div>
         </div>
         {(searchMake || searchModel || searchYear || searchTitle || searchRef) && (
