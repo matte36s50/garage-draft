@@ -13,8 +13,9 @@ import { NextResponse } from 'next/server';
  *   - chat-loop check: of drafted+sold auctions in last 7 days, how many got a
  *     league_messages 'system_auction_ended' row (the SQL trigger fires per
  *     garage_car, so this only counts auctions someone actually drafted)
- *   - suspicious withdrawns: final_price=0 but current_bid>0 (the lambda's
- *     withdrawn detection has been over-classifying; these are likely RNM)
+ *   - suspicious withdrawns: final_price=0 but current_bid > $1000 (the
+ *     lambda's withdrawn detection over-classified these; they're likely RNM
+ *     or even sold). $1000 floor filters out the BaT starting-bid noise.
  *
  * The auctions table has no updated_at column, so freshness is inferred from
  * timestamp_end. If the oldest stuck auction is <4h overdue, the 30-min cron is
@@ -168,14 +169,16 @@ export async function GET() {
       };
     }
 
-    // Suspicious withdrawns: final_price=0 but had bidding activity (current_bid>0).
-    // The python lambda's withdrawn regex + 404-handler is over-classifying these;
-    // they should almost certainly be reserve_not_met instead.
+    // Suspicious withdrawns: final_price=0 with high_bid above the BaT $10 floor.
+    // Auctions that never moved off the starting price almost certainly are
+    // genuine no-sale outcomes; we only flag rows where bidding actually
+    // progressed, which is the real signal of a miscategorization.
+    const SUSPICIOUS_BID_THRESHOLD = 1000;
     const { data: suspicious, error: susErr } = await supabase
       .from('auctions')
       .select('auction_id, title, url, current_bid, timestamp_end')
       .eq('final_price', 0)
-      .gt('current_bid', 0)
+      .gt('current_bid', SUSPICIOUS_BID_THRESHOLD)
       .gte('timestamp_end', thirtyDaysAgo)
       .order('timestamp_end', { ascending: false })
       .limit(50);
@@ -186,7 +189,7 @@ export async function GET() {
       .from('auctions')
       .select('auction_id', { count: 'exact', head: true })
       .eq('final_price', 0)
-      .gt('current_bid', 0)
+      .gt('current_bid', SUSPICIOUS_BID_THRESHOLD)
       .gte('timestamp_end', thirtyDaysAgo);
 
     if (susCountErr) throw susCountErr;

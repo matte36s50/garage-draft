@@ -1885,7 +1885,7 @@ const AdminPortal = () => {
                         Show {Math.min(auctionHealth.suspiciousWithdrawn.count, 50)} suspicious withdrawn auction(s)
                       </summary>
                       <div className="text-slate-500 text-xs mt-1 ml-4">
-                        These have final_price=0 but received bids. Almost certainly should be Reserve Not Met.
+                        Marked withdrawn but high bid &gt; $1k — almost certainly Reserve Not Met or actually sold.
                       </div>
                       <ul className="mt-2 ml-4 text-slate-400 text-xs space-y-1">
                         {auctionHealth.suspiciousWithdrawn.sample.map((s) => {
