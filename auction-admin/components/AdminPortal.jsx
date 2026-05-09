@@ -106,6 +106,8 @@ const AdminPortal = () => {
   const [showEditFinalized, setShowEditFinalized] = useState(false);
   const [auctionHealth, setAuctionHealth] = useState(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
+  const [withdrawnPriceInputs, setWithdrawnPriceInputs] = useState({});
+  const [reclassifyingId, setReclassifyingId] = useState(null);
 
   useEffect(() => {
     loadAllData();
@@ -329,20 +331,32 @@ const AdminPortal = () => {
     }
   };
 
-  // Flip an over-classified withdrawn (final_price=0) back to reserve_not_met.
-  const handleReclassifyWithdrawn = async (auctionId) => {
-    if (!confirm('Reclassify this auction as Reserve Not Met? It will be removed from the Withdrawn list and the 25% penalty will apply in scoring.')) return;
+  // Flip an over-classified withdrawn (final_price=0) to either Reserve Not Met
+  // (no soldPrice) or Sold (soldPrice provided).
+  const handleReclassifyWithdrawn = async (auctionId, soldPrice = null) => {
+    const isSold = soldPrice !== null && soldPrice !== '' && Number(soldPrice) > 0;
+    const confirmMsg = isSold
+      ? `Mark this auction as Sold for $${Number(soldPrice).toLocaleString()}? This will set final_price and post the league chat message.`
+      : 'Reclassify this auction as Reserve Not Met? It will be removed from the Withdrawn list and the 25% penalty will apply in scoring.';
+    if (!confirm(confirmMsg)) return;
+    setReclassifyingId(auctionId);
     try {
       const response = await fetch('/api/admin/reclassify-withdrawn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auction_id: auctionId }),
+        body: JSON.stringify({
+          auction_id: auctionId,
+          ...(isSold ? { final_price: Number(soldPrice) } : {}),
+        }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Failed');
+      setWithdrawnPriceInputs(prev => { const n = { ...prev }; delete n[auctionId]; return n; });
       await loadAuctionHealth();
     } catch (error) {
       alert('Reclassify failed: ' + error.message);
+    } finally {
+      setReclassifyingId(null);
     }
   };
 
@@ -1874,22 +1888,44 @@ const AdminPortal = () => {
                         These have final_price=0 but received bids. Almost certainly should be Reserve Not Met.
                       </div>
                       <ul className="mt-2 ml-4 text-slate-400 text-xs space-y-1">
-                        {auctionHealth.suspiciousWithdrawn.sample.map((s) => (
-                          <li key={s.auction_id} className="flex items-center justify-between gap-3 py-1">
-                            <span className="truncate">
-                              <a href={s.url} target="_blank" rel="noreferrer" className="hover:text-white underline">
-                                {s.title?.slice(0, 60) || s.auction_id}
-                              </a>
-                              <span className="text-slate-500"> — high bid ${s.current_bid.toLocaleString()}</span>
-                            </span>
-                            <button
-                              onClick={() => handleReclassifyWithdrawn(s.auction_id)}
-                              className="bg-amber-700 hover:bg-amber-600 text-white px-2 py-1 rounded text-xs whitespace-nowrap"
-                            >
-                              Mark RNM
-                            </button>
-                          </li>
-                        ))}
+                        {auctionHealth.suspiciousWithdrawn.sample.map((s) => {
+                          const busy = reclassifyingId === s.auction_id;
+                          const priceInput = withdrawnPriceInputs[s.auction_id] || '';
+                          return (
+                            <li key={s.auction_id} className="flex items-center justify-between gap-3 py-1">
+                              <span className="truncate min-w-0">
+                                <a href={s.url} target="_blank" rel="noreferrer" className="hover:text-white underline">
+                                  {s.title?.slice(0, 60) || s.auction_id}
+                                </a>
+                                <span className="text-slate-500"> — high bid ${s.current_bid.toLocaleString()}</span>
+                              </span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <input
+                                  type="number"
+                                  placeholder="Sold $"
+                                  value={priceInput}
+                                  onChange={(e) => setWithdrawnPriceInputs(prev => ({ ...prev, [s.auction_id]: e.target.value }))}
+                                  disabled={busy}
+                                  className="bg-slate-700 text-white px-2 py-1 rounded border border-slate-600 w-24 text-xs"
+                                />
+                                <button
+                                  onClick={() => handleReclassifyWithdrawn(s.auction_id, priceInput)}
+                                  disabled={busy || !priceInput || Number(priceInput) <= 0}
+                                  className="bg-green-700 hover:bg-green-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-2 py-1 rounded text-xs whitespace-nowrap"
+                                >
+                                  Set sold
+                                </button>
+                                <button
+                                  onClick={() => handleReclassifyWithdrawn(s.auction_id)}
+                                  disabled={busy}
+                                  className="bg-amber-700 hover:bg-amber-600 disabled:bg-slate-600 text-white px-2 py-1 rounded text-xs whitespace-nowrap"
+                                >
+                                  Mark RNM
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
                     </details>
                   )}
