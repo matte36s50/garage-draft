@@ -2323,8 +2323,10 @@ export default function BidPrixApp() {
                 </a>
                 <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
                   {bonusCar.auctionEnded ? (
-                    bonusCar.finalPrice ? (
+                    bonusCar.finalPrice > 0 ? (
                       <div className="text-green-700 font-semibold">Final: ${bonusCar.finalPrice.toLocaleString()}</div>
+                    ) : bonusCar.finalPrice === 0 ? (
+                      <div className="text-bpRed">Withdrawn</div>
                     ) : bonusCar.reserveNotMet ? (
                       <div className="text-bpRed">Reserve Not Met</div>
                     ) : (
@@ -2404,8 +2406,10 @@ export default function BidPrixApp() {
                       <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
                         <div>Draft: ${(car.purchasePrice || car.currentBid).toLocaleString()}</div>
                         {car.auctionEnded ? (
-                          car.finalPrice ? (
+                          car.finalPrice > 0 ? (
                             <div className="text-green-700 font-semibold">Final: ${car.finalPrice.toLocaleString()}</div>
+                          ) : car.finalPrice === 0 ? (
+                            <div className="text-bpRed">Withdrawn</div>
                           ) : car.reserveNotMet ? (
                             <div className="text-bpRed">Reserve Not Met</div>
                           ) : (
@@ -2414,8 +2418,8 @@ export default function BidPrixApp() {
                         ) : (
                           <div>Current: ${car.currentBid.toLocaleString()}</div>
                         )}
-                        <div className={`${gain(car.purchasePrice || car.currentBid, car.finalPrice || car.currentBid) >= 0 ? 'text-green-700' : 'text-bpRed'}`}>
-                          Gain: {gain(car.purchasePrice || car.currentBid, car.finalPrice || car.currentBid) >= 0 ? '+' : ''}{gain(car.purchasePrice || car.currentBid, car.finalPrice || car.currentBid)}%
+                        <div className={`${gain(car.purchasePrice || car.currentBid, car.finalPrice === 0 ? 0 : (car.finalPrice || car.currentBid)) >= 0 ? 'text-green-700' : 'text-bpRed'}`}>
+                          Gain: {gain(car.purchasePrice || car.currentBid, car.finalPrice === 0 ? 0 : (car.finalPrice || car.currentBid)) >= 0 ? '+' : ''}{gain(car.purchasePrice || car.currentBid, car.finalPrice === 0 ? 0 : (car.finalPrice || car.currentBid))}%
                         </div>
                         <div>{car.auctionEnded ? 'Ended' : `${car.timeLeft} left`}</div>
                       </div>
