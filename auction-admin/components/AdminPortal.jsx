@@ -108,6 +108,7 @@ const AdminPortal = () => {
   const [loadingHealth, setLoadingHealth] = useState(false);
   const [withdrawnPriceInputs, setWithdrawnPriceInputs] = useState({});
   const [reclassifyingId, setReclassifyingId] = useState(null);
+  const [investigations, setInvestigations] = useState({}); // auction_id -> result | { loading: true } | { error }
 
   useEffect(() => {
     loadAllData();
@@ -328,6 +329,19 @@ const AdminPortal = () => {
       setAuctionHealth({ error: error.message });
     } finally {
       setLoadingHealth(false);
+    }
+  };
+
+  // Investigate one auction: compare DB row to a live re-scrape of the BaT page.
+  const handleInvestigate = async (auctionId) => {
+    setInvestigations(prev => ({ ...prev, [auctionId]: { loading: true } }));
+    try {
+      const response = await fetch(`/api/admin/investigate-auction?auction_id=${encodeURIComponent(auctionId)}`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed');
+      setInvestigations(prev => ({ ...prev, [auctionId]: result }));
+    } catch (error) {
+      setInvestigations(prev => ({ ...prev, [auctionId]: { error: error.message } }));
     }
   };
 
@@ -1891,38 +1905,76 @@ const AdminPortal = () => {
                         {auctionHealth.suspiciousWithdrawn.sample.map((s) => {
                           const busy = reclassifyingId === s.auction_id;
                           const priceInput = withdrawnPriceInputs[s.auction_id] || '';
+                          const inv = investigations[s.auction_id];
                           return (
-                            <li key={s.auction_id} className="flex items-center justify-between gap-3 py-1">
-                              <span className="truncate min-w-0">
-                                <a href={s.url} target="_blank" rel="noreferrer" className="hover:text-white underline">
-                                  {s.title?.slice(0, 60) || s.auction_id}
-                                </a>
-                                <span className="text-slate-500"> — high bid ${s.current_bid.toLocaleString()}</span>
-                              </span>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <input
-                                  type="number"
-                                  placeholder="Sold $"
-                                  value={priceInput}
-                                  onChange={(e) => setWithdrawnPriceInputs(prev => ({ ...prev, [s.auction_id]: e.target.value }))}
-                                  disabled={busy}
-                                  className="bg-slate-700 text-white px-2 py-1 rounded border border-slate-600 w-24 text-xs"
-                                />
-                                <button
-                                  onClick={() => handleReclassifyWithdrawn(s.auction_id, priceInput)}
-                                  disabled={busy || !priceInput || Number(priceInput) <= 0}
-                                  className="bg-green-700 hover:bg-green-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-2 py-1 rounded text-xs whitespace-nowrap"
-                                >
-                                  Set sold
-                                </button>
-                                <button
-                                  onClick={() => handleReclassifyWithdrawn(s.auction_id)}
-                                  disabled={busy}
-                                  className="bg-amber-700 hover:bg-amber-600 disabled:bg-slate-600 text-white px-2 py-1 rounded text-xs whitespace-nowrap"
-                                >
-                                  Mark RNM
-                                </button>
+                            <li key={s.auction_id} className="py-1 border-b border-slate-800 last:border-0">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="truncate min-w-0">
+                                  <a href={s.url} target="_blank" rel="noreferrer" className="hover:text-white underline">
+                                    {s.title?.slice(0, 60) || s.auction_id}
+                                  </a>
+                                  <span className="text-slate-500"> — high bid ${s.current_bid.toLocaleString()}</span>
+                                </span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    onClick={() => handleInvestigate(s.auction_id)}
+                                    disabled={inv?.loading}
+                                    className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 text-white px-2 py-1 rounded text-xs whitespace-nowrap"
+                                  >
+                                    {inv?.loading ? '...' : 'Investigate'}
+                                  </button>
+                                  <input
+                                    type="number"
+                                    placeholder="Sold $"
+                                    value={priceInput}
+                                    onChange={(e) => setWithdrawnPriceInputs(prev => ({ ...prev, [s.auction_id]: e.target.value }))}
+                                    disabled={busy}
+                                    className="bg-slate-700 text-white px-2 py-1 rounded border border-slate-600 w-24 text-xs"
+                                  />
+                                  <button
+                                    onClick={() => handleReclassifyWithdrawn(s.auction_id, priceInput)}
+                                    disabled={busy || !priceInput || Number(priceInput) <= 0}
+                                    className="bg-green-700 hover:bg-green-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-2 py-1 rounded text-xs whitespace-nowrap"
+                                  >
+                                    Set sold
+                                  </button>
+                                  <button
+                                    onClick={() => handleReclassifyWithdrawn(s.auction_id)}
+                                    disabled={busy}
+                                    className="bg-amber-700 hover:bg-amber-600 disabled:bg-slate-600 text-white px-2 py-1 rounded text-xs whitespace-nowrap"
+                                  >
+                                    Mark RNM
+                                  </button>
+                                </div>
                               </div>
+                              {inv && !inv.loading && (
+                                <div className="mt-1 ml-1 text-xs bg-slate-900/60 border border-slate-700 rounded p-2">
+                                  {inv.error ? (
+                                    <span className="text-red-400">Error: {inv.error}</span>
+                                  ) : (
+                                    <>
+                                      <div className={
+                                        inv.discrepancy ? 'text-amber-300 font-semibold' : 'text-green-400 font-semibold'
+                                      }>
+                                        {inv.discrepancy || 'DB matches BaT'}
+                                      </div>
+                                      <div className="text-slate-400 mt-1">
+                                        BaT verdict: <span className="text-white">{inv.bat?.verdict}</span>
+                                        {inv.bat?.price ? <> · price <span className="text-white">${inv.bat.price.toLocaleString()}</span></> : null}
+                                        {inv.bat?.http_status ? <> · HTTP {inv.bat.http_status}</> : null}
+                                        {inv.bat?.error ? <> · <span className="text-red-400">{inv.bat.error}</span></> : null}
+                                      </div>
+                                      {inv.bat?.signals?.length > 0 && (
+                                        <div className="text-slate-500 mt-1">
+                                          via {inv.bat.signals.map((sig, i) => (
+                                            <span key={i}>{i > 0 ? ', ' : ''}{sig.source}={sig.verdict}{sig.price ? ` $${sig.price.toLocaleString()}` : ''}</span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              )}
                             </li>
                           );
                         })}
