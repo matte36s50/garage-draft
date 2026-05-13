@@ -681,9 +681,14 @@ export default function BidPrixApp() {
   const [authLinkError, setAuthLinkError] = useState('')
   const authLinkErrorRef = useRef(false)
 
+  // Auth screens are transient: persisting them to localStorage re-opens the
+  // reset form on a later visit without a recovery session ("Auth session missing!").
+  const AUTH_TRANSIENT_SCREENS = ['reset-password', 'forgot-password', 'login', 'signup']
   const updateCurrentScreen = (screen) => {
     setCurrentScreen(screen)
-    saveCurrentScreen(screen)
+    if (!AUTH_TRANSIENT_SCREENS.includes(screen)) {
+      saveCurrentScreen(screen)
+    }
   }
 
   const updateSelectedLeague = (league) => {
