@@ -438,9 +438,12 @@ export default function BidPrixApp() {
   const [recentUpdates, setRecentUpdates] = useState([])
   const [isChatOpen, setIsChatOpen] = useState(false)
 
+  const AUTH_TRANSIENT_SCREENS = ['reset-password', 'forgot-password', 'login', 'signup']
   const updateCurrentScreen = (screen) => {
     setCurrentScreen(screen)
-    saveCurrentScreen(screen)
+    if (!AUTH_TRANSIENT_SCREENS.includes(screen)) {
+      saveCurrentScreen(screen)
+    }
   }
 
   const updateSelectedLeague = (league) => {
@@ -1675,8 +1678,8 @@ export default function BidPrixApp() {
       try {
         const { error: updateError } = await supabase.auth.updateUser({ password })
         if (updateError) {
-          if (updateError.message.includes('expired') || updateError.message.includes('invalid')) {
-            setError('This reset link has expired. Please request a new one.')
+          if (updateError.message.includes('expired') || updateError.message.includes('invalid') || updateError.message.includes('session')) {
+            setError('This reset link has expired or is no longer valid. Please request a new one.')
           } else {
             setError(updateError.message)
           }
@@ -1720,7 +1723,7 @@ export default function BidPrixApp() {
                 {error && (
                   <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
                     {error}
-                    {error.includes('expired') && (
+                    {(error.includes('expired') || error.includes('no longer valid')) && (
                       <button
                         onClick={() => updateCurrentScreen('forgot-password')}
                         className="block mt-2 text-red-800 font-medium underline"
