@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, LayoutDashboard, History, ChevronDown, Check, ArrowLeft } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, LogOut, Zap, TrendingUp, LayoutDashboard, History, ChevronDown, Check } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
-import Dashboard from './components/Dashboard'
 import LeagueChat from './components/LeagueChat'
 import UserHistory from './components/UserHistory'
 import DraftResults from './components/DraftResults'
@@ -120,6 +119,7 @@ function getLeagueDraftInfo(league) {
   return { statusColor: 'bg-gray-400', label: 'Draft closed' }
 }
 
+// eslint-disable-next-line no-unused-vars
 function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, connectionStatus, recentUpdates, selectedLeague, onManualRefresh, userLeagues, onLeagueChange, getDraftStatus: getDraftStatusProp, garage: garageProp }) {
   const [leagueDropdownOpen, setLeagueDropdownOpen] = useState(false)
   const [mobileLeagueOpen, setMobileLeagueOpen] = useState(false)
@@ -396,6 +396,7 @@ function PrimaryButton({ className = '', children, ...props }) {
   )
 }
 
+// eslint-disable-next-line no-unused-vars
 function OutlineButton({ className = '', children, ...props }) {
   return (
     <button
@@ -407,6 +408,7 @@ function OutlineButton({ className = '', children, ...props }) {
   )
 }
 
+// eslint-disable-next-line no-unused-vars
 function LightButton({ className = '', children, ...props }) {
   return (
     <button
@@ -472,6 +474,123 @@ function CarPlaceholder({ tint = '#3a4a6b', height = 86, radius = 2 }) {
     }} />
   )
 }
+
+// Direction C shared atoms ────────────────────────────────────────────────────
+const mono = 'ui-monospace,"JetBrains Mono",monospace'
+
+function fmtUSD(n) {
+  if (n == null || isNaN(n)) return '$0'
+  const s = n < 0 ? '-' : ''
+  return s + '$' + Math.abs(Math.round(n)).toLocaleString()
+}
+
+function fmtK(n) {
+  if (n == null || isNaN(n)) return '$0'
+  const abs = Math.abs(n), s = n < 0 ? '-' : ''
+  return abs >= 1000 ? s + '$' + (abs / 1000).toFixed(0) + 'k' : s + '$' + abs
+}
+
+function useCountUp(target, duration) {
+  duration = duration || 600
+  const [displayed, setDisplayed] = useState(target)
+  const prevRef = React.useRef(target)
+  useEffect(() => {
+    const from = prevRef.current, to = target
+    if (from === to) return
+    const start = performance.now()
+    let raf
+    function tick(now) {
+      const t = Math.min((now - start) / duration, 1)
+      const ease = 1 - Math.pow(1 - t, 3)
+      setDisplayed(Math.round(from + (to - from) * ease))
+      if (t < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    prevRef.current = to
+    return () => cancelAnimationFrame(raf)
+  }, [target, duration])
+  return displayed
+}
+
+function CarImg({ car, height, radius }) {
+  height = height || 100; radius = radius || 3
+  const [err, setErr] = useState(false)
+  if (err || !car || !car.imageUrl) {
+    return (
+      <div style={{
+        height, borderRadius: radius, width: '100%',
+        background: 'repeating-linear-gradient(135deg,rgba(255,255,255,0.05) 0 6px,rgba(0,0,0,0.12) 6px 12px)',
+        backgroundColor: '#1e1e28', display: 'flex', alignItems: 'flex-end', padding: '6px 8px',
+      }}>
+        <span style={{ fontFamily: mono, fontSize: 8, color: 'rgba(255,255,255,0.3)', letterSpacing: 0.5 }}>
+          {car && car.year} {car && car.make && car.make.toUpperCase()}
+        </span>
+      </div>
+    )
+  }
+  return <img src={car.imageUrl} alt={car.title} onError={() => setErr(true)}
+    style={{ width: '100%', height, objectFit: 'cover', borderRadius: radius, display: 'block' }} />
+}
+
+// eslint-disable-next-line no-unused-vars
+function MonoLabel({ children, color, size, spacing, weight }) {
+  return (
+    <span style={{
+      fontFamily: mono, fontSize: size || 9.5, letterSpacing: spacing || 1.3,
+      fontWeight: weight || 700, textTransform: 'uppercase', color: color || C.muted,
+    }}>{children}</span>
+  )
+}
+
+// eslint-disable-next-line no-unused-vars
+function LiveDot({ color }) {
+  color = color || C.red
+  return <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: color, boxShadow: `0 0 8px ${color}`, animation: 'bpPulse 1.6s ease-in-out infinite', flexShrink: 0 }} />
+}
+
+// eslint-disable-next-line no-unused-vars
+function SectionEyebrow({ children }) {
+  return (
+    <div style={{ fontFamily: mono, fontSize: 9.5, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>
+      {'//'} {children}
+    </div>
+  )
+}
+
+function BottomTabBar({ screen, onNavigate }) {
+  const tabs = [
+    { id: 'dashboard',   label: 'DASH',     icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="11" y="2" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="2" y="11" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="11" y="11" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/></svg> },
+    { id: 'leagues',     label: 'AUCTIONS', icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="7" cy="8" r="3" stroke="currentColor" strokeWidth="1.7"/><path d="M2 17c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M14 6c1.1 0 2 .9 2 2s-.9 2-2 2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M18 17c0-2.21-1.79-4-4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg> },
+    { id: 'cars',        label: 'PICK',     icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 5.4H18l-4.9 3.5 1.8 5.6L10 13l-4.9 3.5 1.8-5.6L2 7.4h6.2L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
+    { id: 'garage',      label: 'GARAGE',   icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M3 9l7-6 7 6v8a1 1 0 01-1 1H4a1 1 0 01-1-1V9z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><rect x="8" y="13" width="4" height="4" rx="0.5" stroke="currentColor" strokeWidth="1.5"/></svg> },
+    { id: 'leaderboard', label: 'RANKS',    icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L10 14.4l-4.8 2.5.9-5.4L2.2 7.7l5.4-.8L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
+    { id: 'history',     label: 'HISTORY',  icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.7"/><path d="M10 6v4l-3 2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+  ]
+  return (
+    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.bg, borderTop: `1px solid ${C.border}`, paddingBottom: 16, zIndex: 50 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-around', paddingTop: 8 }}>
+        {tabs.map(t => {
+          const active = screen === t.id
+          return (
+            <button key={t.id} onClick={() => onNavigate(t.id)} style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px',
+              color: active ? C.red : C.faint, position: 'relative',
+            }}>
+              {active && (
+                <div style={{ position: 'absolute', top: -9, left: '50%', transform: 'translateX(-50%)', width: 20, height: 2, background: C.red, borderRadius: 1 }} />
+              )}
+              <div style={{ color: active ? C.red : C.faint }}>{t.icon}</div>
+              <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, fontWeight: active ? 800 : 600, color: active ? C.red : C.faint }}>
+                {t.label}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function BidPrixApp() {
@@ -489,7 +608,9 @@ export default function BidPrixApp() {
   const [bonusCar, setBonusCar] = useState(null)
   const [userPrediction, setUserPrediction] = useState(null)
   const [showPredictionModal, setShowPredictionModal] = useState(false)
+  // eslint-disable-next-line no-unused-vars
   const [connectionStatus, setConnectionStatus] = useState('connected')
+  // eslint-disable-next-line no-unused-vars
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [recentUpdates, setRecentUpdates] = useState([])
   const [isChatOpen, setIsChatOpen] = useState(false)
@@ -527,6 +648,7 @@ export default function BidPrixApp() {
     }, 10000)
   }
 
+  // eslint-disable-next-line no-unused-vars
   const manualRefresh = async () => {
     if (!selectedLeague) return
     
@@ -1316,8 +1438,8 @@ export default function BidPrixApp() {
             LIVE · 3 LEAGUES DRAFTING
           </div>
           <h1 style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 'clamp(36px,10vw,52px)', fontWeight: 800, lineHeight: 0.95, letterSpacing: -2, margin: '0 0 16px', textTransform: 'uppercase' }}>
-            CALL THE MARKET.<br/>
-            <span style={{ color: C.red }}>BEAT THE FIELD.</span>
+            RACE THE<br/>
+            <span style={{ color: C.red }}>MARKET.</span>
           </h1>
           <p style={{ fontSize: 14, lineHeight: 1.5, color: C.muted, margin: '0 0 22px', maxWidth: 320 }}>
             Seven cars. $175k budget. One week of the BaT market. The leaderboard updates every minute.
@@ -1414,13 +1536,10 @@ export default function BidPrixApp() {
         options: { data: { username }}
       })
       if (error) return alert('Error signing up: '+error.message)
-      // If session exists, user is auto-confirmed (email verification disabled)
-      // Log them in directly
       if (data.session) {
         setUser(data.user)
         updateCurrentScreen('leagues')
       } else if (data.user && !data.session) {
-        // Email verification is required - inform user
         alert('Check your email for verification link!')
       }
     }
@@ -1432,71 +1551,70 @@ export default function BidPrixApp() {
       updateCurrentScreen('leagues')
     }
 
+    const inputStyle = {
+      width: '100%', height: 48, background: C.surface, border: `1px solid ${C.borderHi}`,
+      borderRadius: 4, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', fontSize: 15,
+      padding: '0 14px', outline: 'none',
+    }
+    const labelStyle = { fontFamily: mono, fontSize: 10, letterSpacing: 1.4, color: C.muted, display: 'block', marginBottom: 6 }
+
     return (
-      <div className="min-h-screen bg-gradient-to-b from-bpNavy to-[#0B1220] flex items-center justify-center px-4">
-        <div className="w-full max-w-md">
-          {/* Back to home link */}
-          <button
-            onClick={() => updateCurrentScreen('landing')}
-            className="flex items-center gap-1.5 text-sm text-bpCream/70 hover:text-bpCream mb-6 transition"
-          >
-            <ArrowLeft size={16} />
-            Back to home
-          </button>
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', padding: '28px 24px', minHeight: '100vh' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 36 }}><CBrand size={24} /></div>
 
-          {/* Prominent logo above card */}
-          <button
-            onClick={() => updateCurrentScreen('landing')}
-            className="block mx-auto mb-8 text-center cursor-pointer group"
-          >
-            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BID PRIX</div>
-            <div className="text-xs tracking-[0.18em] text-bpGray/95 uppercase">Race the Market</div>
-          </button>
+        <div style={{ fontFamily: mono, fontSize: 24, fontWeight: 800, letterSpacing: -0.8, textTransform: 'uppercase', marginBottom: 6 }}>
+          {isSignUp ? 'CREATE ACCOUNT' : 'SIGN IN'}
+        </div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 28 }}>
+          {isSignUp ? 'Choose your callsign. First race is free.' : 'Welcome back to the grid.'}
+        </div>
 
-          <Card className="w-full p-8">
-            <h1 className="text-xl font-semibold text-bpInk/80 mb-1 text-center">Welcome</h1>
-            <p className="text-sm text-bpInk/70 text-center mb-6">Sign in to draft cars and race the market.</p>
-            <div className="space-y-3">
-              {isSignUp && (
-                <input
-                  className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
-                  placeholder="Username"
-                  value={username}
-                  onChange={e=>setUsername(e.target.value)}
-                />
-              )}
-              <input
-                className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
-                placeholder="Email"
-                type="email"
-                value={email}
-                onChange={handleEmailChange}
-              />
-              <input
-                className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
-                placeholder="Password"
-                type="password"
-                value={password}
-                onChange={e=>setPassword(e.target.value)}
-              />
-              {!isSignUp && (
-                <div className="text-right">
-                  <button
-                    onClick={() => updateCurrentScreen('forgot-password')}
-                    className="text-sm text-bpInk/60 hover:text-bpInk transition"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-              )}
-              <PrimaryButton className="w-full" onClick={isSignUp ? signUp : signIn}>
-                {isSignUp ? 'Create Account' : 'Sign In'}
-              </PrimaryButton>
-              <OutlineButton className="w-full text-bpInk" onClick={()=>setIsSignUp(!isSignUp)}>
-                {isSignUp ? 'Have an account? Sign in' : 'New here? Create an account'}
-              </OutlineButton>
+        <CheckerBar height={2} />
+        <div style={{ height: 1 }} />
+
+        <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {isSignUp && (
+            <div>
+              <label style={labelStyle}>CALLSIGN (USERNAME)</label>
+              <input style={inputStyle} placeholder="shop_rat" value={username} onChange={e => setUsername(e.target.value)} />
             </div>
-          </Card>
+          )}
+          <div>
+            <label style={labelStyle}>EMAIL ADDRESS</label>
+            <input type="email" style={inputStyle} placeholder="you@example.com" value={email} onChange={handleEmailChange} />
+          </div>
+          <div>
+            <label style={labelStyle}>PASSWORD</label>
+            <input type="password" style={inputStyle} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
+            {!isSignUp && (
+              <div style={{ marginTop: 8, textAlign: 'right' }}>
+                <span onClick={() => updateCurrentScreen('forgot-password')}
+                  style={{ fontFamily: mono, fontSize: 10, color: C.muted, letterSpacing: 0.8, cursor: 'pointer' }}>
+                  FORGOT PASSWORD?
+                </span>
+              </div>
+            )}
+          </div>
+
+          <button onClick={isSignUp ? signUp : signIn} style={{ width: '100%', height: 50, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontWeight: 800, fontSize: 13, fontFamily: mono, letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer', marginTop: 4 }}>
+            {isSignUp ? 'JOIN THE GRID ▸' : 'SIGN IN ▸'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '24px 0' }}>
+          <div style={{ flex: 1, height: 1, background: C.border }} />
+          <span style={{ fontFamily: mono, fontSize: 9, color: C.faint, letterSpacing: 1 }}>OR</span>
+          <div style={{ flex: 1, height: 1, background: C.border }} />
+        </div>
+
+        <button onClick={() => setIsSignUp(!isSignUp)} style={{ width: '100%', height: 50, borderRadius: 4, background: 'transparent', color: C.text, fontWeight: 700, fontSize: 13, fontFamily: mono, letterSpacing: 1.4, border: `1px solid ${C.borderHi}`, textTransform: 'uppercase', cursor: 'pointer' }}>
+          {isSignUp ? 'ALREADY HAVE AN ACCOUNT' : 'CREATE AN ACCOUNT'}
+        </button>
+
+        <div style={{ marginTop: 16, textAlign: 'center' }}>
+          <button onClick={() => updateCurrentScreen('landing')} style={{ fontFamily: mono, fontSize: 10, color: C.faint, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 0.8 }}>
+            ← BACK TO HOME
+          </button>
         </div>
       </div>
     )
@@ -1512,13 +1630,8 @@ export default function BidPrixApp() {
       if (!email.trim()) return
       setLoading(true)
       try {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin
-        })
-        if (error) {
-          console.error('Password reset error:', error)
-        }
-        // Always show success message regardless of whether email exists (security)
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin })
+        if (error) console.error('Password reset error:', error)
         setSubmitted(true)
       } catch (err) {
         console.error('Password reset error:', err)
@@ -1528,60 +1641,42 @@ export default function BidPrixApp() {
       }
     }
 
+    const inputStyle = { width: '100%', height: 48, background: C.surface, border: `1px solid ${C.borderHi}`, borderRadius: 4, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', fontSize: 15, padding: '0 14px', outline: 'none' }
+
     return (
-      <div className="min-h-screen bg-gradient-to-b from-bpNavy to-[#0B1220] flex items-center justify-center px-4">
-        <div className="w-full max-w-md">
-          <button
-            onClick={() => updateCurrentScreen('login')}
-            className="flex items-center gap-1.5 text-sm text-bpCream/70 hover:text-bpCream mb-6 transition"
-          >
-            <ArrowLeft size={16} />
-            Back to Sign In
-          </button>
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', padding: '28px 24px', minHeight: '100vh' }}>
+        <button onClick={() => updateCurrentScreen('login')} style={{ fontFamily: mono, fontSize: 10, color: C.muted, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 0.8, marginBottom: 24 }}>
+          ← BACK TO SIGN IN
+        </button>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 36 }}><CBrand size={24} /></div>
 
-          <button
-            onClick={() => updateCurrentScreen('landing')}
-            className="block mx-auto mb-8 text-center cursor-pointer group"
-          >
-            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BID PRIX</div>
-            <div className="text-xs tracking-[0.18em] text-bpGray/95 uppercase">Race the Market</div>
-          </button>
-
-          <Card className="w-full p-8">
-            {submitted ? (
-              <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle size={32} className="text-emerald-600" />
-                </div>
-                <h1 className="text-xl font-semibold text-bpInk/80 mb-2">Check Your Email</h1>
-                <p className="text-sm text-bpInk/70 mb-6">
-                  If an account exists with that email, we've sent a password reset link. Check your inbox.
-                </p>
-                <OutlineButton className="w-full text-bpInk" onClick={() => updateCurrentScreen('login')}>
-                  Return to Sign In
-                </OutlineButton>
+        {submitted ? (
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ fontFamily: mono, fontSize: 32, color: C.pos, marginBottom: 16 }}>✓</div>
+            <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 800, textTransform: 'uppercase', marginBottom: 8 }}>CHECK YOUR EMAIL</div>
+            <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 28 }}>
+              If an account exists with that email, we&apos;ve sent a reset link. Check your inbox.
+            </p>
+            <button onClick={() => updateCurrentScreen('login')} style={{ width: '100%', height: 50, borderRadius: 4, background: 'transparent', color: C.text, fontWeight: 700, fontSize: 13, fontFamily: mono, letterSpacing: 1.4, border: `1px solid ${C.borderHi}`, textTransform: 'uppercase', cursor: 'pointer' }}>
+              RETURN TO SIGN IN
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontFamily: mono, fontSize: 24, fontWeight: 800, letterSpacing: -0.8, textTransform: 'uppercase', marginBottom: 6 }}>RESET PASSWORD</div>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 28 }}>Enter your email and we&apos;ll send a reset link.</div>
+            <CheckerBar height={2} />
+            <form onSubmit={handleSubmit} style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div>
+                <label style={{ fontFamily: mono, fontSize: 10, letterSpacing: 1.4, color: C.muted, display: 'block', marginBottom: 6 }}>EMAIL ADDRESS</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" style={inputStyle} required />
               </div>
-            ) : (
-              <>
-                <h1 className="text-xl font-semibold text-bpInk/80 mb-1 text-center">Reset Password</h1>
-                <p className="text-sm text-bpInk/70 text-center mb-6">Enter your email and we'll send you a reset link.</p>
-                <form onSubmit={handleSubmit} className="space-y-3">
-                  <input
-                    className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
-                    placeholder="Email"
-                    type="email"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    required
-                  />
-                  <PrimaryButton className="w-full" type="submit" disabled={loading}>
-                    {loading ? 'Sending...' : 'Send Reset Link'}
-                  </PrimaryButton>
-                </form>
-              </>
-            )}
-          </Card>
-        </div>
+              <button type="submit" disabled={loading} style={{ width: '100%', height: 50, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontWeight: 800, fontSize: 13, fontFamily: mono, letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
+                {loading ? 'SENDING...' : 'SEND RESET LINK ▸'}
+              </button>
+            </form>
+          </>
+        )}
       </div>
     )
   }
@@ -1628,71 +1723,51 @@ export default function BidPrixApp() {
       }
     }
 
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-bpNavy to-[#0B1220] flex items-center justify-center px-4">
-        <div className="w-full max-w-md">
-          <button
-            onClick={() => updateCurrentScreen('landing')}
-            className="block mx-auto mb-8 text-center cursor-pointer group"
-          >
-            <div className="text-4xl font-black tracking-tight text-bpCream group-hover:text-bpCream/80 transition">BID PRIX</div>
-            <div className="text-xs tracking-[0.18em] text-bpGray/95 uppercase">Race the Market</div>
-          </button>
+    const inputStyle = { width: '100%', height: 48, background: C.surface, border: `1px solid ${C.borderHi}`, borderRadius: 4, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', fontSize: 15, padding: '0 14px', outline: 'none' }
+    const labelStyle = { fontFamily: mono, fontSize: 10, letterSpacing: 1.4, color: C.muted, display: 'block', marginBottom: 6 }
 
-          <Card className="w-full p-8">
-            {success ? (
-              <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle size={32} className="text-emerald-600" />
-                </div>
-                <h1 className="text-xl font-semibold text-bpInk/80 mb-2">Password Updated</h1>
-                <p className="text-sm text-bpInk/70">Your password has been reset successfully. Redirecting...</p>
-              </div>
-            ) : (
-              <>
-                <h1 className="text-xl font-semibold text-bpInk/80 mb-1 text-center">Set New Password</h1>
-                <p className="text-sm text-bpInk/70 text-center mb-6">Enter your new password below.</p>
-                {error && (
-                  <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
-                    {error}
-                    {error.includes('expired') && (
-                      <button
-                        onClick={() => updateCurrentScreen('forgot-password')}
-                        className="block mt-2 text-red-800 font-medium underline"
-                      >
-                        Request a new reset link
-                      </button>
-                    )}
-                  </div>
+    return (
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', padding: '28px 24px', minHeight: '100vh' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 36 }}><CBrand size={24} /></div>
+
+        {success ? (
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ fontFamily: mono, fontSize: 32, color: C.pos, marginBottom: 16 }}>✓</div>
+            <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 800, textTransform: 'uppercase', marginBottom: 8 }}>PASSWORD UPDATED</div>
+            <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>Your password has been reset. Redirecting...</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontFamily: mono, fontSize: 24, fontWeight: 800, letterSpacing: -0.8, textTransform: 'uppercase', marginBottom: 6 }}>SET NEW PASSWORD</div>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 28 }}>Enter your new password below.</div>
+            <CheckerBar height={2} />
+            {error && (
+              <div style={{ marginTop: 16, padding: '12px 14px', background: `${C.red}18`, border: `1px solid ${C.red}44`, borderRadius: 4, fontFamily: mono, fontSize: 11, color: C.red }}>
+                {error}
+                {error.includes('expired') && (
+                  <button onClick={() => updateCurrentScreen('forgot-password')}
+                    style={{ display: 'block', marginTop: 8, fontFamily: mono, fontSize: 10, color: C.amber, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 0.8 }}>
+                    REQUEST NEW RESET LINK →
+                  </button>
                 )}
-                <form onSubmit={handleSubmit} className="space-y-3">
-                  <input
-                    className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
-                    placeholder="New Password"
-                    type="password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    minLength={8}
-                    required
-                  />
-                  <input
-                    className="w-full rounded-md border border-bpNavy/20 bg-white px-3 py-2 text-bpInk"
-                    placeholder="Confirm Password"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    minLength={8}
-                    required
-                  />
-                  <p className="text-xs text-bpInk/50">Must be at least 8 characters.</p>
-                  <PrimaryButton className="w-full" type="submit" disabled={loading}>
-                    {loading ? 'Updating...' : 'Update Password'}
-                  </PrimaryButton>
-                </form>
-              </>
+              </div>
             )}
-          </Card>
-        </div>
+            <form onSubmit={handleSubmit} style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div>
+                <label style={labelStyle}>NEW PASSWORD</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" style={inputStyle} minLength={8} required />
+              </div>
+              <div>
+                <label style={labelStyle}>CONFIRM PASSWORD</label>
+                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="••••••••" style={inputStyle} minLength={8} required />
+                <p style={{ fontFamily: mono, fontSize: 9.5, color: C.faint, marginTop: 6 }}>Must be at least 8 characters.</p>
+              </div>
+              <button type="submit" disabled={loading} style={{ width: '100%', height: 50, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontWeight: 800, fontSize: 13, fontFamily: mono, letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
+                {loading ? 'UPDATING...' : 'UPDATE PASSWORD ▸'}
+              </button>
+            </form>
+          </>
+        )}
       </div>
     )
   }
@@ -1791,15 +1866,8 @@ export default function BidPrixApp() {
           })}
         </div>
 
-        {/* Bottom nav */}
-        <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.surface, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-around', padding: '10px 0 16px' }}>
-          {[['dashboard','DASH'],['leagues','AUCTIONS'],['leaderboard','RANKS'],['cars','CARS']].map(([s, label]) => (
-            <button key={s} onClick={() => onNavigate(s)} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9, fontWeight: 700, letterSpacing: 1, color: currentScreen === s ? C.red : C.faint, background: 'none', border: 'none', cursor: 'pointer', textTransform: 'uppercase' }}>
-              {label}
-            </button>
-          ))}
-        </nav>
-        <div style={{ height: 56 }} />
+        <div style={{ height: 80 }} />
+        <BottomTabBar screen="leagues" onNavigate={onNavigate} />
       </div>
     )
   }
@@ -1879,271 +1947,259 @@ export default function BidPrixApp() {
   function CarsScreen({ onNavigate, currentScreen }) {
     const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
     const canPick = draftStatus.status === 'open'
-    
-    return (
-      <Shell
-        onNavigate={onNavigate}
-        currentScreen={currentScreen}
-        lastUpdated={lastUpdated}
-        connectionStatus={connectionStatus}
-        recentUpdates={recentUpdates}
-        selectedLeague={selectedLeague}
-        onManualRefresh={manualRefresh}
-        userLeagues={userLeagues}
-        onLeagueChange={updateSelectedLeague}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
-          <div className="flex-1">
-            <h2 className="text-2xl font-extrabold tracking-tight">Available Cars</h2>
-            <p className="text-sm text-bpCream/70">
-              Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()} · <span className="text-bpGold">Min spend ${((selectedLeague?.spending_limit || 200000) / 2 / 1000).toFixed(0)}K to qualify</span>
-            </p>
-            {/* Budget Progress Bar */}
-            {(() => {
-              const limit = selectedLeague?.spending_limit || 200000
-              const spent = limit - budget
-              const spentPercent = Math.min((spent / limit) * 100, 100)
-              const halfwayMark = 50
-              return (
-                <div className="mt-2 mb-1">
-                  <div className="relative w-full h-3 bg-white/10 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${spentPercent >= halfwayMark ? 'bg-emerald-500' : 'bg-bpGold'}`}
-                      style={{ width: `${spentPercent}%` }}
-                    />
-                    {/* 50% marker */}
-                    <div className="absolute top-0 bottom-0 w-0.5 border-l-2 border-dashed border-bpCream/50" style={{ left: '50%' }} />
-                  </div>
-                  <div className="grid grid-cols-3 mt-1 text-[10px] text-bpCream/50">
-                    <span>${spent.toLocaleString()} spent</span>
-                    <span className="text-center">50% min</span>
-                    <span className="text-right">${limit.toLocaleString()}</span>
-                  </div>
-                </div>
-              )
-            })()}
+    const budgetTotal = selectedLeague?.spending_limit || 200000
 
-            {!canPick && (
-              <div className="mt-2 p-2 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
-                ⚠️ {draftStatus.message} - You cannot modify your garage
-              </div>
-            )}
-            {canPick && (
-              <div className="mt-2 p-2 rounded bg-green-500/20 text-sm text-bpCream border border-green-500/40">
-                ✓ {draftStatus.message}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-bpGray"/>
-              <input
-                className="pl-9 pr-3 py-2 rounded-md bg-white/5 border border-white/10 text-bpCream placeholder:text-bpGray/70"
-                placeholder="Search make or model"
-              />
+    const [filter, setFilter] = useState('ALL')
+    const [addingId, setAddingId] = useState(null)
+    const [glowIds, setGlowIds] = useState([])
+    const [showBonus, setShowBonus] = useState(false)
+    const [toast, setToast] = useState(null)
+
+    const animatedBudget = useCountUp(budget, 700)
+    const garageIds = new Set(garage.map(c => c.id))
+    const budgetPct = Math.max(0, Math.min(100, (budget / budgetTotal) * 100))
+
+    function carStatus(car) {
+      const dp = car.baselinePrice || car.currentBid
+      if (garageIds.has(car.id)) return 'added'
+      if (!canPick) return 'locked'
+      if (garage.length >= 7) return 'full'
+      if (dp > budget) return 'over'
+      return 'available'
+    }
+
+    const available = auctions.filter(car => {
+      const dp = car.baselinePrice || car.currentBid
+      if (filter === 'ADDED') return garageIds.has(car.id)
+      if (filter === 'AVAILABLE') return !garageIds.has(car.id) && dp <= budget
+      return true
+    })
+
+    function showToastMsg(msg) { setToast(msg); setTimeout(() => setToast(null), 2000) }
+
+    async function handleAdd(car) {
+      if (garage.length >= 7) return showToastMsg('Garage full — 7 cars max')
+      if (garageIds.has(car.id)) return
+      const dp = car.baselinePrice || car.currentBid
+      if (dp > budget) return showToastMsg(`Need ${fmtK(dp - budget)} more`)
+      setAddingId(car.id)
+      await addToGarage(car)
+      setAddingId(null)
+      setGlowIds(prev => [...prev, car.id])
+      setTimeout(() => setGlowIds(prev => prev.filter(id => id !== car.id)), 900)
+      showToastMsg(`${car.make || car.title} added ✓`)
+    }
+
+    function handleRemove(car) {
+      const gc = garage.find(c => c.id === car.id)
+      if (gc) removeFromGarage(gc)
+    }
+
+    // Empty state
+    if (!selectedLeague) {
+      return (
+        <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 80 }}>
+          <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center' }}><CBrand size={16} /></div>
+          <CheckerBar height={3} />
+          <div style={{ padding: '60px 28px 40px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+            <svg width="52" height="52" viewBox="0 0 52 52" style={{ marginBottom: 18, opacity: 0.4 }}>
+              {[0,1,2,3].map(row => [0,1,2,3].map(col => (
+                <rect key={`${row}-${col}`} x={col*13} y={row*13} width={13} height={13} fill={(row+col)%2===0 ? C.text : 'transparent'} />
+              )))}
+            </svg>
+            <div style={{ fontFamily: mono, fontSize: 9.5, color: C.red, letterSpacing: 1.6, marginBottom: 8 }}>{'//'} NO AUCTION SELECTED</div>
+            <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 800, letterSpacing: -0.8, textTransform: 'uppercase', marginBottom: 10, lineHeight: 1.1 }}>
+              JOIN AN AUCTION<br/>FIRST
             </div>
-          </div>
-        </div>
-
-        {/* Car Selection Progress */}
-        <div className={`mb-4 p-3 sm:p-4 rounded-lg border-2 ${garage.length === 7 ? 'bg-green-500/20 border-green-500/50' : 'bg-bpGold/10 border-bpGold/40'}`}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex gap-2">
-              {Array.from({ length: 7 }).map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
-                    i < garage.length
-                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpInk shadow-sm'
-                      : 'bg-transparent border-2 border-dashed border-bpCream/30 text-bpCream/40'
-                  }`}
-                >
-                  {i < garage.length ? '✓' : ''}
+            <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.55, maxWidth: 260, margin: '0 0 28px' }}>
+              Head to Auctions, pick an open league, and join it. Then come back here to choose your 7 cars.
+            </p>
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 28 }}>
+              {[
+                { n: '01', t: 'GO TO AUCTIONS', d: 'Find an open league to join', active: false },
+                { n: '02', t: 'PICK 7 CARS', d: "You're here — choose your garage", active: true },
+                { n: '03', t: 'WATCH THE MARKET', d: 'Live bids update every minute', active: false },
+              ].map(s => (
+                <div key={s.n} style={{ display: 'grid', gridTemplateColumns: '32px 1fr', gap: 10, padding: '10px 12px', background: s.active ? `${C.red}12` : C.surface, border: `1px solid ${s.active ? C.red+'44' : C.border}`, opacity: s.active ? 1 : 0.5 }}>
+                  <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 800, color: s.active ? C.red : C.faint }}>{s.n}</div>
+                  <div>
+                    <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: s.active ? C.text : C.muted }}>{s.t}</div>
+                    <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>{s.d}</div>
+                  </div>
                 </div>
               ))}
             </div>
-            <span className={`text-lg sm:text-xl font-extrabold ${garage.length === 7 ? 'text-green-400' : 'text-bpCream'}`}>
-              {garage.length}/7
-            </span>
+            <button onClick={() => onNavigate('leagues')} style={{ height: 50, padding: '0 28px', borderRadius: 4, border: 'none', background: C.red, color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer' }}>
+              BROWSE AUCTIONS ▸
+            </button>
           </div>
-          <div className="w-full bg-bpNavy/30 rounded-full h-2 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-300 ${garage.length === 7 ? 'bg-green-500' : 'bg-bpGold'}`}
-              style={{ width: `${(garage.length / 7) * 100}%` }}
-            />
+          <BottomTabBar screen="cars" onNavigate={onNavigate} />
+        </div>
+      )
+    }
+
+    const leagueName = selectedLeague?.name || 'Sunday Morning Drivers'
+
+    return (
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', paddingBottom: 80 }}>
+        {/* Auction context strip */}
+        <div style={{ padding: '8px 18px 10px', background: C.surface, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: 1.3, marginBottom: 2 }}>{'//'} PICKING CARS FOR</div>
+            <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: C.text, letterSpacing: -0.3 }}>{leagueName}</div>
+          </div>
+          <button onClick={() => onNavigate('leagues')} style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1, background: 'none', border: `1px solid ${C.border}`, padding: '4px 8px', borderRadius: 3, cursor: 'pointer' }}>
+            SWITCH ▸
+          </button>
+        </div>
+
+        {/* Header */}
+        <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <CBrand size={16} />
+          <div style={{ fontFamily: mono, fontSize: 9.5, color: canPick ? C.pos : C.muted, letterSpacing: 1.2, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {canPick && <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.pos, display: 'inline-block', animation: 'bpPulse 1.6s ease-in-out infinite' }} />}
+            {canPick ? 'DRAFTING OPEN' : 'DRAFT CLOSED'}
+          </div>
+        </div>
+        <CheckerBar height={3} />
+
+        {/* Budget pit-board */}
+        <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div>
+              <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.3, marginBottom: 4 }}>BUDGET REMAINING</div>
+              <div style={{ fontFamily: mono, fontSize: 32, fontWeight: 800, letterSpacing: -1.2, fontVariantNumeric: 'tabular-nums', lineHeight: 1, color: budget < 20000 ? C.red : budget < 40000 ? C.amber : C.text }}>
+                {fmtUSD(animatedBudget)}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.3, marginBottom: 4 }}>ROSTER</div>
+              <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 800, color: garage.length >= 7 ? C.pos : C.text }}>
+                {garage.length}<span style={{ color: C.faint }}>/7</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ height: 3, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${budgetPct}%`, background: budgetPct > 40 ? C.pos : budgetPct > 15 ? C.amber : C.red, transition: 'width 0.7s cubic-bezier(.22,1,.36,1)', borderRadius: 2 }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
+            <span style={{ fontFamily: mono, fontSize: 9, color: C.faint }}>{fmtK(budgetTotal - budget)} SPENT</span>
+            <span style={{ fontFamily: mono, fontSize: 9, color: C.faint }}>{fmtK(budgetTotal)} TOTAL</span>
           </div>
         </div>
 
+        {/* Bonus car */}
         {bonusCar && (
-          <Card className="mb-6 overflow-hidden border-2 border-bpGold/50">
-            <div className="bg-gradient-to-r from-bpGold/20 to-bpGold/10 px-4 py-2 border-b border-bpGold/30">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-bpInk flex items-center gap-2">
-                  <Zap className="text-bpGold" size={20} />
-                  BONUS CAR (Shared by All Players)
-                </h3>
-                {userPrediction ? (
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-semibold">
-                    ✓ Predicted: ${userPrediction.toLocaleString()}
-                  </span>
-                ) : (
-                  <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded font-semibold animate-pulse">
-                    ⚡ Predict to win 3× the sale price!
-                  </span>
-                )}
+          <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, background: C.surface }}>
+            <button onClick={() => setShowBonus(!showBonus)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontFamily: mono, fontSize: 9.5, color: C.amber, letterSpacing: 1.3, fontWeight: 700 }}>★ BONUS CAR</span>
+                <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>{bonusCar.title}</span>
               </div>
-            </div>
-            
-            <div className="grid md:grid-cols-2 gap-4 p-4">
-              <a 
-                href={bonusCar.auctionUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="block aspect-[16/9] w-full bg-bpInk/10 overflow-hidden hover:opacity-90 transition-opacity rounded-lg"
-              >
-                <img 
-                  src={bonusCar.imageUrl} 
-                  alt={bonusCar.title} 
-                  className="w-full h-full object-cover"
-                />
-              </a>
-              
-              <div className="flex flex-col justify-between">
-                <div>
-                  <a 
-                    href={bonusCar.auctionUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="font-bold text-lg text-bpInk hover:underline"
-                  >
-                    {bonusCar.title}
-                  </a>
-                  <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-3">
-                    <div className="flex items-center gap-1">
-                      <DollarSign size={14}/> Current: ${bonusCar.currentBid.toLocaleString()}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Clock size={14}/> {bonusCar.timeLeft}
-                    </div>
-                  </div>
-                  
-                  {userPrediction && (
-                    <div className="mt-3 p-2 rounded bg-green-50 text-sm text-green-700">
-                      Your prediction: <strong>${userPrediction.toLocaleString()}</strong>
-                    </div>
-                  )}
+              <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, transition: 'transform 0.2s', transform: showBonus ? 'rotate(180deg)' : 'rotate(0)' }}>▾</span>
+            </button>
+            {showBonus && (
+              <div style={{ marginTop: 12, display: 'flex', gap: 12, animation: 'bpFadeIn 0.15s ease-out' }}>
+                <div style={{ width: 88, flexShrink: 0 }}>
+                  <CarImg car={bonusCar} height={64} radius={2} />
                 </div>
-                
-                <PrimaryButton
-                  className="w-full mt-4"
-                  onClick={() => setShowPredictionModal(true)}
-                  disabled={!canPick}
-                >
-                  {userPrediction ? '✏️ Change Prediction' : '🎯 Make Prediction'}
-                </PrimaryButton>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, marginBottom: 4 }}>{bonusCar.title}</div>
+                  <div style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>CURRENT BID</div>
+                  <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, marginTop: 1 }}>{fmtUSD(bonusCar.currentBid)}</div>
+                  <div style={{ marginTop: 8 }}>
+                    <button onClick={() => setShowPredictionModal(true)} style={{ height: 30, padding: '0 12px', borderRadius: 3, border: `1px solid ${C.amber}55`, background: `${C.amber}18`, color: C.amber, fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
+                      {userPrediction ? `PREDICTION: ${fmtUSD(userPrediction)} ✓` : 'MAKE PREDICTION ▸'}
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </Card>
+            )}
+          </div>
         )}
 
+        {/* Filter row */}
+        <div style={{ padding: '12px 18px 10px', display: 'flex', gap: 6 }}>
+          {['ALL', 'AVAILABLE', 'ADDED'].map(f => (
+            <button key={f} onClick={() => setFilter(f)} style={{ padding: '5px 10px', borderRadius: 3, fontFamily: mono, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.1, background: f === filter ? C.text : 'transparent', color: f === filter ? C.bg : C.muted, border: `1px solid ${f === filter ? C.text : C.border}`, cursor: 'pointer' }}>{f}</button>
+          ))}
+          <div style={{ marginLeft: 'auto', fontFamily: mono, fontSize: 9.5, color: C.faint, alignSelf: 'center' }}>{available.length} LOTS</div>
+        </div>
+
+        {/* Loading state */}
         {loading && (
-          <div className="grid md:grid-cols-2 gap-4 mb-4">
-            {[1, 2, 3, 4].map(i => (
-              <Card key={i} className="overflow-hidden">
-                <div className="aspect-[16/9] w-full bg-bpInk/10 animate-pulse" />
-                <div className="p-4 space-y-3">
-                  <div className="h-5 w-3/4 bg-bpInk/10 rounded animate-pulse" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="h-4 bg-bpInk/10 rounded animate-pulse" />
-                    <div className="h-4 bg-bpInk/10 rounded animate-pulse" />
-                  </div>
-                  <div className="h-10 bg-bpInk/10 rounded animate-pulse" />
-                </div>
-              </Card>
+          <div style={{ padding: '20px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {[1,2,3,4].map(i => (
+              <div key={i} style={{ height: 180, background: C.surface, border: `1px solid ${C.border}`, animation: 'bpPulse 1.6s ease-in-out infinite' }} />
             ))}
           </div>
         )}
 
-        {!loading && auctions.length === 0 && (
-          <Card className="p-8 text-center text-bpInk/70">
-            <p>No cars available in this league yet. The snapshot may still be loading.</p>
-          </Card>
+        {/* Car grid */}
+        {!loading && (
+          <div style={{ padding: '2px 18px 8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {available.map(car => {
+              const status = carStatus(car)
+              const inGarage = status === 'added'
+              const isOver = status === 'over'
+              const isFull = status === 'full'
+              const isAdding = addingId === car.id
+              const isGlowing = glowIds.includes(car.id)
+              const dp = car.baselinePrice || car.currentBid
+
+              return (
+                <div key={car.id} style={{ background: inGarage ? `${C.red}0a` : C.surface, border: `1px solid ${inGarage ? C.red+'44' : C.border}`, padding: 10, position: 'relative', animation: isGlowing ? 'bpGlow .9s ease-out' : 'none', opacity: isOver && !inGarage ? 0.55 : 1 }}>
+                  {isOver && !inGarage && (
+                    <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2, fontFamily: mono, fontSize: 8, fontWeight: 800, letterSpacing: 1, color: C.amber, background: `${C.amber}22`, padding: '2px 5px', border: `1px solid ${C.amber}44` }}>
+                      NEED {fmtK(dp - budget)}
+                    </div>
+                  )}
+                  <CarImg car={car} height={80} radius={2} />
+                  <div style={{ fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: 0.5, marginTop: 7 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, marginTop: 1, lineHeight: 1.25, height: 28, overflow: 'hidden' }}>{car.title && car.title.replace(`${car.year} `, '')}</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 5, marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontFamily: mono, fontSize: 9, color: C.faint, letterSpacing: 1 }}>DRAFT</div>
+                      <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtK(dp)}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontFamily: mono, fontSize: 9, color: C.faint, letterSpacing: 1 }}>NOW</div>
+                      <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: C.pos, fontVariantNumeric: 'tabular-nums' }}>{fmtK(car.currentBid)}</div>
+                    </div>
+                  </div>
+                  <div style={{ fontFamily: mono, fontSize: 9.5, color: C.faint, marginBottom: 8 }}>{car.timeLeft}</div>
+                  {inGarage ? (
+                    <button onClick={() => handleRemove(car)} style={{ width: '100%', height: 32, borderRadius: 3, border: `1px solid ${C.red}55`, background: 'transparent', color: C.red, fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1, cursor: canPick ? 'pointer' : 'default' }}>
+                      IN GARAGE ✓
+                    </button>
+                  ) : (
+                    <button onClick={() => handleAdd(car)} disabled={isAdding || isOver || isFull || !canPick} style={{ width: '100%', height: 32, borderRadius: 3, border: 'none', cursor: 'pointer', background: isOver || isFull || !canPick ? C.surfaceHi : C.red, color: isOver || isFull || !canPick ? C.faint : C.text, fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: isAdding ? 0.7 : 1 }}>
+                      {isAdding ? (
+                        <span style={{ display: 'inline-flex', gap: 3 }}>
+                          {[0,1,2].map(i => <span key={i} style={{ width: 4, height: 4, borderRadius: '50%', background: C.text, animation: `bpPulse .8s ease-in-out ${i*0.2}s infinite` }}/>)}
+                        </span>
+                      ) : !canPick ? 'DRAFT CLOSED' : isFull ? 'FULL' : isOver ? `NEED ${fmtK(dp - budget)}` : 'ADD ▸'}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         )}
 
-        <div className="grid md:grid-cols-2 gap-4">
-          {auctions.map(a => {
-            const draftPrice = a.baselinePrice || a.currentBid
-            const disabled = garage.some((c)=>c.id===a.id) || budget < draftPrice || !canPick
-            
-            const insufficientBudget = budget < draftPrice && !garage.some(c=>c.id===a.id)
-            return (
-              <Card key={a.id} className={`overflow-hidden transition-opacity duration-300 ${insufficientBudget ? 'opacity-60' : ''}`}>
-                <a
-                  href={a.auctionUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`block aspect-[16/9] w-full bg-bpInk/10 overflow-hidden hover:opacity-90 transition-opacity relative ${insufficientBudget ? 'after:absolute after:inset-0 after:bg-black/20' : ''}`}
-                >
-                  <img
-                    src={a.imageUrl}
-                    alt={a.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.src = getDefaultCarImage(a.make)
-                    }}
-                  />
-                </a>
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <a
-                      href={a.auctionUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-bold text-bpInk hover:underline"
-                    >
-                      {a.title}
-                    </a>
-                    <div className="flex gap-1 flex-shrink-0">
-                      {a.manually_added && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-purple-500/15 text-purple-700 border border-purple-500/30">
-                          <Target size={12}/> Bonus Auction
-                        </span>
-                      )}
-                      {a.trending && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-teal-500/15 text-teal-700">
-                          <Star size={12}/> Trending
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-y-1 text-sm text-bpInk/80 mt-2">
-                    <div className="flex items-center gap-1">
-                      <DollarSign size={14}/> Draft: ${draftPrice.toLocaleString()}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Clock size={14}/> {a.timeLeft}
-                    </div>
-                    <div className="text-bpInk/60">Current: ${a.currentBid.toLocaleString()}</div>
-                    {a.custom_end_date && (
-                      <div className="text-purple-600 text-xs col-span-2">
-                        Custom end: {new Date(a.custom_end_date * 1000).toLocaleString()}
-                      </div>
-                    )}
-                  </div>
-                  <PrimaryButton
-                    className={`w-full mt-3 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
-                    onClick={() => addToGarage(a)}
-                  >
-                    {!canPick ? 'Draft Closed' :
-                     garage.some(c=>c.id===a.id) ? 'In Garage' : 
-                     budget < draftPrice ? 'Insufficient Budget' : 
-                     'Add to Garage'}
-                  </PrimaryButton>
-                </div>
-              </Card>
-            )
-          })}
-        </div>
+        {!loading && auctions.length === 0 && (
+          <div style={{ padding: '48px 18px', textAlign: 'center', fontFamily: mono, fontSize: 13, color: C.faint }}>
+            NO CARS IN THIS LEAGUE YET<br/>
+            <span style={{ fontSize: 11, color: C.muted, display: 'block', marginTop: 8 }}>The snapshot may still be loading.</span>
+          </div>
+        )}
+
+        {/* Toast */}
+        {toast && (
+          <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: C.surface, border: `1px solid ${C.borderHi}`, padding: '10px 16px', borderRadius: 4, fontFamily: mono, fontSize: 11, color: C.text, letterSpacing: 0.8, whiteSpace: 'nowrap', zIndex: 100, animation: 'bpFadeIn 0.15s ease-out' }}>
+            {toast}
+          </div>
+        )}
 
         {showPredictionModal && bonusCar && (
           <PredictionModal
@@ -2153,274 +2209,154 @@ export default function BidPrixApp() {
             currentPrediction={userPrediction}
           />
         )}
-        {selectedLeague && (
-          <LeagueChat
-            supabase={supabase}
-            leagueId={selectedLeague.id}
-            leagueName={selectedLeague.name}
-            user={user}
-            isOpen={isChatOpen}
-            onToggle={() => setIsChatOpen(!isChatOpen)}
-          />
-        )}
-      </Shell>
+
+        <BottomTabBar screen="cars" onNavigate={onNavigate} />
+      </div>
     )
+
   }
 
   function GarageScreen({ onNavigate, currentScreen }) {
-    const gain = (purchase, current) => {
-      if (!purchase) return 0
-      return +(((current - purchase) / purchase) * 100).toFixed(1)
-    }
-    
     const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
     const canModify = draftStatus.status === 'open'
-    
+    const [prediction, setPrediction] = useState('')
+    const [submitted, setSubmitted] = useState(!!userPrediction)
+    const [showPredict, setShowPredict] = useState(false)
+
+    const totalCurrentValue = garage.reduce((s, c) => s + (c.currentBid || c.purchasePrice || 0), 0)
+    const totalDraftValue   = garage.reduce((s, c) => s + (c.purchasePrice || 0), 0)
+    const totalGain         = totalCurrentValue - totalDraftValue
+    const slots             = [...garage, ...Array(Math.max(0, 7 - garage.length)).fill(null)]
+
+    function gainColor(g) { return g > 0 ? C.pos : g < 0 ? C.neg : C.muted }
+
     return (
-      <Shell
-        onNavigate={onNavigate}
-        currentScreen={currentScreen}
-        lastUpdated={lastUpdated}
-        connectionStatus={connectionStatus}
-        recentUpdates={recentUpdates}
-        selectedLeague={selectedLeague}
-        onManualRefresh={manualRefresh}
-        userLeagues={userLeagues}
-        onLeagueChange={updateSelectedLeague}
-      >
-        <h2 className="text-2xl font-extrabold tracking-tight mb-3">My Garage</h2>
-        <p className="text-sm text-bpCream/70 mb-1">Budget: <span className="font-bold text-bpGold">${budget.toLocaleString()}</span> of ${(selectedLeague?.spending_limit || 200000).toLocaleString()}</p>
-        {/* Budget Progress Bar */}
-        {(() => {
-          const limit = selectedLeague?.spending_limit || 200000
-          const spent = limit - budget
-          const spentPercent = Math.min((spent / limit) * 100, 100)
-          const halfwayMark = 50
-          return (
-            <div className="mb-3">
-              <div className="relative w-full h-3 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${spentPercent >= halfwayMark ? 'bg-emerald-500' : 'bg-bpGold'}`}
-                  style={{ width: `${spentPercent}%` }}
-                />
-                <div className="absolute top-0 bottom-0 w-0.5 border-l-2 border-dashed border-bpCream/50" style={{ left: '50%' }} />
-              </div>
-              <div className="grid grid-cols-3 mt-1 text-[10px] text-bpCream/50">
-                <span>${spent.toLocaleString()} spent</span>
-                <span className="text-center">50% min</span>
-                <span className="text-right">${limit.toLocaleString()}</span>
-              </div>
-            </div>
-          )
-        })()}
-
-        {/* Car Selection Progress */}
-        <div className={`mb-4 p-3 sm:p-4 rounded-lg border-2 ${garage.length === 7 ? 'bg-green-500/20 border-green-500/50' : 'bg-bpGold/10 border-bpGold/40'}`}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex gap-2">
-              {Array.from({ length: 7 }).map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
-                    i < garage.length
-                      ? garage.length === 7 ? 'bg-green-500 border-2 border-green-400 text-white shadow-sm' : 'bg-bpCream border-2 border-bpGold text-bpInk shadow-sm'
-                      : 'bg-transparent border-2 border-dashed border-bpCream/30 text-bpCream/40'
-                  }`}
-                >
-                  {i < garage.length ? '✓' : ''}
-                </div>
-              ))}
-            </div>
-            <span className={`text-lg sm:text-xl font-extrabold ${garage.length === 7 ? 'text-green-400' : 'text-bpCream'}`}>
-              {garage.length}/7
-            </span>
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', paddingBottom: 80 }}>
+        {/* Header */}
+        <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <CBrand size={16} />
+          <div style={{ fontFamily: mono, fontSize: 10, color: canModify ? C.pos : C.red, letterSpacing: 1.2 }}>
+            {canModify ? '🔓 DRAFT OPEN' : '🔒 DRAFT LOCKED'}
           </div>
-          <div className="w-full bg-bpNavy/30 rounded-full h-2 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-300 ${garage.length === 7 ? 'bg-green-500' : 'bg-bpGold'}`}
-              style={{ width: `${(garage.length / 7) * 100}%` }}
-            />
+        </div>
+        <CheckerBar height={3} />
+
+        {/* Summary pit-board */}
+        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.4, marginBottom: 8 }}>
+            {'//'} MY GARAGE{selectedLeague ? ` · ${selectedLeague.name.toUpperCase()}` : ''}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
+            {[
+              { label: 'ROSTER',   value: `${garage.length}/7`, color: garage.length === 7 ? C.pos : C.text },
+              { label: 'BUDGET',   value: fmtK(budget),         color: budget < 20000 ? C.amber : C.text },
+              { label: 'NET GAIN', value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
+            ].map(m => (
+              <div key={m.label} style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: mono, fontSize: 8.5, color: C.faint, letterSpacing: 1.2 }}>{m.label}</div>
+                <div style={{ fontFamily: mono, fontSize: 18, fontWeight: 800, fontVariantNumeric: 'tabular-nums', marginTop: 3, color: m.color }}>{m.value}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 10, height: 3, background: C.border, borderRadius: 2 }}>
+            <div style={{ height: '100%', width: `${(garage.length / 7) * 100}%`, background: garage.length === 7 ? C.pos : C.red, borderRadius: 2, transition: 'width 0.5s' }} />
           </div>
         </div>
 
-        {!canModify && (
-          <div className="mb-4 p-3 rounded bg-bpRed/20 text-sm text-bpCream border border-bpRed/40">
-            🔒 {draftStatus.message} - Your garage is locked
+        {/* Car slots */}
+        <div style={{ padding: '14px 18px 0' }}>
+          <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.6, marginBottom: 10 }}>
+            {'//'} ROSTER — {garage.length}/7 SLOTS FILLED
           </div>
-        )}
-
-        {bonusCar && (
-          <Card className="mb-4 p-3 sm:p-4 border-2 border-bpGold/50">
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-              <a
-                href={bonusCar.auctionUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-shrink-0 hover:opacity-90 transition-opacity"
-              >
-                <img
-                  src={bonusCar.imageUrl}
-                  alt={bonusCar.title}
-                  className="w-full sm:w-28 h-32 sm:h-20 rounded-lg object-cover"
-                />
-              </a>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <Zap className="text-bpGold" size={16} />
-                  <span className="text-xs font-semibold text-bpInk/60 uppercase">Bonus Car</span>
-                </div>
-                <a
-                  href={bonusCar.auctionUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-bold text-bpInk hover:underline"
-                >
-                  {bonusCar.title}
-                </a>
-                <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
-                  {bonusCar.auctionEnded ? (
-                    bonusCar.finalPrice > 0 ? (
-                      <div className="text-green-700 font-semibold">Final: ${bonusCar.finalPrice.toLocaleString()}</div>
-                    ) : bonusCar.finalPrice === 0 ? (
-                      <div className="text-bpRed">Withdrawn</div>
-                    ) : bonusCar.reserveNotMet ? (
-                      <div className="text-bpRed">Reserve Not Met</div>
-                    ) : (
-                      <div className="text-bpInk/50">Pending</div>
-                    )
-                  ) : (
-                    <div>Current: ${bonusCar.currentBid.toLocaleString()}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {slots.map((car, i) => {
+              if (!car) {
+                return (
+                  <div key={`empty-${i}`} style={{ height: 170, border: `1px dashed ${C.border}`, borderRadius: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <div style={{ fontFamily: mono, fontSize: 22, color: C.faint, fontWeight: 800 }}>{String(i + 1).padStart(2, '0')}</div>
+                    <div style={{ fontFamily: mono, fontSize: 9, color: C.faint, letterSpacing: 1.2 }}>EMPTY SLOT</div>
+                    {canModify && <div style={{ fontFamily: mono, fontSize: 9, color: C.faint }}>DRAFT A CAR</div>}
+                  </div>
+                )
+              }
+              const gain = (car.currentBid || car.purchasePrice || 0) - (car.purchasePrice || 0)
+              const gainPct = car.purchasePrice > 0 ? ((gain / car.purchasePrice) * 100).toFixed(1) : '0.0'
+              return (
+                <div key={car.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10, position: 'relative' }}>
+                  <div style={{ fontFamily: mono, fontSize: 9, color: C.red, letterSpacing: 0.8, marginBottom: 5, position: 'absolute', top: 8, right: 8 }}>
+                    LOT {String(i + 1).padStart(2, '0')}
+                  </div>
+                  <CarImg car={car} height={76} radius={2} />
+                  <div style={{ fontFamily: mono, fontSize: 8.5, color: C.muted, letterSpacing: 0.5, marginTop: 6 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, marginTop: 1, lineHeight: 1.25, height: 28, overflow: 'hidden' }}>
+                    {car.title && car.title.replace(`${car.year} `, '')}
+                  </div>
+                  <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                    <div>
+                      <div style={{ fontFamily: mono, fontSize: 8, color: C.faint, letterSpacing: 1 }}>DRAFT</div>
+                      <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtK(car.purchasePrice)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontFamily: mono, fontSize: 8, color: C.faint, letterSpacing: 1 }}>NOW</div>
+                      <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: gainColor(gain) }}>{fmtK(car.currentBid || car.purchasePrice)}</div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: gainColor(gain), fontVariantNumeric: 'tabular-nums' }}>
+                      {gain >= 0 ? '+' : ''}{fmtCompact(gain)}
+                    </span>
+                    <span style={{ fontFamily: mono, fontSize: 10, color: gainColor(gain) }}>({gain >= 0 ? '+' : ''}{gainPct}%)</span>
+                  </div>
+                  {canModify && (
+                    <button onClick={() => removeFromGarage(car)} style={{ marginTop: 7, width: '100%', height: 26, borderRadius: 2, border: `1px solid ${C.border}`, background: 'transparent', color: C.faint, fontFamily: mono, fontSize: 9, letterSpacing: 0.8, cursor: 'pointer' }}>
+                      REMOVE
+                    </button>
                   )}
-                  <div>{bonusCar.auctionEnded ? 'Ended' : `${bonusCar.timeLeft} left`}</div>
                 </div>
-                {userPrediction ? (
-                  <div className="mt-2 text-green-700 font-semibold text-sm">
-                    Your prediction: ${userPrediction.toLocaleString()}
-                  </div>
-                ) : (
-                  <div className="mt-2 text-yellow-600 text-xs">
-                    ⚡ Make a prediction for 3× the sale price!
-                  </div>
-                )}
-                <LightButton
-                  className="mt-3 text-sm w-full sm:w-auto"
-                  onClick={() => setShowPredictionModal(true)}
-                  disabled={!canModify}
-                >
-                  {userPrediction ? '✏️ Change Prediction' : '🎯 Make Prediction'}
-                </LightButton>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Bonus car prediction */}
+        {bonusCar && (
+          <div style={{ margin: '18px 18px 0', padding: '14px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.amber}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div>
+                <div style={{ fontFamily: mono, fontSize: 9.5, color: C.amber, letterSpacing: 1.3, fontWeight: 700, marginBottom: 3 }}>★ BONUS CAR</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{bonusCar.title}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontFamily: mono, fontSize: 8.5, color: C.faint, letterSpacing: 1 }}>CURRENT</div>
+                <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700 }}>{fmtUSD(bonusCar.currentBid)}</div>
               </div>
             </div>
-          </Card>
-        )}
-        
-        {/* Browse Cars CTA when garage is empty */}
-        {garage.length === 0 && canModify && (
-          <div className="mb-6 text-center py-8">
-            <Car size={48} className="mx-auto mb-4 text-bpCream/30" />
-            <p className="text-bpCream/70 mb-4 text-lg">Your garage is empty. Start building your dream lineup!</p>
-            <button
-              onClick={() => onNavigate('cars')}
-              className="inline-flex items-center justify-center rounded-md px-8 py-3 font-semibold bg-bpCream text-bpInk hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 transition shadow-lg text-lg"
-            >
-              Browse Available Cars →
-            </button>
+            {submitted || userPrediction ? (
+              <div style={{ fontFamily: mono, fontSize: 11, color: C.pos, letterSpacing: 0.8 }}>
+                ✓ PREDICTION LOCKED: {fmtUSD(userPrediction || parseInt((prediction || '0').replace(/\D/g,''), 10))}
+              </div>
+            ) : showPredict ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input value={prediction} onChange={e => setPrediction(e.target.value)} placeholder="$32,500"
+                  style={{ flex: 1, height: 36, background: C.bg, border: `1px solid ${C.borderHi}`, borderRadius: 3, color: C.text, fontFamily: mono, fontSize: 13, padding: '0 10px', outline: 'none' }} />
+                <button onClick={() => { const p = parseFloat(prediction.replace(/[^0-9.]/g, '')); if (p > 0) { submitPrediction(p); setSubmitted(true) } }}
+                  style={{ height: 36, padding: '0 14px', borderRadius: 3, border: 'none', background: C.amber, color: '#000', fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
+                  LOCK ▸
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setShowPredict(true)}
+                style={{ height: 34, padding: '0 14px', borderRadius: 3, border: `1px solid ${C.amber}55`, background: `${C.amber}18`, color: C.amber, fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
+                MAKE PREDICTION · 2× SCORE
+              </button>
+            )}
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 gap-4">
-          {Array.from({ length: 7 }).map((_, i) => {
-            const car = garage[i]
-            return (
-              <Card key={i} className={`p-4 ${car ? '' : 'border-dashed bg-bpCream/70 text-bpInk/60'}`}>
-                {car ? (
-                  <div className="flex gap-4">
-                    <a
-                      href={car.auctionUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-shrink-0 hover:opacity-90 transition-opacity"
-                    >
-                      <img
-                        src={car.imageUrl}
-                        alt={car.title}
-                        className="w-28 h-20 rounded-lg object-cover"
-                        onError={(e) => {
-                          e.target.src = getDefaultCarImage(car.make)
-                        }}
-                      />
-                    </a>
-                    <div className="flex-1">
-                      <a
-                        href={car.auctionUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-bold text-bpInk hover:underline"
-                      >
-                        {car.title}
-                      </a>
-                      <div className="grid grid-cols-2 gap-2 text-sm text-bpInk/80 mt-2">
-                        <div>Draft: ${(car.purchasePrice || car.currentBid).toLocaleString()}</div>
-                        {car.auctionEnded ? (
-                          car.finalPrice > 0 ? (
-                            <div className="text-green-700 font-semibold">Final: ${car.finalPrice.toLocaleString()}</div>
-                          ) : car.finalPrice === 0 ? (
-                            <div className="text-bpRed">Withdrawn</div>
-                          ) : car.reserveNotMet ? (
-                            <div className="text-bpRed">Reserve Not Met</div>
-                          ) : (
-                            <div className="text-bpInk/50">Pending</div>
-                          )
-                        ) : (
-                          <div>Current: ${car.currentBid.toLocaleString()}</div>
-                        )}
-                        <div className={`${gain(car.purchasePrice || car.currentBid, car.finalPrice === 0 ? 0 : (car.finalPrice || car.currentBid)) >= 0 ? 'text-green-700' : 'text-bpRed'}`}>
-                          Gain: {gain(car.purchasePrice || car.currentBid, car.finalPrice === 0 ? 0 : (car.finalPrice || car.currentBid)) >= 0 ? '+' : ''}{gain(car.purchasePrice || car.currentBid, car.finalPrice === 0 ? 0 : (car.finalPrice || car.currentBid))}%
-                        </div>
-                        <div>{car.auctionEnded ? 'Ended' : `${car.timeLeft} left`}</div>
-                      </div>
-                      {canModify && (
-                        <LightButton className="mt-3 text-sm" onClick={()=> removeFromGarage(car)}>
-                          Remove
-                        </LightButton>
-                      )}
-                      {!canModify && (
-                        <div className="mt-3 text-xs text-bpInk/60">🔒 Locked</div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-24">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Car size={18}/>
-                      <span>Empty Slot</span>
-                    </div>
-                  </div>
-                )}
-              </Card>
-            )
-          })}
-        </div>
-        {selectedLeague && (
-          <LeagueChat
-            supabase={supabase}
-            leagueId={selectedLeague.id}
-            leagueName={selectedLeague.name}
-            user={user}
-            isOpen={isChatOpen}
-            onToggle={() => setIsChatOpen(!isChatOpen)}
-          />
-        )}
-        {showPredictionModal && bonusCar && (
-          <PredictionModal
-            car={bonusCar}
-            onClose={() => setShowPredictionModal(false)}
-            onSubmit={submitPrediction}
-            currentPrediction={userPrediction}
-          />
-        )}
-      </Shell>
+        <BottomTabBar screen="garage" onNavigate={onNavigate} />
+      </div>
     )
+
   }
 
   function LeaderboardScreen({ onNavigate, currentScreen }) {
@@ -2947,14 +2883,188 @@ export default function BidPrixApp() {
           />
         )}
 
-        {/* Bottom nav */}
-        <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.surface, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-around', padding: '10px 0 16px' }}>
-          {[['dashboard','DASH'],['leagues','AUCTIONS'],['leaderboard','RANKS'],['cars','CARS']].map(([s, label]) => (
-            <button key={s} onClick={() => onNavigate(s)} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9, fontWeight: 700, letterSpacing: 1, color: currentScreen === s ? C.red : C.faint, background: 'none', border: 'none', cursor: 'pointer', textTransform: 'uppercase' }}>
-              {label}
-            </button>
+        <BottomTabBar screen="leaderboard" onNavigate={onNavigate} />
+      </div>
+    )
+  }
+
+  function DashboardScreenC({ onNavigate }) {
+    const now = new Date()
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+    const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()
+    const username = user?.user_metadata?.username || user?.email?.split('@')[0] || 'Driver'
+
+    const totalDraft   = garage.reduce((s, c) => s + (c.purchasePrice || 0), 0)
+    const totalCurrent = garage.reduce((s, c) => s + (c.currentBid || c.purchasePrice || 0), 0)
+    const totalGain    = totalCurrent - totalDraft
+    const bestCar = garage.length > 0 ? garage.reduce((best, c) => {
+      const g = (c.currentBid || c.purchasePrice || 0) - (c.purchasePrice || 0)
+      const bg = (best.currentBid || best.purchasePrice || 0) - (best.purchasePrice || 0)
+      return g > bg ? c : best
+    }) : null
+    const bestGain = bestCar ? (bestCar.currentBid || bestCar.purchasePrice || 0) - (bestCar.purchasePrice || 0) : 0
+
+    function gainColor(n) { return n > 0 ? C.pos : n < 0 ? C.neg : C.muted }
+
+    return (
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', paddingBottom: 80, minHeight: '100vh' }}>
+        {/* Header */}
+        <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <CBrand size={16} />
+          <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, letterSpacing: 0.8 }}>{timeStr} · {dateStr}</div>
+        </div>
+        <CheckerBar height={3} />
+
+        {/* Welcome */}
+        <div style={{ padding: '14px 18px 12px', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.4, marginBottom: 4 }}>{'//'} WELCOME BACK</div>
+          <div style={{ fontFamily: mono, fontSize: 26, fontWeight: 800, letterSpacing: -0.8, textTransform: 'uppercase', lineHeight: 1 }}>{username}</div>
+          <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 4 }}>
+            {selectedLeague ? selectedLeague.name : 'No league — join one to start'}
+          </div>
+        </div>
+
+        {/* Garage hero card */}
+        <div style={{ margin: '14px 18px', background: C.surface, border: `1px solid ${C.borderHi}`, padding: '14px 16px', borderLeft: `4px solid ${C.red}` }}>
+          <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, letterSpacing: 1.4, marginBottom: 8 }}>GARAGE OVERVIEW</div>
+          <div style={{ fontFamily: mono, fontSize: 32, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>
+            {fmtUSD(totalCurrent)}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', marginTop: 10, gap: 0 }}>
+            {[
+              { label: 'NET',    value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
+              { label: 'ROSTER', value: `${garage.length}/7`, color: garage.length === 7 ? C.pos : C.text },
+              { label: 'BUDGET', value: fmtK(budget), color: budget < 20000 ? C.amber : C.text },
+              { label: 'LEAGUE', value: selectedLeague ? 'ACTIVE' : '—', color: selectedLeague ? C.pos : C.faint },
+            ].map(s => (
+              <div key={s.label}>
+                <div style={{ fontFamily: mono, fontSize: 8, color: C.faint, letterSpacing: 1.2 }}>{s.label}</div>
+                <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, marginTop: 2, color: s.color, fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Stats strip */}
+        <div style={{ padding: '0 18px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {[
+            { label: 'AUCTION EARNINGS', value: (totalGain >= 0 ? '+' : '') + fmtUSD(totalGain), color: gainColor(totalGain), sub: 'vs draft prices' },
+            { label: 'CARS DRAFTED',     value: `${garage.length}/7`, color: garage.length === 7 ? C.pos : C.text, sub: 'roster slots filled' },
+          ].map(s => (
+            <div key={s.label} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: '12px' }}>
+              <div style={{ fontFamily: mono, fontSize: 8.5, color: C.muted, letterSpacing: 1.3, marginBottom: 6 }}>{s.label}</div>
+              <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 800, color: s.color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{s.value}</div>
+              <div style={{ fontFamily: mono, fontSize: 8.5, color: C.faint, marginTop: 4 }}>{s.sub}</div>
+            </div>
           ))}
-        </nav>
+        </div>
+
+        {/* Best performer */}
+        {bestCar && (
+          <div style={{ margin: '0 18px 14px', background: C.surface, border: `1px solid ${C.amber}44`, padding: '12px', borderLeft: `3px solid ${C.amber}` }}>
+            <div style={{ fontFamily: mono, fontSize: 9.5, color: C.amber, letterSpacing: 1.3, marginBottom: 8 }}>★ BEST PERFORMER</div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ width: 80, flexShrink: 0 }}><CarImg car={bestCar} height={60} radius={2} /></div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3, marginBottom: 4 }}>
+                  {bestCar.title && bestCar.title.replace(`${bestCar.year} `, '')}
+                </div>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <div>
+                    <div style={{ fontFamily: mono, fontSize: 8, color: C.faint, letterSpacing: 1 }}>DRAFT</div>
+                    <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700 }}>{fmtK(bestCar.purchasePrice)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: mono, fontSize: 8, color: C.faint, letterSpacing: 1 }}>NET GAIN</div>
+                    <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: gainColor(bestGain) }}>{bestGain >= 0 ? '+' : ''}{fmtCompact(bestGain)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Live ticker */}
+        {recentUpdates.length > 0 && (
+          <div style={{ margin: '0 18px 14px', background: C.surface, border: `1px solid ${C.border}`, padding: '12px' }}>
+            <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.6, marginBottom: 8 }}>{'//'} LIVE MARKET</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {recentUpdates.slice(0, 4).map((t, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: mono, fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: 1, color: C.red, width: 52, flexShrink: 0 }}>BID UP</span>
+                  <span style={{ flex: 1, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11.5 }}>{t.carTitle}</span>
+                  <span style={{ color: C.pos, fontWeight: 700 }}>+{fmtK(t.amount)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Quick links */}
+        <div style={{ margin: '0 18px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button onClick={() => onNavigate('leaderboard')} style={{ height: 44, borderRadius: 3, background: C.surface, border: `1px solid ${C.border}`, color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 700, letterSpacing: 1.1, cursor: 'pointer' }}>
+            VIEW STANDINGS ▸
+          </button>
+          <button onClick={() => onNavigate('cars')} style={{ height: 44, borderRadius: 3, background: C.red, border: 'none', color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1.1, cursor: 'pointer' }}>
+            PICK CARS ▸
+          </button>
+        </div>
+
+        <BottomTabBar screen="dashboard" onNavigate={onNavigate} />
+      </div>
+    )
+  }
+
+  function HistoryScreenC({ onNavigate }) {
+    const username = user?.user_metadata?.username || user?.email?.split('@')[0] || 'DRIVER'
+    return (
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 80 }}>
+        <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <CBrand size={16} />
+          <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: mono, fontSize: 10, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>OUT</button>
+        </div>
+        <CheckerBar height={3} />
+        <div style={{ padding: '14px 18px 8px', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontFamily: mono, fontSize: 9.5, color: C.red, letterSpacing: 1.6, marginBottom: 4 }}>{'//'} {username.toUpperCase()}</div>
+          <div style={{ fontFamily: mono, fontSize: 28, fontWeight: 800, letterSpacing: -1, textTransform: 'uppercase' }}>HISTORY</div>
+        </div>
+        <UserHistory supabase={supabase} user={user} />
+        <BottomTabBar screen="history" onNavigate={onNavigate} />
+      </div>
+    )
+  }
+
+  function DraftResultsScreenC({ onNavigate }) {
+    const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
+    const isDraftOpen = draftStatus.status === 'open'
+    return (
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 80 }}>
+        <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center' }}><CBrand size={16} /></div>
+        <CheckerBar height={3} />
+        {isDraftOpen ? (
+          <div style={{ padding: '60px 32px', textAlign: 'center' }}>
+            <div style={{ fontFamily: mono, fontSize: 48, fontWeight: 800, color: C.red, marginBottom: 12 }}>🔒</div>
+            <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 800, letterSpacing: -0.8, textTransform: 'uppercase', marginBottom: 8 }}>PICKS HIDDEN</div>
+            <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.55, maxWidth: 280, margin: '0 auto 24px' }}>
+              Draft picks are hidden until the window closes. No copying allowed.
+            </div>
+            {selectedLeague && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: C.surface, border: `1px solid ${C.amber}44` }}>
+                <span style={{ fontFamily: mono, fontSize: 9.5, color: C.amber, letterSpacing: 1.2 }}>STATUS</span>
+                <span style={{ fontFamily: mono, fontSize: 14, fontWeight: 800, color: C.amber }}>{draftStatus.message}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div style={{ padding: '14px 18px 10px' }}>
+              <div style={{ fontFamily: mono, fontSize: 9.5, color: C.red, letterSpacing: 1.6, marginBottom: 4 }}>{'//'} DRAFT CLOSED</div>
+              <div style={{ fontFamily: mono, fontSize: 28, fontWeight: 800, letterSpacing: -1, textTransform: 'uppercase' }}>DRAFT PICKS</div>
+            </div>
+            <DraftResults supabase={supabase} selectedLeague={selectedLeague} draftStatus={draftStatus} getDefaultCarImage={getDefaultCarImage} />
+          </>
+        )}
+        <BottomTabBar screen="draft-results" onNavigate={onNavigate} />
       </div>
     )
   }
@@ -2964,77 +3074,11 @@ export default function BidPrixApp() {
   if (currentScreen === 'reset-password') return <ResetPasswordScreen />
   if (!user) return <LoginScreen />
   if (currentScreen === 'leagues') return <LeaguesScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
-  if (currentScreen === 'dashboard') return (
-    <Shell
-      onSignOut={() => supabase.auth.signOut()}
-      onNavigate={updateCurrentScreen}
-      currentScreen={currentScreen}
-      lastUpdated={lastUpdated}
-      connectionStatus={connectionStatus}
-      recentUpdates={recentUpdates}
-      selectedLeague={selectedLeague}
-      onManualRefresh={manualRefresh}
-      userLeagues={userLeagues}
-      onLeagueChange={updateSelectedLeague}
-    >
-      <Dashboard
-        supabase={supabase}
-        user={user}
-        leagues={userLeagues}
-        selectedLeague={selectedLeague}
-        onLeagueChange={updateSelectedLeague}
-        onNavigate={updateCurrentScreen}
-        bonusCar={bonusCar}
-        userPrediction={userPrediction}
-        draftStatus={selectedLeague ? getDraftStatus(selectedLeague) : null}
-      />
-      {selectedLeague && (
-        <LeagueChat
-          supabase={supabase}
-          leagueId={selectedLeague.id}
-          leagueName={selectedLeague.name}
-          user={user}
-          isOpen={isChatOpen}
-          onToggle={() => setIsChatOpen(!isChatOpen)}
-        />
-      )}
-    </Shell>
-  )
+  if (currentScreen === 'dashboard') return <DashboardScreenC onNavigate={updateCurrentScreen} />
   if (currentScreen === 'cars') return <CarsScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
   if (currentScreen === 'garage') return <GarageScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
   if (currentScreen === 'leaderboard') return <LeaderboardScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
-  if (currentScreen === 'history') return (
-    <Shell
-      onSignOut={() => supabase.auth.signOut()}
-      onNavigate={updateCurrentScreen}
-      currentScreen={currentScreen}
-      lastUpdated={lastUpdated}
-      connectionStatus={connectionStatus}
-      selectedLeague={selectedLeague}
-      userLeagues={userLeagues}
-      onLeagueChange={updateSelectedLeague}
-    >
-      <UserHistory supabase={supabase} user={user} />
-    </Shell>
-  )
-  if (currentScreen === 'draft-results') return (
-    <Shell
-      onSignOut={() => supabase.auth.signOut()}
-      onNavigate={updateCurrentScreen}
-      currentScreen={currentScreen}
-      lastUpdated={lastUpdated}
-      connectionStatus={connectionStatus}
-      selectedLeague={selectedLeague}
-      userLeagues={userLeagues}
-      onLeagueChange={updateSelectedLeague}
-    >
-      <DraftResults
-        supabase={supabase}
-        selectedLeague={selectedLeague}
-        draftStatus={selectedLeague ? getDraftStatus(selectedLeague) : null}
-        getDefaultCarImage={getDefaultCarImage}
-      />
-    </Shell>
-  )
+  if (currentScreen === 'history') return <HistoryScreenC onNavigate={updateCurrentScreen} />
+  if (currentScreen === 'draft-results') return <DraftResultsScreenC onNavigate={updateCurrentScreen} />
   return null
 }

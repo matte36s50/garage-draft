@@ -5,26 +5,46 @@
 /* Font (Inter) */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-/* Bid Prix Brand Tokens (Premium Dark Mode) */
+/* Direction C – Racing Energy tokens */
 :root{
-  --bp-navy:#0F1A2B;   /* deeper navy */
-  --bp-cream:#FAF6EE;  /* warm off-white */
-  --bp-red:#D64541;    /* racing red (legacy) */
-  --bp-teal:#14b8a6;   /* teal-500 – primary brand */
-  --bp-teal-light:#2dd4bf; /* teal-400 – text accents */
-  --bp-gold:#C2A14D;   /* metallic gold */
-  --bp-gray:#B0B3B8;   /* UI gray */
-  --bp-ink:#111111;    /* text on light */
-  --bp-card:#1e293b;   /* slate-800 – card surfaces */
+  --c-bg:#0a0a0c;
+  --c-surface:#15161b;
+  --c-surface-hi:#1c1d23;
+  --c-border:rgba(255,255,255,0.08);
+  --c-border-hi:rgba(255,255,255,0.16);
+  --c-text:#f4f4f5;
+  --c-muted:#8a8a92;
+  --c-faint:#52525a;
+  --c-red:#ef3a32;
+  --c-amber:#f5c542;
+  --c-pos:#5cd17a;
+  /* legacy aliases kept for Tailwind class refs */
+  --bp-navy:#0F1A2B;
+  --bp-cream:#FAF6EE;
+  --bp-red:#ef3a32;
+  --bp-teal:#14b8a6;
+  --bp-teal-light:#2dd4bf;
+  --bp-gold:#C2A14D;
+  --bp-gray:#B0B3B8;
+  --bp-ink:#111111;
+  --bp-card:#1e293b;
 }
 
-/* Base type + background for consistent feel */
+/* Base type + background */
 @layer base {
   html { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
-  body { background-color: var(--bp-navy); color: var(--bp-cream); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body { background-color: var(--c-bg); color: var(--c-text); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 }
 
-/* Tiny helpers used by the components */
+/* Direction C keyframes */
+@keyframes bpFadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+@keyframes bpPulse  { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.55;transform:scale(.85)} }
+@keyframes bpGlow   { 0%{box-shadow:0 0 0 3px #ef3a32,0 0 16px #ef3a3266} 100%{box-shadow:none} }
+@keyframes bpPop    { 0%{opacity:0;transform:scale(.92)} 100%{opacity:1;transform:scale(1)} }
+@keyframes bpTicker { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+.bp-screen { animation: bpFadeIn .18s ease-out; }
+
+/* Tailwind class shims (legacy usage in PredictionModal etc.) */
 .text-bpCream{color:var(--bp-cream)}
 .text-bpGray{color:var(--bp-gray)}
 .text-bpInk{color:var(--bp-ink)}
