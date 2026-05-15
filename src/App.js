@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, RefreshCw, LayoutDashboard, History, ChevronDown, Check, ArrowLeft } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, Clock, Star, LogOut, Search, Zap, CheckCircle, TrendingUp, Target, LayoutDashboard, History, ChevronDown, Check, ArrowLeft } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import Dashboard from './components/Dashboard'
 import LeagueChat from './components/LeagueChat'
@@ -417,6 +417,62 @@ function LightButton({ className = '', children, ...props }) {
     </button>
   )
 }
+
+// ─── Direction C: Racing Energy ──────────────────────────────────────────────
+const C = {
+  bg: '#0a0a0c',
+  surface: '#15161b',
+  surfaceHi: '#1c1d23',
+  border: 'rgba(255,255,255,0.08)',
+  borderHi: 'rgba(255,255,255,0.16)',
+  text: '#f4f4f5',
+  muted: '#8a8a92',
+  faint: '#52525a',
+  red: '#ef3a32',
+  amber: '#f5c542',
+  pos: '#5cd17a',
+  neg: '#ef3a32',
+}
+
+function CBrand({ size = 22 }) {
+  const flagSize = Math.round(size * 0.55)
+  const sq = flagSize / 2
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: Math.round(size * 0.35), lineHeight: 1 }}>
+      <span style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontWeight: 800, fontSize: size, letterSpacing: 1, textTransform: 'uppercase', display: 'inline-flex', alignItems: 'baseline' }}>
+        <span style={{ color: C.text }}>BID</span>
+        <span style={{ color: C.red }}>PRIX</span>
+      </span>
+      <svg width={flagSize} height={flagSize} viewBox={`0 0 ${flagSize} ${flagSize}`} style={{ flexShrink: 0, opacity: 0.85 }}>
+        <rect x={0}  y={0}  width={sq} height={sq} fill={C.text}/>
+        <rect x={sq} y={0}  width={sq} height={sq} fill={C.red}/>
+        <rect x={0}  y={sq} width={sq} height={sq} fill={C.red}/>
+        <rect x={sq} y={sq} width={sq} height={sq} fill={C.text}/>
+      </svg>
+    </div>
+  )
+}
+
+function CheckerBar({ height = 4 }) {
+  return (
+    <div style={{ height, background: `repeating-linear-gradient(90deg,${C.text} 0 8px,transparent 8px 16px)`, width: '100%' }} />
+  )
+}
+
+function fmtCompact(n) {
+  if (Math.abs(n) >= 1000) return `$${(n / 1000).toFixed(1)}k`
+  return `$${Math.round(n)}`
+}
+
+function CarPlaceholder({ tint = '#3a4a6b', height = 86, radius = 2 }) {
+  return (
+    <div style={{
+      height, borderRadius: radius, background: tint, overflow: 'hidden',
+      backgroundImage: `repeating-linear-gradient(135deg,rgba(0,0,0,0.15) 0 4px,transparent 4px 8px)`,
+    }} />
+  )
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function BidPrixApp() {
   const [currentScreen, setCurrentScreen] = useState(() => loadCurrentScreen() || 'landing')
@@ -1231,227 +1287,106 @@ export default function BidPrixApp() {
   }, [selectedLeague, user, bonusCar])
 
   function LandingScreen({ onGetStarted }) {
-    const [showStickyNav, setShowStickyNav] = useState(false)
-
-    useEffect(() => {
-      const handleScroll = () => {
-        setShowStickyNav(window.scrollY > 300)
-      }
-      window.addEventListener('scroll', handleScroll)
-      return () => window.removeEventListener('scroll', handleScroll)
-    }, [])
-
+    const TICKER_ROWS = [
+      { t: 'NEW BID', n: '1991 BMW M5', v: '+$2,700', good: true },
+      { t: 'SELECTED', n: 'shop_rat → S2000', v: '$24.0k', good: null },
+      { t: 'SOLD', n: 'Land Cruiser', v: '$48,200', good: true },
+    ]
+    const MOCK_CARS = [
+      { id: 'c1', title: '1991 BMW M5 (E34)',        year: 1991, price: 38500, img: '#3a4a6b', trend: 7 },
+      { id: 'c2', title: '1995 Porsche 993 Carrera', year: 1995, price: 92000, img: '#6b3a3a', trend: 5 },
+      { id: 'c3', title: '1987 Toyota Land Cruiser', year: 1987, price: 42000, img: '#3a5a4a', trend: 6 },
+      { id: 'c4', title: '1972 Datsun 240Z',         year: 1972, price: 28500, img: '#5a4a3a', trend: 9 },
+    ]
     return (
-      <div className="min-h-screen bg-gradient-to-b from-bpNavy via-[#0B1220] to-bpNavy">
-        {/* Sticky Navigation Bar */}
-        <div className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${showStickyNav ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
-          <div className="bg-bpNavy/95 backdrop-blur-sm border-b border-white/10">
-            <div className="mx-auto max-w-5xl px-4 py-2.5 flex items-center justify-between">
-              <div className="font-extrabold tracking-wide text-lg text-bpCream">BID PRIX</div>
-              <button
-                onClick={onGetStarted}
-                className="px-4 py-1.5 rounded-md text-sm font-semibold bg-bpCream text-bpInk hover:opacity-90 transition"
-              >
-                Sign In
-              </button>
-            </div>
-          </div>
+      <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
+        {/* App bar */}
+        <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <CBrand />
+          <button onClick={onGetStarted} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, letterSpacing: 0.5, background: 'none', border: 'none', cursor: 'pointer' }}>
+            SIGN IN ▸
+          </button>
         </div>
+        <CheckerBar height={4} />
 
-        <div className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDMpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-40"></div>
-
-          <div className="relative mx-auto max-w-5xl px-4 py-20 text-center">
-            <div className="mb-8 flex flex-col items-center gap-4">
-              <div className="text-center">
-                <div className="text-6xl font-black tracking-tight text-bpCream drop-shadow-2xl mb-2">
-                  BID PRIX
-                </div>
-                <div className="text-2xl tracking-[0.2em] text-bpCream/90 uppercase font-bold">
-                  Race the Market
-                </div>
-              </div>
-            </div>
-
-            <h1 className="text-4xl sm:text-5xl font-bold text-bpCream mb-6 leading-tight mt-8">
-              <span className="bg-gradient-to-r from-bpGold to-teal-400 bg-clip-text text-transparent">Fantasy Auto Auctions</span>
-            </h1>
-
-            <p className="text-xl text-bpCream/80 mb-10 max-w-2xl mx-auto leading-relaxed">
-              Draft your dream garage from live Bring a Trailer auctions. Predict prices. Beat the market.
-            </p>
-
-            <div className="flex gap-4 justify-center">
-              <button
-                onClick={onGetStarted}
-                className="inline-flex items-center justify-center rounded-md px-8 py-4 text-lg font-semibold bg-bpCream text-bpInk hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
-              >
-                Get Started →
-              </button>
-              <OutlineButton
-                className="px-8 py-4 text-lg"
-                onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
-              >
-                Learn More
-              </OutlineButton>
-            </div>
+        {/* Hero */}
+        <div style={{ padding: '22px 18px 18px' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'ui-monospace,monospace', fontSize: 10, color: C.red, letterSpacing: 1.6, fontWeight: 700, background: `${C.red}15`, padding: '5px 8px', border: `1px solid ${C.red}40`, marginBottom: 18 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.red, boxShadow: `0 0 10px ${C.red}`, display: 'inline-block' }} />
+            LIVE · 3 LEAGUES DRAFTING
           </div>
-        </div>
-
-        <div id="how-it-works" className="mx-auto max-w-5xl px-4 py-20">
-          <h2 className="text-3xl font-bold text-bpCream text-center mb-12">How It Works</h2>
-          
-          <div className="grid md:grid-cols-3 gap-8">
-            <Card className="p-6">
-              <div className="w-12 h-12 rounded-full bg-bpNavy flex items-center justify-center mb-4">
-                <Users className="text-bpGold" size={24} />
-              </div>
-              <h3 className="text-xl font-bold text-bpInk mb-3">1. Join an Auction</h3>
-              <p className="text-bpInk/70">
-                Create or join an auction with friends. Each auction runs for one week with live BaT auctions.
-              </p>
-            </Card>
-
-            <Card className="p-6">
-              <div className="w-12 h-12 rounded-full bg-bpNavy flex items-center justify-center mb-4">
-                <Car className="text-bpGold" size={24} />
-              </div>
-              <h3 className="text-xl font-bold text-bpInk mb-3">2. Build Your Garage</h3>
-              <p className="text-bpInk/70">
-                Draft 7 cars within your auction's budget. Spend at least 50% of your budget to qualify! Lock in your prices on day 2 of each auction. Plus predict the bonus car!
-              </p>
-            </Card>
-
-            <Card className="p-6">
-              <div className="w-12 h-12 rounded-full bg-bpNavy flex items-center justify-center mb-4">
-                <Trophy className="text-bpGold" size={24} />
-              </div>
-              <h3 className="text-xl font-bold text-bpInk mb-3">3. Race the Market</h3>
-              <p className="text-bpInk/70">
-                Your score is the total dollar value of your cars at auction close. Highest total value wins!
-              </p>
-            </Card>
-          </div>
-        </div>
-
-        <div className="bg-white/5 py-20">
-          <div className="mx-auto max-w-5xl px-4">
-            <h2 className="text-3xl font-bold text-bpCream text-center mb-12">Rules & Scoring</h2>
-            
-            <div className="grid md:grid-cols-2 gap-6">
-              <Card className="p-6">
-                <h3 className="text-lg font-bold text-bpInk mb-4 flex items-center gap-2">
-                  <CheckCircle size={20} className="text-green-600" />
-                  The Basics
-                </h3>
-                <ul className="space-y-2 text-bpInk/80 text-sm">
-                  <li className="flex items-start gap-2">
-                    <span className="text-bpInk font-bold">•</span>
-                    <span><strong>Auction budget</strong> - Each auction sets its own spending limit. Must spend at least 50% to qualify</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-bpInk font-bold">•</span>
-                    <span><strong>24-hour draft window</strong> - Pick your cars when auctions open</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-bpInk font-bold">•</span>
-                    <span><strong>Day 2 prices locked</strong> - Your purchase price is the bid 48 hours into each auction</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-bpInk font-bold">•</span>
-                    <span><strong>Bonus car prediction</strong> - Everyone gets the same 8th car. Predict its final price!</span>
-                  </li>
-                </ul>
-              </Card>
-
-              <Card className="p-6">
-                <h3 className="text-lg font-bold text-bpInk mb-4 flex items-center gap-2">
-                  <TrendingUp size={20} className="text-teal-500" />
-                  Scoring System
-                </h3>
-                <ul className="space-y-2 text-bpInk/80 text-sm">
-                  <li className="flex items-start gap-2">
-                    <span className="text-green-600 font-bold">$</span>
-                    <span><strong>Car sells:</strong> Add the final sale price to your total</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-red-600 font-bold">-</span>
-                    <span><strong>Reserve not met?</strong> Only get 25% of the high bid value</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-bpGold font-bold">⚡</span>
-                    <span><strong>Bonus car:</strong> Closest prediction wins 3× the sale price added to their total!</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-bpInk font-bold">🏆</span>
-                    <span><strong>Win</strong> by having the highest total dollar value across all 7 cars</span>
-                  </li>
-                </ul>
-              </Card>
-            </div>
-
-            <Card className="mt-8 p-6 bg-gradient-to-br from-bpGold/10 to-teal-500/10 border-2 border-bpGold/30">
-              <h3 className="text-lg font-bold text-bpInk mb-4 flex items-center gap-2">
-                <Target size={20} className="text-bpGold" />
-                Example: How You Score
-              </h3>
-              <div className="grid md:grid-cols-3 gap-4 text-sm">
-                <div className="bg-white/50 rounded-lg p-4">
-                  <div className="font-bold text-bpInk mb-2">1959 Porsche 356A</div>
-                  <div className="text-bpInk/70 space-y-1">
-                    <div>Status: <strong>Sold</strong></div>
-                    <div>Final Price: <strong>$82,000</strong></div>
-                    <div className="text-green-700 font-bold">Value: +$82,000</div>
-                  </div>
-                </div>
-
-                <div className="bg-white/50 rounded-lg p-4">
-                  <div className="font-bold text-bpInk mb-2">1991 BMW M3</div>
-                  <div className="text-bpInk/70 space-y-1">
-                    <div>Status: <strong>Reserve Not Met</strong></div>
-                    <div>High Bid: <strong>$45,000</strong></div>
-                    <div className="text-red-700 font-bold">Value: +$11,250</div>
-                    <div className="text-xs">(25% of $45k bid)</div>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-bpGold/20 to-teal-500/20 rounded-lg p-4 border-2 border-bpGold">
-                  <div className="font-bold text-bpInk mb-2 flex items-center gap-1">
-                    <Zap size={16} className="text-bpGold" />
-                    Bonus Car Winner
-                  </div>
-                  <div className="text-bpInk/70 space-y-1">
-                    <div>Your Prediction: <strong>$95,000</strong></div>
-                    <div>Actual Price: <strong>$92,000</strong></div>
-                    <div className="text-bpGold font-bold">Closest! +$276,000</div>
-                    <div className="text-xs">(3× the $92k sale price)</div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </div>
-
-        <div className="mx-auto max-w-3xl px-4 py-20 text-center">
-          <h2 className="text-4xl font-bold text-bpCream mb-6">
-            Ready to Race the Market?
-          </h2>
-          <p className="text-xl text-bpCream/80 mb-8">
-            Join an auction, draft your garage, and prove you can predict the market better than anyone.
+          <h1 style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 'clamp(36px,10vw,52px)', fontWeight: 800, lineHeight: 0.95, letterSpacing: -2, margin: '0 0 16px', textTransform: 'uppercase' }}>
+            CALL THE MARKET.<br/>
+            <span style={{ color: C.red }}>BEAT THE FIELD.</span>
+          </h1>
+          <p style={{ fontSize: 14, lineHeight: 1.5, color: C.muted, margin: '0 0 22px', maxWidth: 320 }}>
+            Seven cars. $175k budget. One week of the BaT market. The leaderboard updates every minute.
           </p>
-          <button
-            onClick={onGetStarted}
-            className="inline-flex items-center justify-center rounded-md px-12 py-4 text-lg font-semibold bg-bpCream text-bpInk hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-bpGold/80 active:translate-y-[0.5px] transition shadow-lg"
-          >
-            Get Started Now →
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onGetStarted} style={{ flex: 1, height: 50, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontWeight: 800, fontSize: 13, fontFamily: 'ui-monospace,monospace', letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer' }}>
+              ENTER PIT LANE ▸
+            </button>
+            <button onClick={onGetStarted} style={{ width: 50, height: 50, borderRadius: 4, border: `1px solid ${C.borderHi}`, background: 'transparent', color: C.text, fontFamily: 'ui-monospace,monospace', fontSize: 16, cursor: 'pointer' }}>?</button>
+          </div>
+        </div>
+
+        {/* Live ticker */}
+        <div style={{ margin: '6px 0 22px', borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, padding: '12px 18px', background: C.surface }}>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9.5, letterSpacing: 1.6, color: C.muted, marginBottom: 8 }}>{'//'} LIVE TICKER</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {TICKER_ROWS.map((r, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'ui-monospace,monospace', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: r.t === 'NEW BID' ? C.red : r.t === 'SOLD' ? C.pos : C.amber, width: 56 }}>{r.t}</span>
+                <span style={{ flex: 1, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.n}</span>
+                <span style={{ color: r.good === true ? C.pos : C.text, fontWeight: 700 }}>{r.v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Featured grid */}
+        <div style={{ padding: '0 18px 24px' }}>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>{'//'} THIS WEEK&apos;S GRID — 72 LOTS</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {MOCK_CARS.map(c => (
+              <div key={c.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10 }}>
+                <CarPlaceholder tint={c.img} height={86} radius={2} />
+                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: C.muted, letterSpacing: 0.5, marginTop: 8 }}>LOT {c.id.slice(1).padStart(4,'0')} · {c.year}</div>
+                <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 2, height: 32, lineHeight: 1.3, overflow: 'hidden' }}>{c.title.replace(`${c.year} `,'')}</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 6 }}>
+                  <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>${(c.price/1000).toFixed(0)}k</div>
+                  <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: C.pos }}>+{c.trend}%</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* The Format */}
+        <div style={{ margin: '0 18px', padding: '20px', background: C.surface, border: `1px solid ${C.border}` }}>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, letterSpacing: 1.6, color: C.muted, marginBottom: 14 }}>{'//'} THE FORMAT</div>
+          {[
+            { n: '01', t: 'SELECT', d: 'Pick 7 live auctions. Price locks at the 48-hour mark.' },
+            { n: '02', t: 'BID',    d: 'Real bids roll in. Watch the market move in your favour.' },
+            { n: '03', t: 'WIN',    d: 'Hammer prices tally. Best auction picks take the podium.' },
+          ].map((s, i) => (
+            <div key={s.n} style={{ display: 'grid', gridTemplateColumns: '40px 1fr', gap: 12, padding: '12px 0', borderTop: i === 0 ? 'none' : `1px solid ${C.border}` }}>
+              <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 22, fontWeight: 800, color: C.red }}>{s.n}</div>
+              <div>
+                <div style={{ fontFamily: 'ui-monospace,monospace', fontWeight: 700, fontSize: 14, letterSpacing: 0.5 }}>{s.t}</div>
+                <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3, lineHeight: 1.4 }}>{s.d}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ padding: 24 }}>
+          <button onClick={onGetStarted} style={{ width: '100%', height: 50, borderRadius: 4, background: 'transparent', color: C.text, fontWeight: 700, fontSize: 13, fontFamily: 'ui-monospace,monospace', letterSpacing: 1.4, border: `1px solid ${C.borderHi}`, textTransform: 'uppercase', cursor: 'pointer' }}>
+            CREATE FREE ACCOUNT ▸
           </button>
         </div>
 
-        <div className="border-t border-white/10 py-8">
-          <div className="mx-auto max-w-5xl px-4 text-center text-sm text-bpGray">
-            <p>© {new Date().getFullYear()} Bid Prix. Not affiliated with Bring a Trailer.</p>
-          </div>
-        </div>
+        <CheckerBar height={4} />
       </div>
     )
   }
@@ -1763,88 +1698,109 @@ export default function BidPrixApp() {
   }
 
   function LeaguesScreen({ onNavigate, currentScreen }) {
+    const [activeFilter, setActiveFilter] = useState('ALL')
+    const filters = ['ALL', 'LIVE', 'IN PLAY', 'PUBLIC', 'INVITES']
+
+    const getRowConfig = (l) => {
+      const joined = userLeagues.some(ul => ul.id === l.id)
+      const ds = getDraftStatus(l)
+      if (joined)              return { borderColor: C.red,    pillColor: C.red,    pillLabel: '★ ENTERED', btnBg: 'transparent', btnColor: C.red,  btnBorder: `1px solid ${C.red}55`, btnLabel: 'OPEN ▸' }
+      if (ds.status === 'open')    return { borderColor: C.amber,  pillColor: C.amber,  pillLabel: '◉ LIVE',    btnBg: C.red,          btnColor: C.text, btnBorder: 'none',                  btnLabel: 'JOIN ▸' }
+      if (ds.status === 'closed')  return { borderColor: '#3a8aef', pillColor: '#3a8aef', pillLabel: '▸ IN PLAY', btnBg: C.surfaceHi,    btnColor: C.muted, btnBorder: 'none',                 btnLabel: 'PREVIEW' }
+      return                       { borderColor: C.border,  pillColor: C.muted,  pillLabel: '○ OPENS',   btnBg: C.surfaceHi,    btnColor: C.muted, btnBorder: 'none',                  btnLabel: 'PREVIEW' }
+    }
+
+    const handleRowAction = (l) => {
+      const joined = userLeagues.some(ul => ul.id === l.id)
+      const ds = getDraftStatus(l)
+      if (joined) { updateSelectedLeague(l); onNavigate('dashboard') }
+      else if (ds.status === 'open') joinLeague(l)
+    }
+
     return (
-      <Shell
-        onSignOut={() => supabase.auth.signOut()}
-        onNavigate={onNavigate}
-        currentScreen={currentScreen}
-        lastUpdated={lastUpdated}
-        connectionStatus={connectionStatus}
-        recentUpdates={recentUpdates}
-        selectedLeague={selectedLeague}
-        onManualRefresh={manualRefresh}
-        userLeagues={userLeagues}
-        onLeagueChange={updateSelectedLeague}
-      >
-        <h2 className="text-2xl font-extrabold tracking-tight mb-4">Join an Auction</h2>
-        <div className="grid sm:grid-cols-2 gap-4">
+      <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
+        {/* App bar */}
+        <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <CBrand size={16} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, cursor: 'pointer' }}>SEARCH</span>
+            <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.red, cursor: 'pointer' }}>+ NEW</span>
+            <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>
+              OUT
+            </button>
+          </div>
+        </div>
+        <CheckerBar height={3} />
+
+        {/* Page title */}
+        <div style={{ padding: '20px 18px 12px' }}>
+          <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 32, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1, textTransform: 'uppercase' }}>
+            AUCTIONS
+          </div>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, marginTop: 6, letterSpacing: 0.5 }}>
+            {leagues.length} OPEN · {userLeagues.length} YOU&apos;RE IN
+          </div>
+        </div>
+
+        {/* Filter chips */}
+        <div style={{ padding: '4px 18px 18px', display: 'flex', gap: 6, overflowX: 'auto' }}>
+          {filters.map(f => (
+            <button key={f} onClick={() => setActiveFilter(f)} style={{ padding: '6px 12px', borderRadius: 3, fontFamily: 'ui-monospace,monospace', fontSize: 10, fontWeight: 700, letterSpacing: 1.2, whiteSpace: 'nowrap', cursor: 'pointer', background: activeFilter === f ? C.text : 'transparent', color: activeFilter === f ? C.bg : C.muted, border: `1px solid ${activeFilter === f ? C.text : C.border}` }}>
+              {f}
+            </button>
+          ))}
+        </div>
+
+        {/* League rows */}
+        <div style={{ padding: '0 18px 32px' }}>
           {leagues.length === 0 && (
-            <Card className="p-6 text-bpInk/80">
-              <p>No public auctions yet. Check back soon.</p>
-            </Card>
+            <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, color: C.faint, textAlign: 'center', padding: '48px 0' }}>
+              NO ACTIVE AUCTIONS
+            </div>
           )}
           {leagues.map(l => {
-            const draftStatus = getDraftStatus(l)
-            const alreadyJoined = userLeagues.some(ul => ul.id === l.id)
-            const canJoin = draftStatus.status === 'open' && !alreadyJoined
-
+            const cfg = getRowConfig(l)
+            const ds = getDraftStatus(l)
+            const timeLabel = ds.status === 'upcoming' ? 'OPENS' : 'CLOSES'
+            const timeVal = l.end_date ? calculateTimeLeft(new Date(l.end_date)) : '—'
             return (
-              <Card key={l.id} className="p-5">
-                <div className="flex items-start justify-between">
+              <div key={l.id} style={{ marginBottom: 8, padding: '14px 14px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${cfg.borderColor}` }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9.5, letterSpacing: 1.3, fontWeight: 700, color: cfg.pillColor }}>
+                    {cfg.pillLabel}
+                  </div>
+                  <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>
+                    {l.playerCount || 0} PLY
+                  </div>
+                </div>
+                <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, letterSpacing: -0.2 }}>{l.name}</div>
+                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted }}>
+                  ${(l.spending_limit || 175000).toLocaleString()} budget
+                </div>
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
-                    <h3 className="font-bold text-lg text-bpInk">{l.name}</h3>
-                    <p className="text-sm text-bpInk/70">Ends {new Date(l.end_date).toLocaleDateString()}</p>
+                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9.5, color: C.faint, letterSpacing: 1.2 }}>{timeLabel}</div>
+                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>{timeVal}</div>
                   </div>
-                  <span className={`text-[11px] px-2 py-1 rounded font-semibold ${
-                    draftStatus.status === 'open' ? 'bg-green-100 text-green-700' :
-                    draftStatus.status === 'upcoming' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-gray-100 text-gray-700'
-                  }`}>
-                    {draftStatus.status === 'open' ? '🟢 Open' :
-                     draftStatus.status === 'upcoming' ? '🟡 Soon' :
-                     '🔴 Closed'}
-                  </span>
+                  <button onClick={() => handleRowAction(l)} style={{ height: 36, padding: '0 16px', borderRadius: 3, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 800, letterSpacing: 1.2, cursor: 'pointer', background: cfg.btnBg, color: cfg.btnColor, border: cfg.btnBorder }}>
+                    {cfg.btnLabel}
+                  </button>
                 </div>
-
-                <div className="mt-3 p-2 rounded bg-bpInk/5 text-sm text-bpInk/80">
-                  ⏰ {draftStatus.message}
-                </div>
-
-                <div className="mt-3 p-3 rounded bg-bpGold/10 border-2 border-bpGold/30">
-                  <div className="flex items-center justify-center gap-2 text-bpGold font-bold">
-                    <DollarSign size={20}/>
-                    <span className="text-lg">${(l.spending_limit || 200000).toLocaleString()} Budget</span>
-                  </div>
-                  <p className="text-xs text-center text-bpInk/70 mt-1">
-                    Maximum spending limit for this auction
-                  </p>
-                </div>
-
-                <div className="mt-4 flex items-center justify-between text-sm text-bpInk/75">
-                  <span className="flex items-center gap-2"><Users size={16}/> {l.playerCount} players</span>
-                  <span className="flex items-center gap-2"><Trophy size={16}/> {l.status || 'Open'}</span>
-                </div>
-
-                <div className="mt-5 flex gap-2">
-                  {alreadyJoined ? (
-                    <PrimaryButton className="flex-1 opacity-50 cursor-not-allowed" disabled>
-                      Already Joined
-                    </PrimaryButton>
-                  ) : canJoin ? (
-                    <PrimaryButton className="flex-1" onClick={() => joinLeague(l)}>
-                      Join Auction
-                    </PrimaryButton>
-                  ) : (
-                    <PrimaryButton className="flex-1 opacity-50 cursor-not-allowed" disabled>
-                      {draftStatus.status === 'upcoming' ? 'Draft Not Started' : 'Draft Closed'}
-                    </PrimaryButton>
-                  )}
-                </div>
-              </Card>
+              </div>
             )
           })}
         </div>
-      </Shell>
+
+        {/* Bottom nav */}
+        <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.surface, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-around', padding: '10px 0 16px' }}>
+          {[['dashboard','DASH'],['leagues','AUCTIONS'],['leaderboard','RANKS'],['cars','CARS']].map(([s, label]) => (
+            <button key={s} onClick={() => onNavigate(s)} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9, fontWeight: 700, letterSpacing: 1, color: currentScreen === s ? C.red : C.faint, background: 'none', border: 'none', cursor: 'pointer', textTransform: 'uppercase' }}>
+              {label}
+            </button>
+          ))}
+        </nav>
+        <div style={{ height: 56 }} />
+      </div>
     )
   }
 
@@ -2471,7 +2427,7 @@ export default function BidPrixApp() {
     const [standings, setStandings] = useState([])
     const [loading, setLoading] = useState(true)
     const [sortBy, setSortBy] = useState('total_percent')
-    const [bonusWinner, setBonusWinner] = useState(null)
+    const [, setBonusWinner] = useState(null)
   
     useEffect(() => {
     if (selectedLeague) {
@@ -2479,43 +2435,21 @@ export default function BidPrixApp() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLeague])
-   // ADD THIS - League selector if no league selected
   if (!selectedLeague && !leagueLoading) {
     return (
-      <Shell
-        onSignOut={() => supabase.auth.signOut()}
-        onNavigate={onNavigate}
-        currentScreen={currentScreen}
-        userLeagues={userLeagues}
-        onLeagueChange={updateSelectedLeague}
-      >
-        <div className="max-w-2xl mx-auto">
-          <h2 className="text-2xl font-extrabold tracking-tight mb-4">Select an Auction</h2>
-          <p className="text-bpCream/70 mb-6">Choose an auction to view the leaderboard</p>
-          
-          <div className="space-y-4">
-            {leagues.map(league => (
-              <Card key={league.id} className="p-5">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-bold text-lg text-bpInk">{league.name}</h3>
-                    <p className="text-sm text-bpInk/70">
-                      {new Date(league.draft_starts_at).toLocaleDateString()} - {new Date(league.draft_ends_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <PrimaryButton 
-                    onClick={() => {
-                      updateSelectedLeague(league)
-                    }}
-                  >
-                    View Leaderboard
-                  </PrimaryButton>
-                </div>
-              </Card>
-            ))}
+      <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
+        <div style={{ padding: '12px 18px 10px' }}><CBrand size={14} /></div>
+        <CheckerBar height={3} />
+        <div style={{ padding: '20px 18px' }}>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 32, fontWeight: 800, textTransform: 'uppercase', letterSpacing: -1.2 }}>STANDINGS</div>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, color: C.faint, marginTop: 24, textAlign: 'center', paddingTop: 40 }}>
+            NO ACTIVE AUCTIONS<br/>
+            <button onClick={() => onNavigate('leagues')} style={{ marginTop: 16, height: 40, padding: '0 20px', borderRadius: 3, background: C.red, color: C.text, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 800, letterSpacing: 1.2, border: 'none', cursor: 'pointer' }}>
+              BROWSE AUCTIONS ▸
+            </button>
           </div>
         </div>
-      </Shell>
+      </div>
     )
   }
 
@@ -2861,250 +2795,147 @@ export default function BidPrixApp() {
       setStandings(sortStandings(standings, newSort))
     }
 
+    const me = standings.find(p => p.userId === user?.id)
+    const myRank = me ? standings.indexOf(me) + 1 : null
+    const p1 = standings[0]
+    const gapToP1 = me && p1 ? me.totalScore - p1.totalScore : null
+    const sortTabs = [
+      { key: 'total_value', label: 'VALUE' },
+      { key: 'total_dollar', label: 'NET' },
+      { key: 'total_percent', label: 'AVG %' },
+    ]
+
     return (
-      <Shell
-        onSignOut={() => supabase.auth.signOut()}
-        onNavigate={onNavigate}
-        currentScreen={currentScreen}
-        lastUpdated={lastUpdated}
-        connectionStatus={connectionStatus}
-        recentUpdates={recentUpdates}
-        selectedLeague={selectedLeague}
-        onManualRefresh={manualRefresh}
-        userLeagues={userLeagues}
-        onLeagueChange={updateSelectedLeague}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-extrabold tracking-tight">Leaderboard</h2>
-            <p className="text-sm text-bpCream/70">{selectedLeague?.name || 'Select a League'}</p>
+      <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
+        {/* App bar */}
+        <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <CBrand size={14} />
+          <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>
+            OUT
+          </button>
+        </div>
+        <CheckerBar height={3} />
+
+        {/* Eyebrow + title */}
+        <div style={{ padding: '18px 18px 8px' }}>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, letterSpacing: 1.6, color: C.red }}>
+            {'//'} {selectedLeague?.name?.toUpperCase() || 'STANDINGS'}
           </div>
-          
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleSortChange('total_value')}
-              className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
-                sortBy === 'total_value' || !sortBy
-                  ? 'bg-bpGold text-bpInk'
-                  : 'bg-white/5 text-bpCream hover:bg-white/10'
-              }`}
-            >
-              Total $
-            </button>
-            <button
-              onClick={() => handleSortChange('total_dollar')}
-              className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
-                sortBy === 'total_dollar'
-                  ? 'bg-bpGold text-bpInk'
-                    : 'bg-white/5 text-bpCream hover:bg-white/10'
-              }`}
-            >
-              $ Gain
-            </button>
-            <button
-              onClick={() => handleSortChange('total_percent')}
-              className={`px-3 py-1.5 rounded text-sm font-semibold transition ${
-                sortBy === 'total_percent'
-                  ? 'bg-bpGold text-bpInk'
-                  : 'bg-white/5 text-bpCream hover:bg-white/10'
-              }`}
-            >
-              % Gain
-            </button>
-            <button
-              onClick={fetchLeaderboard}
-              className="p-1.5 rounded bg-white/5 hover:bg-white/10 transition"
-              title="Refresh"
-            >
-              <RefreshCw size={16} />
-            </button>
+          <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 32, fontWeight: 800, letterSpacing: -1.2, marginTop: 4, textTransform: 'uppercase' }}>
+            STANDINGS
           </div>
         </div>
 
+        {/* Loading skeletons */}
         {loading && (
-          <>
-            <div className="grid md:grid-cols-4 gap-4 mb-6">
-              {[1, 2, 3, 4].map(i => (
-                <Card key={i} className="p-4">
-                  <div className="h-4 w-24 bg-bpInk/10 rounded animate-pulse mb-3" />
-                  <div className="h-6 w-20 bg-bpInk/10 rounded animate-pulse mb-2" />
-                  <div className="h-8 w-28 bg-bpInk/10 rounded animate-pulse" />
-                </Card>
-              ))}
-            </div>
-            <Card className="overflow-hidden">
-              <div className="p-4 space-y-3">
-                <div className="h-10 bg-bpInk/5 rounded animate-pulse" />
-                {[1, 2, 3, 4, 5].map(i => (
-                  <div key={i} className="h-14 bg-bpInk/5 rounded animate-pulse" />
-                ))}
-              </div>
-            </Card>
-          </>
+          <div style={{ padding: '12px 18px' }}>
+            {[1,2,3,4,5].map(i => (
+              <div key={i} style={{ height: 56, background: C.surface, border: `1px solid ${C.border}`, marginBottom: 8, borderRadius: 2, opacity: 0.6 }} />
+            ))}
+          </div>
         )}
 
+        {/* Empty state */}
         {!loading && standings.length === 0 && (
-          <Card className="p-8 text-bpInk/80 flex items-center justify-center">
-            <div className="text-center">
-              <Trophy className="mx-auto mb-2 text-bpInk/60" size={48} />
-              <p>No standings yet. Join the auction and draft your garage!</p>
-            </div>
-          </Card>
+          <div style={{ padding: '48px 18px', textAlign: 'center', fontFamily: 'ui-monospace,monospace', fontSize: 14, color: C.faint }}>
+            NO STANDINGS YET<br/>
+            <span style={{ fontSize: 11, color: C.muted, marginTop: 8, display: 'block' }}>Draft your garage to appear here.</span>
+          </div>
         )}
 
-        {!loading && standings.length > 0 && (
-          <>
-            <div className="grid md:grid-cols-4 gap-4 mb-6">
-              {/* Total Value Leader - Primary Score */}
-              <Card className="p-4 border-2 border-bpGold/50 bg-gradient-to-br from-bpGold/10 to-bpGold/5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Trophy className="text-bpGold" size={20} />
-                  <span className="text-xs font-bold text-bpInk uppercase">Total Value Leader</span>
+        {/* Pit-board user card */}
+        {!loading && me && (
+          <div style={{ margin: '12px 18px 18px', background: C.surface, border: `1px solid ${C.borderHi}`, padding: '14px 16px', borderLeft: `4px solid ${C.red}` }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, letterSpacing: 1.4, color: C.muted }}>
+                P{String(myRank).padStart(2,'0')} · {me.username?.toUpperCase()}
+              </div>
+              {me.totalDollarGain !== undefined && (
+                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: me.totalDollarGain >= 0 ? C.pos : C.neg, fontWeight: 700 }}>
+                  {me.totalDollarGain >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(me.totalDollarGain / 1000)).toFixed(0)}k
                 </div>
-                <div className="font-bold text-xl text-bpInk mb-1">
-                  {sortStandings(standings, 'total_value')[0]?.username}
-                  {!sortStandings(standings, 'total_value')[0]?.isRosterComplete && (
-                    <span className="ml-1 text-xs text-orange-600">({sortStandings(standings, 'total_value')[0]?.carsCount}/7)</span>
-                  )}
-                </div>
-                <div className="text-2xl font-bold text-bpInk">
-                  ${Math.round(sortStandings(standings, 'total_value')[0]?.totalScore || 0).toLocaleString()}
-                </div>
-              </Card>
-
-              <Card className="p-4 border-2 border-green-500/50 bg-gradient-to-br from-green-500/10 to-green-500/5">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="text-green-700" size={20} />
-                  <span className="text-xs font-bold text-bpInk uppercase">$ Gain Leader</span>
-                </div>
-                <div className="font-bold text-xl text-bpInk mb-1">
-                  {sortStandings(standings, 'total_dollar')[0]?.username}
-                </div>
-                <div className="text-2xl font-bold text-green-700">
-                  {sortStandings(standings, 'total_dollar')[0]?.totalDollarGain >= 0 ? '+' : ''}${Math.round(sortStandings(standings, 'total_dollar')[0]?.totalDollarGain || 0).toLocaleString()}
-                </div>
-              </Card>
-
-              <Card className="p-4 border-2 border-teal-500/50 bg-gradient-to-br from-teal-500/10 to-teal-500/5">
-                <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="text-teal-400" size={20} />
-                  <span className="text-xs font-bold text-bpInk uppercase">% Gain Leader</span>
-                </div>
-                <div className="font-bold text-xl text-bpInk mb-1">
-                  {sortStandings(standings, 'total_percent')[0]?.username}
-                </div>
-                <div className="text-2xl font-bold text-green-700">
-                  {isNaN(sortStandings(standings, 'total_percent')[0]?.totalPercentGain) ? '—' : `+${sortStandings(standings, 'total_percent')[0]?.totalPercentGain}%`}
-                </div>
-              </Card>
-
-              {bonusWinner && (
-                <Card className="p-4 border-2 border-purple-500/50 bg-gradient-to-br from-purple-500/10 to-purple-500/5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Zap className="text-purple-600" size={20} />
-                    <span className="text-xs font-bold text-bpInk uppercase">Bonus Winner</span>
-                  </div>
-                  <div className="font-bold text-xl text-bpInk mb-1">
-                    {bonusWinner.username}
-                  </div>
-                  <div className="text-sm text-bpInk/70">
-                    ${bonusWinner.error.toLocaleString()} off
-                  </div>
-                </Card>
               )}
             </div>
-
-            <Card className="overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-bpInk/5 border-b border-bpInk/10">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-bpInk">Rank</th>
-                      <th className="px-4 py-3 text-left text-sm font-bold text-bpInk">Player</th>
-                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Total Value</th>
-                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">$ Gain</th>
-                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Roster</th>
-                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Spent</th>
-                      <th className="px-4 py-3 text-right text-sm font-bold text-bpInk">Bonus</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {standings.map((player, index) => {
-                      const isCurrentUser = player.userId === user?.id
-                      const rank = index + 1
-
-                      return (
-                        <tr
-                          key={player.userId}
-                          className={`border-b border-bpInk/10 transition-colors ${
-                            isCurrentUser ? 'bg-bpGold/15 border-l-4 border-l-bpGold' : 'hover:bg-bpInk/5'
-                          }`}
-                        >
-                          <td className="px-4 py-3 text-sm font-semibold text-bpInk">
-                            {rank === 1 && '🥇'}
-                            {rank === 2 && '🥈'}
-                            {rank === 3 && '🥉'}
-                            {rank > 3 && rank}
-                          </td>
-                          <td className="px-4 py-3 text-sm font-semibold text-bpInk">
-                            <span className="flex items-center gap-2">
-                              {player.username}
-                              {isCurrentUser && (
-                                <span className="inline-flex items-center text-[10px] bg-bpGold text-bpInk px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
-                                  YOU
-                                </span>
-                              )}
-                            </span>
-                          </td>
-                          {/* Total Value - Primary Score */}
-                          <td className="px-4 py-3 text-sm font-bold text-right text-bpInk">
-                            ${Math.round(player.totalScore || 0).toLocaleString()}
-                          </td>
-                          {/* Dollar Gain */}
-                          <td className={`px-4 py-3 text-sm font-semibold text-right ${
-                            player.totalDollarGain >= 0 ? 'text-green-700' : 'text-red-700'
-                          }`}>
-                            {player.totalDollarGain >= 0 ? '+' : ''}${Math.round(player.totalDollarGain || 0).toLocaleString()}
-                          </td>
-                          {/* Roster Status */}
-                          <td className={`px-4 py-3 text-sm text-right ${
-                            player.isRosterComplete ? 'text-green-700' : 'text-orange-600'
-                          }`}>
-                            {player.carsCount}/7
-                            {player.isRosterComplete && ' ✓'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-bpInk/80 text-right">
-                            ${Math.round(player.totalSpent || 0).toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right">
-                            {player.bonusCarScore?.hasPrediction ? (
-                              <span className="text-purple-600" title={`Predicted: $${player.bonusCarScore.predicted.toLocaleString()}`}>
-                                ✓
-                              </span>
-                            ) : (
-                              <span className="text-bpInk/40">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+            <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 36, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>
+              ${Math.round(me.totalScore || 0).toLocaleString()}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+              <div>
+                <div style={{ color: C.faint, fontSize: 9, letterSpacing: 1.2 }}>NET</div>
+                <div style={{ color: me.totalDollarGain >= 0 ? C.pos : C.neg, fontWeight: 700, marginTop: 2 }}>
+                  {me.totalDollarGain >= 0 ? '+' : ''}${Math.round(me.totalDollarGain || 0).toLocaleString()}
+                </div>
               </div>
-            </Card>
-
-            <Card className="mt-6 p-4 bg-bpInk/5">
-              <h3 className="text-sm font-bold text-bpInk mb-2">Scoring Info</h3>
-              <ul className="text-xs text-bpInk/70 space-y-1">
-                <li>• <strong>% Gain:</strong> Total percentage increase across all cars (including bonus car base gain)</li>
-                <li>• <strong>$ Gain:</strong> Total dollar profit across all cars</li>
-                <li>• <strong>Avg %:</strong> Average percentage gain per car</li>
-                <li>• <strong>Bonus:</strong> Closest prediction gets DOUBLE the bonus car's percentage gain</li>
-                <li>• <strong>Reserve Not Met:</strong> Cars that don't sell count as 25% of high bid (penalty)</li>
-              </ul>
-            </Card>
-          </>
+              <div>
+                <div style={{ color: C.faint, fontSize: 9, letterSpacing: 1.2 }}>GAP TO P1</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{gapToP1 !== null ? (gapToP1 >= 0 ? '+' : '') + '$' + Math.abs(Math.round(gapToP1)).toLocaleString() : '—'}</div>
+              </div>
+              <div>
+                <div style={{ color: C.faint, fontSize: 9, letterSpacing: 1.2 }}>ROSTER</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{me.carsCount}/7</div>
+              </div>
+              <div>
+                <div style={{ color: C.faint, fontSize: 9, letterSpacing: 1.2 }}>% GAIN</div>
+                <div style={{ color: me.totalPercentGain >= 0 ? C.pos : C.neg, fontWeight: 700, marginTop: 2 }}>
+                  {me.totalPercentGain >= 0 ? '+' : ''}{(me.totalPercentGain || 0).toFixed(1)}%
+                </div>
+              </div>
+            </div>
+          </div>
         )}
+
+        {/* Sort tabs */}
+        {!loading && standings.length > 0 && (
+          <div style={{ margin: '0 18px 8px', display: 'flex', gap: 0, borderBottom: `1px solid ${C.border}` }}>
+            {sortTabs.map(tab => (
+              <button key={tab.key} onClick={() => handleSortChange(tab.key)} style={{ padding: '8px 12px', fontFamily: 'ui-monospace,monospace', fontSize: 10, fontWeight: 700, letterSpacing: 1.4, cursor: 'pointer', background: 'none', borderBottom: sortBy === tab.key ? `2px solid ${C.red}` : '2px solid transparent', marginBottom: -1, color: sortBy === tab.key ? C.red : C.muted, border: 'none', borderBottomWidth: 2, borderBottomStyle: 'solid', borderBottomColor: sortBy === tab.key ? C.red : 'transparent' }}>
+                {tab.label}
+              </button>
+            ))}
+            <button onClick={fetchLeaderboard} style={{ marginLeft: 'auto', padding: '8px 10px', fontFamily: 'ui-monospace,monospace', fontSize: 9, color: C.faint, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 1 }}>
+              ↻ REFRESH
+            </button>
+          </div>
+        )}
+
+        {/* Player rows */}
+        {!loading && standings.length > 0 && (
+          <div style={{ padding: '0 18px 80px' }}>
+            {standings.map((player, index) => {
+              const rank = index + 1
+              const isMe = player.userId === user?.id
+              const positive = player.totalDollarGain >= 0
+              return (
+                <div key={player.userId} style={{ display: 'grid', gridTemplateColumns: '32px 1fr auto 38px', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: `1px solid ${C.border}`, background: isMe ? `${C.red}10` : 'transparent', marginLeft: isMe ? -10 : 0, marginRight: isMe ? -10 : 0, paddingLeft: isMe ? 10 : 0, paddingRight: isMe ? 10 : 0 }}>
+                  <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 16, fontWeight: 800, color: rank === 1 ? C.amber : rank <= 3 ? C.text : C.muted, fontVariantNumeric: 'tabular-nums' }}>
+                    P{String(rank).padStart(2,'0')}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>
+                      {player.username}
+                      {isMe && <span style={{ marginLeft: 6, fontFamily: 'ui-monospace,monospace', fontSize: 9, fontWeight: 800, letterSpacing: 1, color: C.red }}>· YOU</span>}
+                    </div>
+                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: C.muted, marginTop: 2, letterSpacing: 0.5 }}>
+                      {player.carsCount}/7 LOTS{player.totalPercentGain > 0 ? ` · +${player.totalPercentGain.toFixed(1)}%` : ''}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                      ${(Math.round(player.totalScore || 0) / 1000).toFixed(1)}k
+                    </div>
+                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10.5, fontWeight: 700, color: positive ? C.pos : C.neg, marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>
+                      {positive ? '+' : ''}{fmtCompact(player.totalDollarGain || 0)}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: C.faint, fontVariantNumeric: 'tabular-nums' }}>
+                    ·
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         {selectedLeague && (
           <LeagueChat
             supabase={supabase}
@@ -3115,7 +2946,16 @@ export default function BidPrixApp() {
             onToggle={() => setIsChatOpen(!isChatOpen)}
           />
         )}
-      </Shell>
+
+        {/* Bottom nav */}
+        <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.surface, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-around', padding: '10px 0 16px' }}>
+          {[['dashboard','DASH'],['leagues','AUCTIONS'],['leaderboard','RANKS'],['cars','CARS']].map(([s, label]) => (
+            <button key={s} onClick={() => onNavigate(s)} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9, fontWeight: 700, letterSpacing: 1, color: currentScreen === s ? C.red : C.faint, background: 'none', border: 'none', cursor: 'pointer', textTransform: 'uppercase' }}>
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
     )
   }
 
