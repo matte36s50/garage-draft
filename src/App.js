@@ -529,7 +529,7 @@ function CarImg({ car, height, radius }) {
     )
   }
   return <img src={car.imageUrl} alt={car.title} onError={() => setErr(true)}
-    style={{ width: '100%', height, objectFit: 'cover', borderRadius: radius, display: 'block' }} />
+    style={{ width: '100%', height, objectFit: 'cover', objectPosition: 'center 60%', borderRadius: radius, display: 'block' }} />
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -2154,7 +2154,7 @@ export default function BidPrixApp() {
                       NEED {fmtK(dp - budget)}
                     </div>
                   )}
-                  <CarImg car={car} height={80} radius={2} />
+                  <CarImg car={car} height={160} radius={2} />
                   <div style={{ fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: 0.5, marginTop: 7 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
                   <div style={{ fontSize: 11.5, fontWeight: 600, marginTop: 1, lineHeight: 1.25, height: 28, overflow: 'hidden' }}>{car.title && car.title.replace(`${car.year} `, '')}</div>
                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 5, marginBottom: 8 }}>
