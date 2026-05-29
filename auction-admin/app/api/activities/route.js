@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { verifyAdminRequest } from '../../../lib/adminAuth';
 
 // Helper to create supabase client
 function getSupabaseClient() {
@@ -9,8 +10,13 @@ function getSupabaseClient() {
   );
 }
 
-// POST - Log a new activity
+// POST - Log a new activity.
+// Writes with the service role and trusts the caller-supplied identity, so it is
+// gated behind admin/cron auth (it has no first-party browser caller).
 export async function POST(request) {
+  const denied = verifyAdminRequest(request);
+  if (denied) return denied;
+
   const supabase = getSupabaseClient();
   try {
     const body = await request.json();
