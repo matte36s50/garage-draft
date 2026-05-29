@@ -1392,14 +1392,17 @@ export default function BidPrixApp() {
           }
         }
       )
-      .on('subscribe', (status) => {
+      .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('✅ Connected to auction updates')
           setConnectionStatus('connected')
           setLastUpdated(new Date())
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setConnectionStatus('error')
+        } else if (status === 'CLOSED') {
+          setConnectionStatus('disconnected')
         }
       })
-      .subscribe()
 
     return () => {
       console.log('🔌 Cleaning up subscriptions...')

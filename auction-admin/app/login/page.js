@@ -9,7 +9,8 @@ export default function Login() {
   const handleLogin = async (e) => {
     e.preventDefault()
     
-    if (password === process.env.NEXT_PUBLIC_ADMIN_PASSWORD || password === 'AdminPassword123') {
+    const expected = process.env.NEXT_PUBLIC_ADMIN_PASSWORD
+    if (expected && password === expected) {
       document.cookie = 'admin_auth=true; path=/; max-age=86400'
       router.push('/')
     } else {
