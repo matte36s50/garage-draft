@@ -105,8 +105,8 @@ export function useChatMessages(supabase, leagueId, user, initialLimit = 50) {
         throw rpcError;
       }
 
-      if (!data.success) {
-        return { success: false, error: data.error };
+      if (!data || !data.success) {
+        return { success: false, error: data?.error || 'Failed to send message' };
       }
 
       lastMessageTimeRef.current = now;
@@ -167,14 +167,15 @@ export function useChatMessages(supabase, leagueId, user, initialLimit = 50) {
           });
         }
       )
-      .on('subscribe', (status) => {
+      .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           setConnectionStatus('connected');
-        } else if (status === 'CHANNEL_ERROR') {
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           setConnectionStatus('error');
+        } else if (status === 'CLOSED') {
+          setConnectionStatus('disconnected');
         }
-      })
-      .subscribe();
+      });
 
     channelRef.current = channel;
     setConnectionStatus('connecting');

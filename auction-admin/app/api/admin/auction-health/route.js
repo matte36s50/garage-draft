@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { verifyAdminRequest } from '../../../../lib/adminAuth';
 
 /**
  * AUCTION HEALTH CHECK
@@ -20,7 +21,7 @@ import { NextResponse } from 'next/server';
  * timestamp_end. If the oldest stuck auction is <4h overdue, the 30-min cron is
  * keeping up. If it's days overdue, something is wrong.
  *
- * No auth: this route is only reachable through the admin UI, which is already gated.
+ * Auth: requires an admin session cookie or the cron secret (verifyAdminRequest).
  */
 
 function getSupabaseClient() {
@@ -30,7 +31,10 @@ function getSupabaseClient() {
   );
 }
 
-export async function GET() {
+export async function GET(request) {
+  const denied = verifyAdminRequest(request);
+  if (denied) return denied;
+
   const supabase = getSupabaseClient();
   const now = Math.floor(Date.now() / 1000);
   const twoHoursAgo = now - 2 * 60 * 60;

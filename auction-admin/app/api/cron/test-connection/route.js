@@ -1,14 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { verifyAdminRequest } from '../../../../lib/adminAuth';
 
 /**
  * DIAGNOSTIC ENDPOINT
  *
  * Use this to test your cron setup before running the full update.
- * Visit: https://your-domain.vercel.app/api/cron/test-connection
+ * Auth: requires an admin session cookie or the cron secret (verifyAdminRequest),
+ * since the response exposes infrastructure detail and performs a test write.
  */
 
 export async function GET(request) {
+  const denied = verifyAdminRequest(request);
+  if (denied) return denied;
+
   const diagnostics = {
     timestamp: new Date().toISOString(),
     checks: {}
@@ -19,8 +24,7 @@ export async function GET(request) {
     hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
     hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-    hasCronSecret: !!process.env.CRON_SECRET,
-    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || 'NOT SET'
+    hasCronSecret: !!process.env.CRON_SECRET
   };
 
   // 2. Test service role client
@@ -100,8 +104,7 @@ export async function GET(request) {
 
   } catch (error) {
     diagnostics.checks.unexpectedError = {
-      message: error.message,
-      stack: error.stack
+      message: error.message
     };
   }
 

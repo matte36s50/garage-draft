@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { verifyAdminRequest } from '../../../../lib/adminAuth';
 
 /**
  * RECLASSIFY WRONGLY-WITHDRAWN AUCTION
@@ -16,7 +17,7 @@ import { NextResponse } from 'next/server';
  * (not NULL), we clear to NULL first, then write the sold price, so the
  * trigger fires and the league chat message gets posted.
  *
- * No auth: only reachable through the gated admin UI.
+ * Auth: requires an admin session cookie or the cron secret (verifyAdminRequest).
  */
 
 function getSupabaseClient() {
@@ -27,6 +28,9 @@ function getSupabaseClient() {
 }
 
 export async function POST(request) {
+  const denied = verifyAdminRequest(request);
+  if (denied) return denied;
+
   let body;
   try {
     body = await request.json();

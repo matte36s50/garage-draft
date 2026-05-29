@@ -24,8 +24,14 @@ export function getSupabaseClient() {
 export function verifyAuth(request) {
   const cronSecret = process.env.CRON_SECRET;
 
-  // If no secret is configured, allow all requests (dev mode)
-  if (!cronSecret) return null;
+  // No secret configured: fail CLOSED in production (so these mutating routes are
+  // never wide open), but allow in development for local testing.
+  if (!cronSecret) {
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 503 });
+    }
+    return null;
+  }
 
   const authHeader = request.headers.get('authorization');
   const { searchParams } = new URL(request.url);

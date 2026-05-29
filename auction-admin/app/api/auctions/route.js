@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { verifyAdminRequest } from '../../../lib/adminAuth';
 
 // Helper to create supabase client with service role key
 function getSupabaseClient() {
@@ -11,6 +12,9 @@ function getSupabaseClient() {
 
 // PATCH - Update auction final price
 export async function PATCH(request) {
+  const denied = verifyAdminRequest(request);
+  if (denied) return denied;
+
   const supabase = getSupabaseClient();
   try {
     const body = await request.json();
@@ -53,6 +57,9 @@ export async function PATCH(request) {
 
 // POST - Bulk update final prices for multiple auctions
 export async function POST(request) {
+  const denied = verifyAdminRequest(request);
+  if (denied) return denied;
+
   const supabase = getSupabaseClient();
   try {
     const body = await request.json();
@@ -104,6 +111,9 @@ export async function POST(request) {
 
 // GET - Get ended auctions that need final prices
 export async function GET(request) {
+  const denied = verifyAdminRequest(request);
+  if (denied) return denied;
+
   const supabase = getSupabaseClient();
   try {
     const { searchParams } = new URL(request.url);

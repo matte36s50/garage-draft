@@ -1204,20 +1204,20 @@ export default function BidPrixApp() {
     const draftPrice = auction.baselinePrice || auction.currentBid
     if (budget < draftPrice) { alert('Not enough budget remaining!'); return }
     if (!user || !selectedLeague || !userGarageId) { alert('Please join a league first!'); return }
-    
-    const { data: gc, error: ce } = await supabase
-      .from('garage_cars')
-      .insert([{ garage_id: userGarageId, auction_id: auction.id, purchase_price: draftPrice }])
-      .select().single()
-    
-    if (ce) { alert('Error adding car: '+ce.message); return }
-    
-    const newBudget = budget - draftPrice
-    const { error: be } = await supabase.from('garages').update({ remaining_budget: newBudget }).eq('id', userGarageId)
-    if (be) console.error(be)
-    
-    setGarage([...garage, { ...auction, purchasePrice: draftPrice, garageCarId: gc.id }])
-    setBudget(newBudget)
+
+    // Server-side enforcement: the draft_car RPC validates the budget, the 7-car
+    // cap, the draft window and the auction pool, and deducts the budget atomically.
+    const { data: result, error: rpcError } = await supabase.rpc('draft_car', {
+      p_league_id: selectedLeague.id,
+      p_auction_id: auction.id,
+    })
+
+    if (rpcError) { alert('Error adding car: ' + rpcError.message); return }
+    if (!result?.success) { alert(result?.error || 'Could not add car.'); return }
+
+    const purchasePrice = parseFloat(result.purchase_price)
+    setGarage([...garage, { ...auction, purchasePrice, garageCarId: result.garage_car_id }])
+    setBudget(parseFloat(result.remaining_budget))
   }
 
   const removeFromGarage = async (car) => {
@@ -1229,15 +1229,17 @@ export default function BidPrixApp() {
       }
     }
     
-    const { error: re } = await supabase.from('garage_cars').delete().eq('id', car.garageCarId)
-    if (re) { alert('Error removing car: '+re.message); return }
-    
-    const newBudget = budget + (car.purchasePrice || car.currentBid)
-    const { error: be } = await supabase.from('garages').update({ remaining_budget: newBudget }).eq('id', userGarageId)
-    if (be) console.error(be)
-    
+    // Server-side: undraft_car verifies ownership + draft window and refunds the
+    // budget atomically.
+    const { data: result, error: rpcError } = await supabase.rpc('undraft_car', {
+      p_garage_car_id: car.garageCarId,
+    })
+
+    if (rpcError) { alert('Error removing car: ' + rpcError.message); return }
+    if (!result?.success) { alert(result?.error || 'Could not remove car.'); return }
+
     setGarage(garage.filter(c => c.id !== car.id))
-    setBudget(newBudget)
+    setBudget(parseFloat(result.remaining_budget))
   }
 
   useEffect(() => {
@@ -1392,14 +1394,17 @@ export default function BidPrixApp() {
           }
         }
       )
-      .on('subscribe', (status) => {
+      .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('✅ Connected to auction updates')
           setConnectionStatus('connected')
           setLastUpdated(new Date())
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setConnectionStatus('error')
+        } else if (status === 'CLOSED') {
+          setConnectionStatus('disconnected')
         }
       })
-      .subscribe()
 
     return () => {
       console.log('🔌 Cleaning up subscriptions...')

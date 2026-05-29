@@ -4,16 +4,29 @@ import { useRouter } from 'next/navigation'
 
 export default function Login() {
   const [password, setPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const router = useRouter()
-  
+
   const handleLogin = async (e) => {
     e.preventDefault()
-    
-    if (password === process.env.NEXT_PUBLIC_ADMIN_PASSWORD || password === 'AdminPassword123') {
-      document.cookie = 'admin_auth=true; path=/; max-age=86400'
-      router.push('/')
-    } else {
-      alert('Incorrect password')
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      if (res.ok) {
+        router.push('/')
+        router.refresh()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        alert(data.error || 'Incorrect password')
+      }
+    } catch {
+      alert('Login failed. Please try again.')
+    } finally {
+      setSubmitting(false)
     }
   }
   
@@ -28,11 +41,12 @@ export default function Login() {
           placeholder="Enter admin password"
           className="w-full p-3 rounded bg-slate-700 text-white border border-slate-600 focus:border-blue-400 outline-none"
         />
-        <button 
+        <button
           type="submit"
-          className="w-full mt-4 bg-blue-600 text-white p-3 rounded hover:bg-blue-700 font-semibold transition"
+          disabled={submitting}
+          className="w-full mt-4 bg-blue-600 text-white p-3 rounded hover:bg-blue-700 font-semibold transition disabled:opacity-60"
         >
-          Login
+          {submitting ? 'Logging in…' : 'Login'}
         </button>
       </form>
     </div>

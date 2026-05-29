@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { verifyAdminRequest } from '../../../../lib/adminAuth';
 
 /**
  * POST /api/admin/backfill-makes
@@ -136,7 +137,23 @@ function parseTitleFallback(title) {
   return { year, make, model: model || null, source: 'title_parse' };
 }
 
+// Only allow fetching BaT listing pages. Guards against SSRF — a stored URL like
+// http://169.254.169.254/?x=bringatrailer.com would pass a naive substring check.
+function isAllowedListingUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    const host = u.hostname.toLowerCase();
+    return host === 'bringatrailer.com' || host === 'www.bringatrailer.com';
+  } catch {
+    return false;
+  }
+}
+
 async function fetchPage(url) {
+  if (!isAllowedListingUrl(url)) {
+    return { html: null, error: 'Blocked: non-BaT URL' };
+  }
   try {
     await new Promise(r => setTimeout(r, 300 + Math.random() * 400));
     const res = await fetch(url, {
@@ -166,8 +183,11 @@ async function fetchPage(url) {
   }
 }
 
-// POST: called from admin UI (already authenticated via middleware)
+// POST: called from admin UI. Auth via verifyAdminRequest (session cookie or cron secret).
 export async function POST(request) {
+  const denied = verifyAdminRequest(request);
+  if (denied) return denied;
+
   const supabase = getSupabaseClient();
 
   let body = {};
@@ -212,7 +232,7 @@ export async function POST(request) {
     };
 
     // Pass 1: fetch BaT page and read __NEXT_DATA__
-    if (auction.url?.includes('bringatrailer.com')) {
+    if (isAllowedListingUrl(auction.url)) {
       const { html, error } = await fetchPage(auction.url);
       if (html) {
         const fromNextData = extractFromNextData(html);
