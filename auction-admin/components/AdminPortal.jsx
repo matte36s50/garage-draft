@@ -108,6 +108,7 @@ const AdminPortal = () => {
   const [loadingHealth, setLoadingHealth] = useState(false);
   const [withdrawnPriceInputs, setWithdrawnPriceInputs] = useState({});
   const [reclassifyingId, setReclassifyingId] = useState(null);
+  const [backfillingBids, setBackfillingBids] = useState(false);
 
   useEffect(() => {
     loadAllData();
@@ -357,6 +358,47 @@ const AdminPortal = () => {
       alert('Reclassify failed: ' + error.message);
     } finally {
       setReclassifyingId(null);
+    }
+  };
+
+  // Bulk-fix the legacy mess in one shot: flip all "suspicious withdrawn"
+  // (final_price=0 + had bids) rows to Reserve Not Met, and clear bogus
+  // sub-$100 high bids (the "$10" placeholder). Previews first, then applies.
+  const handleBackfillBadBids = async () => {
+    setBackfillingBids(true);
+    try {
+      // 1) Dry run to show the user exactly what will change.
+      const preview = await fetch('/api/admin/backfill-bad-bids').then(r => r.json());
+      if (preview.error) throw new Error(preview.error);
+      const w = preview.wouldChange || {};
+      const msg =
+        `This will fix ${preview.total} auction(s):\n\n` +
+        `• ${w.withdrawnBogusBid_toRnm || 0} withdrawn + bogus $bid → Reserve Not Met (bid cleared)\n` +
+        `• ${w.withdrawnRealBid_toRnm || 0} withdrawn + real bid → Reserve Not Met (bid kept)\n` +
+        `• ${w.rnmBogusBid_cleared || 0} already-RNM with a bogus $bid → bid cleared\n\n` +
+        `Proceed?`;
+      if (preview.total === 0) { alert('Nothing to fix — no suspicious rows found.'); return; }
+      if (!confirm(msg)) return;
+
+      // 2) Apply.
+      const result = await fetch('/api/admin/backfill-bad-bids', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      }).then(r => r.json());
+      if (result.error) throw new Error(result.error);
+      const a = result.applied || {};
+      alert(
+        `Fixed ${result.total} auction(s):\n` +
+        `• ${a.withdrawnBogusBid_toRnm || 0} → RNM (bid cleared)\n` +
+        `• ${a.withdrawnRealBid_toRnm || 0} → RNM (bid kept)\n` +
+        `• ${a.rnmBogusBid_cleared || 0} bogus bid cleared`
+      );
+      await loadAuctionHealth();
+    } catch (error) {
+      alert('Backfill failed: ' + error.message);
+    } finally {
+      setBackfillingBids(false);
     }
   };
 
@@ -1884,8 +1926,16 @@ const AdminPortal = () => {
                       <summary className="text-slate-300 text-sm cursor-pointer hover:text-white">
                         Show {Math.min(auctionHealth.suspiciousWithdrawn.count, 50)} suspicious withdrawn auction(s)
                       </summary>
-                      <div className="text-slate-500 text-xs mt-1 ml-4">
-                        These have final_price=0 but received bids. Almost certainly should be Reserve Not Met.
+                      <div className="text-slate-500 text-xs mt-1 ml-4 flex items-center justify-between gap-3">
+                        <span>These have final_price=0 but received bids. Almost certainly should be Reserve Not Met.</span>
+                        <button
+                          onClick={handleBackfillBadBids}
+                          disabled={backfillingBids}
+                          className="bg-amber-700 hover:bg-amber-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-xs whitespace-nowrap shrink-0"
+                          title="Flip all of these to Reserve Not Met and clear bogus sub-$100 high bids (e.g. the $10 placeholder). Previews before applying."
+                        >
+                          {backfillingBids ? 'Fixing…' : 'Fix all → RNM'}
+                        </button>
                       </div>
                       <ul className="mt-2 ml-4 text-slate-400 text-xs space-y-1">
                         {auctionHealth.suspiciousWithdrawn.sample.map((s) => {

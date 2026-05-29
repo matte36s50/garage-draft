@@ -34,6 +34,12 @@ const USER_AGENTS = [
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
 ];
 
+// Smallest believable car price/high bid. Anything below this is almost
+// certainly a stray match against unrelated page text (e.g. a "$10/month"
+// membership promo) rather than a real result, so we reject it. This is the
+// JS equivalent of the `amount < 100` guard the python scraper already had.
+const MIN_PLAUSIBLE_PRICE = 100;
+
 /**
  * Extract final price from BaT HTML via regex.
  * Only returns 'sold' or 'no_sale' — never 'withdrawn'.
@@ -49,33 +55,41 @@ function extractPriceFromHtml(html) {
     priceStr = priceStr.replace(/,/g, '');
     if (priceStr.includes('.')) priceStr = priceStr.split('.')[0];
     const price = parseInt(priceStr, 10);
-    return price > 0 ? price : null;
+    return price >= MIN_PLAUSIBLE_PRICE ? price : null;
   }
 
+  // SOLD signals only. On BaT, "Sold for" / "Winning bid" mean the car sold.
+  // NOTE: "Bid to X" does NOT belong here — it means the reserve was not met
+  // (see highBidTextPatterns below).
   const saleTextPatterns = [
     { pattern: /Sold\s+for\s+(?:USD\s+)?\$\s*([\d,]+)/i, currency: 'USD' },
-    { pattern: /Bid\s+to\s+(?:USD\s+)?\$\s*([\d,]+)/i, currency: 'USD' },
     { pattern: /Winning\s+bid\s+(?:of\s+)?(?:USD\s+)?\$\s*([\d,]+)/i, currency: 'USD' },
     { pattern: /Sold\s+for\s+EUR\s*€?\s*([\d,\.]+)/i, currency: 'EUR' },
-    { pattern: /Bid\s+to\s+EUR\s*€?\s*([\d,\.]+)/i, currency: 'EUR' },
     { pattern: /Sold\s+for\s+GBP\s*£?\s*([\d,]+)/i, currency: 'GBP' },
-    { pattern: /Bid\s+to\s+GBP\s*£?\s*([\d,]+)/i, currency: 'GBP' },
     { pattern: /Sold\s+for\s+CAD\s*\$?\s*([\d,]+)/i, currency: 'CAD' },
-    { pattern: /Bid\s+to\s+CAD\s*\$?\s*([\d,]+)/i, currency: 'CAD' },
     { pattern: /Sold\s+for\s+AUD\s*\$?\s*([\d,]+)/i, currency: 'AUD' },
-    { pattern: /Bid\s+to\s+AUD\s*\$?\s*([\d,]+)/i, currency: 'AUD' },
     { pattern: /Sold\s+for\s+CHF\s*([\d,']+)/i, currency: 'CHF' },
-    { pattern: /Bid\s+to\s+CHF\s*([\d,']+)/i, currency: 'CHF' },
     { pattern: /Sold\s+for\s+€\s*([\d,\.]+)/i, currency: 'EUR' },
-    { pattern: /Bid\s+to\s+€\s*([\d,\.]+)/i, currency: 'EUR' },
     { pattern: /Sold\s+for\s+£\s*([\d,]+)/i, currency: 'GBP' },
-    { pattern: /Bid\s+to\s+£\s*([\d,]+)/i, currency: 'GBP' },
   ];
 
+  // RESERVE-NOT-MET (no sale) signals. "Bid to X" is BaT's label for an auction
+  // that ended without meeting reserve — X is the high bid, not a sale price.
   const highBidTextPatterns = [
+    { pattern: /Bid\s+to\s+(?:USD\s+)?\$\s*([\d,]+)/i, currency: 'USD' },
+    { pattern: /Bid\s+to\s+EUR\s*€?\s*([\d,\.]+)/i, currency: 'EUR' },
+    { pattern: /Bid\s+to\s+GBP\s*£?\s*([\d,]+)/i, currency: 'GBP' },
+    { pattern: /Bid\s+to\s+CAD\s*\$?\s*([\d,]+)/i, currency: 'CAD' },
+    { pattern: /Bid\s+to\s+AUD\s*\$?\s*([\d,]+)/i, currency: 'AUD' },
+    { pattern: /Bid\s+to\s+CHF\s*([\d,']+)/i, currency: 'CHF' },
+    { pattern: /Bid\s+to\s+€\s*([\d,\.]+)/i, currency: 'EUR' },
+    { pattern: /Bid\s+to\s+£\s*([\d,]+)/i, currency: 'GBP' },
     { pattern: /High\s+Bid\s+(?:USD\s+)?\$\s*([\d,]+)/i, currency: 'USD' },
     { pattern: /High\s+Bid\s+EUR\s*€?\s*([\d,\.]+)/i, currency: 'EUR' },
-    { pattern: /Reserve\s+Not\s+Met.*?\$\s*([\d,]+)/i, currency: 'USD' },
+    // Bounded gap ([^$]{0,40}) keeps this anchored to the bid shown next to the
+    // "Reserve Not Met" label — the old `.*?` could leap across the whole page
+    // and grab an unrelated amount (e.g. a "$10" promo).
+    { pattern: /Reserve\s+Not\s+Met[^$]{0,40}\$\s*([\d,]+)/i, currency: 'USD' },
   ];
 
   function matchText(text) {
@@ -215,7 +229,7 @@ function extractPriceFromNextData(html) {
     listing.reserve_status === 'no_sale'
   );
 
-  if (soldPrice && soldPrice > 0) {
+  if (soldPrice && Number(soldPrice) >= MIN_PLAUSIBLE_PRICE) {
     const price = parseInt(soldPrice, 10);
     if (isRnm) {
       console.log(`   ⚠️ __NEXT_DATA__: ${currency} ${price.toLocaleString()} (reserve not met)`);
@@ -482,7 +496,14 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       if (status === 'no_sale') {
         // final_price: null clears any stale 0 value left by old withdrawn-detection code
         const updateData = { reserve_not_met: true, final_price: null, ...makeModelUpdate };
-        if (price) updateData.current_bid = price;
+        if (price) {
+          updateData.current_bid = price;
+        } else if (auction.current_bid != null && Number(auction.current_bid) < MIN_PLAUSIBLE_PRICE) {
+          // No real high bid found and the stored value is an implausible
+          // placeholder (e.g. the legacy "$10") — clear it so the app stops
+          // showing a bogus high bid and scoring falls back sensibly.
+          updateData.current_bid = null;
+        }
         await supabase.from('auctions').update(updateData).eq('auction_id', auction.auction_id);
         console.log(`   ⚠️ Reserve not met${price ? ` — high bid ${price.toLocaleString()}` : ''}`);
         results.noSale.push({ id: auction.auction_id, title: auction.title, highBid: price || null });
