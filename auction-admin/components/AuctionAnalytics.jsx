@@ -139,7 +139,9 @@ export default function AuctionAnalytics() {
       const { data, error } = await supabase
         .from('auctions')
         .select('auction_id, title, make, model, year, price_at_48h, final_price, current_bid, reserve_not_met, timestamp_end, inserted_at, auction_reference, url')
-        .not('final_price', 'is', null)
+        // Completed auctions: those with a final_price, PLUS reserve-not-met
+        // rows (which intentionally have final_price = NULL) so they're counted.
+        .or('final_price.not.is.null,reserve_not_met.is.true')
         .order('timestamp_end', { ascending: false })
         .limit(limit);
 
