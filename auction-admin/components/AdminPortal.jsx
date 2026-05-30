@@ -748,17 +748,44 @@ const AdminPortal = () => {
 
     try {
       const text = await file.text();
-      const lines = text.split('\n');
+      const lines = text.split(/\r?\n/);
       const headers = lines[0].split(',').map(h => h.trim());
+
+      // Parse one CSV row into fields, PRESERVING empty fields (so column
+      // positions stay aligned) and handling quoted values with embedded
+      // commas and "" escapes. The previous regex silently dropped empty
+      // fields, which shifted every column after the first blank.
+      const parseCsvLine = (line) => {
+        const out = [];
+        let field = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i];
+          if (inQuotes) {
+            if (c === '"') {
+              if (line[i + 1] === '"') { field += '"'; i++; } // escaped quote
+              else inQuotes = false;
+            } else field += c;
+          } else if (c === '"') {
+            inQuotes = true;
+          } else if (c === ',') {
+            out.push(field.trim());
+            field = '';
+          } else {
+            field += c;
+          }
+        }
+        out.push(field.trim());
+        return out;
+      };
 
       const auctions = [];
       for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
 
-        const values = lines[i].match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g)
-          ?.map(v => v.replace(/^"|"$/g, '').trim()) || [];
+        const values = parseCsvLine(lines[i]);
 
-        if (values.length === 0) continue;
+        if (values.every(v => v === '')) continue;
 
         const auction = {
           auction_id: values[0] ? `manual_${values[0]}` : `manual_imported_${Date.now()}_${i}`,
@@ -773,7 +800,7 @@ const AdminPortal = () => {
           auction_reference: values[9] || null,
           timestamp_end: values[10] ? parseInt(values[10]) : null,
           inserted_at: new Date().toISOString(),
-          current_bid: values[5] || values[6] || null
+          current_bid: values[5] ? parseFloat(values[5]) : (values[6] ? parseFloat(values[6]) : null)
         };
 
         auctions.push(auction);
