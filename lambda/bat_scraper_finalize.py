@@ -36,43 +36,41 @@ def extract_price_from_html(html_content: str):
     rare; an admin can mark them manually from the Finalize tab.
     """
 
-    # Currency patterns - order matters (most specific first)
-    # Format: (pattern, currency_code)
+    # Smallest believable car price/high bid. Anything below this is almost
+    # certainly a stray match against unrelated page text (e.g. a "$10/month"
+    # membership promo), so we reject it.
+    MIN_PLAUSIBLE_PRICE = 100
+
+    def clean_price(price_str, currency):
+        if currency == "EUR" and "." in price_str and "," in price_str:
+            price_str = price_str.replace(".", "").replace(",", ".")  # 120.000,00 -> 120000
+        elif currency == "CHF" and "'" in price_str:
+            price_str = price_str.replace("'", "")                    # 120'000 -> 120000
+        else:
+            price_str = price_str.replace(",", "")                    # 120,000 -> 120000
+        if "." in price_str:
+            price_str = price_str.split(".")[0]
+        try:
+            price = int(price_str)
+        except ValueError:
+            return None
+        return price if price >= MIN_PLAUSIBLE_PRICE else None
+
+    # SOLD signals only. NOTE: "Bid to X" is NOT a sale — it's BaT's label for
+    # reserve-not-met, so it lives in high_bid_patterns below.
     sale_patterns = [
-        # USD patterns
         (r"Sold\s+for\s+(?:USD\s+)?\$\s*([\d,]+)", "USD"),
-        (r"Bid\s+to\s+(?:USD\s+)?\$\s*([\d,]+)", "USD"),
         (r"Winning\s+bid\s+(?:of\s+)?(?:USD\s+)?\$\s*([\d,]+)", "USD"),
-
-        # EUR patterns (European format may use . for thousands)
         (r"Sold\s+for\s+EUR\s*€?\s*([\d,\.]+)", "EUR"),
-        (r"Bid\s+to\s+EUR\s*€?\s*([\d,\.]+)", "EUR"),
         (r"Winning\s+bid\s+(?:of\s+)?EUR\s*€?\s*([\d,\.]+)", "EUR"),
-
-        # GBP patterns
         (r"Sold\s+for\s+GBP\s*£?\s*([\d,]+)", "GBP"),
-        (r"Bid\s+to\s+GBP\s*£?\s*([\d,]+)", "GBP"),
         (r"Winning\s+bid\s+(?:of\s+)?GBP\s*£?\s*([\d,]+)", "GBP"),
-
-        # CAD patterns
         (r"Sold\s+for\s+CAD\s*\$?\s*([\d,]+)", "CAD"),
-        (r"Bid\s+to\s+CAD\s*\$?\s*([\d,]+)", "CAD"),
-
-        # AUD patterns
         (r"Sold\s+for\s+AUD\s*\$?\s*([\d,]+)", "AUD"),
-        (r"Bid\s+to\s+AUD\s*\$?\s*([\d,]+)", "AUD"),
-
-        # CHF patterns (Swiss Franc)
         (r"Sold\s+for\s+CHF\s*([\d,\']+)", "CHF"),
-        (r"Bid\s+to\s+CHF\s*([\d,\']+)", "CHF"),
-
-        # Generic patterns with currency symbols (fallback)
         (r"Sold\s+for\s+€\s*([\d,\.]+)", "EUR"),
-        (r"Bid\s+to\s+€\s*([\d,\.]+)", "EUR"),
         (r"Sold\s+for\s+£\s*([\d,]+)", "GBP"),
-        (r"Bid\s+to\s+£\s*([\d,]+)", "GBP"),
-
-        # Strong tag patterns (BaT often wraps price in <strong>)
+        # Strong tag patterns (BaT often wraps the sale price in <strong>)
         (r"<strong>\s*(?:USD\s+)?\$\s*([\d,]+)\s*</strong>", "USD"),
         (r"<strong>\s*EUR\s*€?\s*([\d,\.]+)\s*</strong>", "EUR"),
         (r"<strong>\s*GBP\s*£?\s*([\d,]+)\s*</strong>", "GBP"),
@@ -81,49 +79,36 @@ def extract_price_from_html(html_content: str):
     for pattern, currency in sale_patterns:
         m = re.search(pattern, html_content, re.IGNORECASE)
         if m:
-            price_str = m.group(1)
-            # Clean up the price string
-            # Handle European format (. for thousands, , for decimals) vs US format
-            if currency == "EUR" and "." in price_str and "," in price_str:
-                # European format: 120.000,00 -> 120000
-                price_str = price_str.replace(".", "").replace(",", ".")
-            elif currency == "CHF" and "'" in price_str:
-                # Swiss format: 120'000 -> 120000
-                price_str = price_str.replace("'", "")
-            else:
-                # US/UK format: 120,000 -> 120000
-                price_str = price_str.replace(",", "")
+            price = clean_price(m.group(1), currency)
+            if price:
+                print(f"   💰 Found: {currency} {price:,} (sold)")
+                return price, "sold", currency
 
-            # Remove any decimal portion
-            if "." in price_str:
-                price_str = price_str.split(".")[0]
-
-            try:
-                price = int(price_str)
-                if price > 0:
-                    print(f"   💰 Found: {currency} {price:,} (sold)")
-                    return price, "sold", currency
-            except ValueError:
-                continue
-
-    # Check for "High Bid" (reserve not met)
+    # RESERVE-NOT-MET (no sale). "Bid to X" = high bid, reserve not met.
     high_bid_patterns = [
+        (r"Bid\s+to\s+(?:USD\s+)?\$\s*([\d,]+)", "USD"),
+        (r"Bid\s+to\s+EUR\s*€?\s*([\d,\.]+)", "EUR"),
+        (r"Bid\s+to\s+GBP\s*£?\s*([\d,]+)", "GBP"),
+        (r"Bid\s+to\s+CAD\s*\$?\s*([\d,]+)", "CAD"),
+        (r"Bid\s+to\s+AUD\s*\$?\s*([\d,]+)", "AUD"),
+        (r"Bid\s+to\s+CHF\s*([\d,\']+)", "CHF"),
+        (r"Bid\s+to\s+€\s*([\d,\.]+)", "EUR"),
+        (r"Bid\s+to\s+£\s*([\d,]+)", "GBP"),
         (r"High\s+Bid\s+(?:USD\s+)?\$\s*([\d,]+)", "USD"),
         (r"High\s+Bid\s+EUR\s*€?\s*([\d,\.]+)", "EUR"),
         (r"High\s+Bid\s+GBP\s*£?\s*([\d,]+)", "GBP"),
-        (r"Reserve\s+Not\s+Met.*?\$\s*([\d,]+)", "USD"),
+        # Bounded gap keeps this anchored to the bid next to the label rather
+        # than leaping across the page to an unrelated amount (e.g. a "$10").
+        (r"Reserve\s+Not\s+Met[^$]{0,40}\$\s*([\d,]+)", "USD"),
     ]
 
     for pattern, currency in high_bid_patterns:
         m = re.search(pattern, html_content, re.IGNORECASE)
         if m:
-            price_str = m.group(1).replace(",", "").replace(".", "")
-            try:
-                price = int(price_str)
+            price = clean_price(m.group(1), currency)
+            if price:
                 print(f"   ⚠️ Found: {currency} {price:,} (reserve not met)")
                 return price, "no_sale", currency
-            except ValueError:
-                continue
 
     return None, None, None
 
