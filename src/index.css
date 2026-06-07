@@ -60,3 +60,13 @@
 
 /* Safe area for mobile bottom nav */
 .safe-area-pb { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* Responsive primary navigation
+   - Mobile (<768px): bottom tab bar visible, top nav hidden
+   - Desktop (>=768px): bottom tab bar hidden, top nav row visible */
+.bp-topnav { display: none; }
+
+@media (min-width: 768px) {
+  .bp-topnav { display: flex; }
+  .bp-bottomnav { display: none; }
+}

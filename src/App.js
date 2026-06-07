@@ -557,8 +557,7 @@ function SectionEyebrow({ children }) {
   )
 }
 
-function BottomTabBar({ screen, onNavigate }) {
-  const tabs = [
+const NAV_TABS = [
     { id: 'dashboard',   label: 'DASH',     icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="11" y="2" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="2" y="11" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="11" y="11" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/></svg> },
     { id: 'leagues',     label: 'AUCTIONS', icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="7" cy="8" r="3" stroke="currentColor" strokeWidth="1.7"/><path d="M2 17c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M14 6c1.1 0 2 .9 2 2s-.9 2-2 2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M18 17c0-2.21-1.79-4-4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg> },
     { id: 'cars',        label: 'PICK',     icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 5.4H18l-4.9 3.5 1.8 5.6L10 13l-4.9 3.5 1.8-5.6L2 7.4h6.2L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
@@ -566,10 +565,35 @@ function BottomTabBar({ screen, onNavigate }) {
     { id: 'leaderboard', label: 'RANKS',    icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L10 14.4l-4.8 2.5.9-5.4L2.2 7.7l5.4-.8L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
     { id: 'history',     label: 'HISTORY',  icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.7"/><path d="M10 6v4l-3 2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg> },
   ]
+
+// Desktop top-nav row (hidden on mobile via .bp-topnav). Shares NAV_TABS + onNavigate
+// with the mobile BottomTabBar so both navs run the same click logic.
+function TopNav({ screen, onNavigate }) {
   return (
-    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.bg, borderTop: `1px solid ${C.border}`, paddingBottom: 16, zIndex: 50 }}>
+    <nav className="bp-topnav" style={{ alignItems: 'center', gap: 22 }}>
+      {NAV_TABS.map(t => {
+        const active = screen === t.id
+        return (
+          <button key={t.id} onClick={() => onNavigate(t.id)} style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
+            fontFamily: mono, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1,
+            color: active ? C.red : C.faint,
+            borderBottom: active ? `2px solid ${C.red}` : '2px solid transparent',
+            lineHeight: 1.4,
+          }}>
+            {t.label}
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+
+function BottomTabBar({ screen, onNavigate }) {
+  return (
+    <div className="bp-bottomnav" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.bg, borderTop: `1px solid ${C.border}`, paddingBottom: 16, zIndex: 50 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-around', paddingTop: 8 }}>
-        {tabs.map(t => {
+        {NAV_TABS.map(t => {
           const active = screen === t.id
           return (
             <button key={t.id} onClick={() => onNavigate(t.id)} style={{
@@ -1802,6 +1826,7 @@ export default function BidPrixApp() {
         {/* App bar */}
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <CBrand size={16} />
+          <TopNav screen="leagues" onNavigate={onNavigate} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, cursor: 'pointer' }}>SEARCH</span>
             <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.red, cursor: 'pointer' }}>+ NEW</span>
@@ -2004,7 +2029,10 @@ export default function BidPrixApp() {
     if (!selectedLeague) {
       return (
         <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 80 }}>
-          <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center' }}><CBrand size={16} /></div>
+          <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <CBrand size={16} />
+            <TopNav screen="cars" onNavigate={onNavigate} />
+          </div>
           <CheckerBar height={3} />
           <div style={{ padding: '60px 28px 40px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
             <svg width="52" height="52" viewBox="0 0 52 52" style={{ marginBottom: 18, opacity: 0.4 }}>
@@ -2061,6 +2089,7 @@ export default function BidPrixApp() {
         {/* Header */}
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <CBrand size={16} />
+          <TopNav screen="cars" onNavigate={onNavigate} />
           <div style={{ fontFamily: mono, fontSize: 9.5, color: canPick ? C.pos : C.muted, letterSpacing: 1.2, display: 'flex', alignItems: 'center', gap: 6 }}>
             {canPick && <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.pos, display: 'inline-block', animation: 'bpPulse 1.6s ease-in-out infinite' }} />}
             {canPick ? 'DRAFTING OPEN' : 'DRAFT CLOSED'}
@@ -2246,6 +2275,7 @@ export default function BidPrixApp() {
         {/* Header */}
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <CBrand size={16} />
+          <TopNav screen="garage" onNavigate={onNavigate} />
           <div style={{ fontFamily: mono, fontSize: 10, color: canModify ? C.pos : C.red, letterSpacing: 1.2 }}>
             {canModify ? '🔓 DRAFT OPEN' : '🔒 DRAFT LOCKED'}
           </div>
@@ -2385,7 +2415,10 @@ export default function BidPrixApp() {
   if (!selectedLeague && !leagueLoading) {
     return (
       <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
-        <div style={{ padding: '12px 18px 10px' }}><CBrand size={14} /></div>
+        <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <CBrand size={14} />
+          <TopNav screen="leaderboard" onNavigate={onNavigate} />
+        </div>
         <CheckerBar height={3} />
         <div style={{ padding: '20px 18px' }}>
           <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 32, fontWeight: 800, textTransform: 'uppercase', letterSpacing: -1.2 }}>STANDINGS</div>
@@ -2757,6 +2790,7 @@ export default function BidPrixApp() {
         {/* App bar */}
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <CBrand size={14} />
+          <TopNav screen="leaderboard" onNavigate={onNavigate} />
           <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>
             OUT
           </button>
@@ -2922,6 +2956,7 @@ export default function BidPrixApp() {
         {/* Header */}
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <CBrand size={16} />
+          <TopNav screen="dashboard" onNavigate={onNavigate} />
           <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, letterSpacing: 0.8 }}>{timeStr} · {dateStr}</div>
         </div>
         <CheckerBar height={3} />
@@ -3032,6 +3067,7 @@ export default function BidPrixApp() {
       <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 80 }}>
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <CBrand size={16} />
+          <TopNav screen="history" onNavigate={onNavigate} />
           <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: mono, fontSize: 10, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>OUT</button>
         </div>
         <CheckerBar height={3} />
@@ -3050,7 +3086,10 @@ export default function BidPrixApp() {
     const isDraftOpen = draftStatus.status === 'open'
     return (
       <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 80 }}>
-        <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center' }}><CBrand size={16} /></div>
+        <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <CBrand size={16} />
+          <TopNav screen="draft-results" onNavigate={onNavigate} />
+        </div>
         <CheckerBar height={3} />
         {isDraftOpen ? (
           <div style={{ padding: '60px 32px', textAlign: 'center' }}>
