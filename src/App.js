@@ -466,10 +466,14 @@ function fmtCompact(n) {
   return `$${Math.round(n)}`
 }
 
-function CarPlaceholder({ tint = '#3a4a6b', height = 86, radius = 2 }) {
+function CarPlaceholder({ tint = '#3a4a6b', height = 86, radius = 2, aspect, maxHeight }) {
+  const isWide = useIsWide(700)
+  const box = isWide && aspect
+    ? { width: '100%', aspectRatio: aspect, maxHeight, borderRadius: radius }
+    : { height, borderRadius: radius }
   return (
     <div style={{
-      height, borderRadius: radius, background: tint, overflow: 'hidden',
+      ...box, background: tint, overflow: 'hidden',
       backgroundImage: `repeating-linear-gradient(135deg,rgba(0,0,0,0.15) 0 4px,transparent 4px 8px)`,
     }} />
   )
@@ -512,13 +516,50 @@ function useCountUp(target, duration) {
   return displayed
 }
 
-function CarImg({ car, height, radius }) {
-  height = height || 100; radius = radius || 3
+// Returns true once the viewport is at least `bp` px wide (web/desktop build).
+// Mobile (<bp) keeps the existing fixed-height banner crop untouched.
+function useIsWide(bp = 700) {
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.innerWidth >= bp)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mq = window.matchMedia(`(min-width: ${bp}px)`)
+    const onChange = e => setWide(e.matches)
+    setWide(mq.matches)
+    if (mq.addEventListener) mq.addEventListener('change', onChange)
+    else mq.addListener(onChange)
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange)
+      else mq.removeListener(onChange)
+    }
+  }, [bp])
+  return wide
+}
+
+// On the taller web crop we need more pixels — bump the requested source size
+// (e.g. Unsplash w=/h= params) so the larger crop stays sharp. Mobile is untouched.
+function carSrc(url, wide) {
+  if (!url || !wide) return url
+  if (/[?&]w=\d+/.test(url) || /[?&]h=\d+/.test(url)) {
+    return url
+      .replace(/([?&]w=)\d+/, '$11000')
+      .replace(/([?&]h=)\d+/, '$1680')
+  }
+  return url
+}
+
+function CarImg({ car, height = 100, radius = 3, aspect, maxHeight, objectPosition }) {
+  const isWide = useIsWide(700)
+  const useAspect = isWide && !!aspect
   const [err, setErr] = useState(false)
+  // Web: lock the crop ratio so the photo grows taller as the card widens (with a
+  // max-height cap). Mobile: keep the original fixed-height banner.
+  const box = useAspect
+    ? { width: '100%', aspectRatio: aspect, maxHeight, borderRadius: radius }
+    : { width: '100%', height, borderRadius: radius }
   if (err || !car || !car.imageUrl) {
     return (
       <div style={{
-        height, borderRadius: radius, width: '100%',
+        ...box,
         background: 'repeating-linear-gradient(135deg,rgba(255,255,255,0.05) 0 6px,rgba(0,0,0,0.12) 6px 12px)',
         backgroundColor: '#1e1e28', display: 'flex', alignItems: 'flex-end', padding: '6px 8px',
       }}>
@@ -528,8 +569,11 @@ function CarImg({ car, height, radius }) {
       </div>
     )
   }
-  return <img src={car.imageUrl} alt={car.title} onError={() => setErr(true)}
-    style={{ width: '100%', height, objectFit: 'cover', objectPosition: 'center 60%', borderRadius: radius, display: 'block' }} />
+  // Bias the crop slightly above center on web so the roofline isn't cut and the
+  // wheels stay in frame; mobile keeps its original 'center 60%' framing.
+  const objPos = useAspect ? (objectPosition || 'center 45%') : 'center 60%'
+  return <img src={carSrc(car.imageUrl, useAspect)} alt={car.title} onError={() => setErr(true)}
+    style={{ ...box, objectFit: 'cover', objectPosition: objPos, display: 'block' }} />
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -1504,7 +1548,7 @@ export default function BidPrixApp() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {MOCK_CARS.map(c => (
               <div key={c.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10 }}>
-                <CarPlaceholder tint={c.img} height={118} radius={2} />
+                <CarPlaceholder tint={c.img} height={118} radius={2} aspect="16 / 9" maxHeight={320} />
                 <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 8 }}>LOT {c.id.slice(1).padStart(4,'0')} · {c.year}</div>
                 <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, height: 38, lineHeight: 1.3, overflow: 'hidden' }}>{c.title.replace(`${c.year} `,'')}</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 6 }}>
@@ -2193,10 +2237,10 @@ export default function BidPrixApp() {
                   )}
                   {car.auctionUrl ? (
                     <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
-                      <CarImg car={car} height={160} radius={2} />
+                      <CarImg car={car} height={160} radius={2} aspect="16 / 9" maxHeight={360} objectPosition="center 45%" />
                     </a>
                   ) : (
-                    <CarImg car={car} height={160} radius={2} />
+                    <CarImg car={car} height={160} radius={2} aspect="16 / 9" maxHeight={360} objectPosition="center 45%" />
                   )}
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 7 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
                   <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, lineHeight: 1.25, height: 38, overflow: 'hidden' }}>{car.title && car.title.replace(`${car.year} `, '')}</div>
@@ -2330,7 +2374,7 @@ export default function BidPrixApp() {
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 0.8, marginBottom: 5, position: 'absolute', top: 8, right: 8 }}>
                     LOT {String(i + 1).padStart(2, '0')}
                   </div>
-                  <CarImg car={car} height={118} radius={2} />
+                  <CarImg car={car} height={118} radius={2} aspect="16 / 9" maxHeight={360} objectPosition="center 45%" />
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 6 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
                   <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, lineHeight: 1.25, height: 38, overflow: 'hidden' }}>
                     {car.title && car.title.replace(`${car.year} `, '')}
@@ -2986,7 +3030,7 @@ export default function BidPrixApp() {
               </div>
             </div>
             <div style={{ position: 'relative', borderRadius: 3, overflow: 'hidden', border: `1px solid ${C.borderHi}` }}>
-              <CarImg car={bestCar} height={196} radius={0} />
+              <CarImg car={bestCar} height={196} radius={0} aspect="16 / 9" maxHeight={440} objectPosition="center 45%" />
               {/* gradient scrim */}
               <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 38%, rgba(10,10,12,0.95) 100%)', pointerEvents: 'none' }} />
               {/* gain badge */}
