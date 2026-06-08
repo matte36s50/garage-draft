@@ -522,7 +522,7 @@ function CarImg({ car, height, radius }) {
         background: 'repeating-linear-gradient(135deg,rgba(255,255,255,0.05) 0 6px,rgba(0,0,0,0.12) 6px 12px)',
         backgroundColor: '#1e1e28', display: 'flex', alignItems: 'flex-end', padding: '6px 8px',
       }}>
-        <span style={{ fontFamily: mono, fontSize: 8, color: 'rgba(255,255,255,0.3)', letterSpacing: 0.5 }}>
+        <span style={{ fontFamily: mono, fontSize: 11, color: 'rgba(255,255,255,0.3)', letterSpacing: 0.5 }}>
           {car && car.year} {car && car.make && car.make.toUpperCase()}
         </span>
       </div>
@@ -551,19 +551,21 @@ function LiveDot({ color }) {
 // eslint-disable-next-line no-unused-vars
 function SectionEyebrow({ children }) {
   return (
-    <div style={{ fontFamily: mono, fontSize: 9.5, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>
+    <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>
       {'//'} {children}
     </div>
   )
 }
 
+// 5 top-level tabs per HIG (2–5 tab rule). HISTORY is intentionally not a tab —
+// it's reached from the dashboard header time/date chip. The desktop TopNav
+// appends a HISTORY link separately so it stays reachable on wide screens.
 const NAV_TABS = [
-    { id: 'dashboard',   label: 'DASH',     icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="11" y="2" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="2" y="11" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="11" y="11" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/></svg> },
-    { id: 'leagues',     label: 'AUCTIONS', icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="7" cy="8" r="3" stroke="currentColor" strokeWidth="1.7"/><path d="M2 17c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M14 6c1.1 0 2 .9 2 2s-.9 2-2 2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M18 17c0-2.21-1.79-4-4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg> },
-    { id: 'cars',        label: 'PICK',     icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 5.4H18l-4.9 3.5 1.8 5.6L10 13l-4.9 3.5 1.8-5.6L2 7.4h6.2L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
-    { id: 'garage',      label: 'GARAGE',   icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M3 9l7-6 7 6v8a1 1 0 01-1 1H4a1 1 0 01-1-1V9z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><rect x="8" y="13" width="4" height="4" rx="0.5" stroke="currentColor" strokeWidth="1.5"/></svg> },
-    { id: 'leaderboard', label: 'RANKS',    icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L10 14.4l-4.8 2.5.9-5.4L2.2 7.7l5.4-.8L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
-    { id: 'history',     label: 'HISTORY',  icon: <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.7"/><path d="M10 6v4l-3 2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+    { id: 'dashboard',   label: 'DASH',     icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="11" y="2" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="2" y="11" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="11" y="11" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/></svg> },
+    { id: 'leagues',     label: 'AUCTIONS', icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><circle cx="7" cy="8" r="3" stroke="currentColor" strokeWidth="1.7"/><path d="M2 17c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M14 6c1.1 0 2 .9 2 2s-.9 2-2 2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M18 17c0-2.21-1.79-4-4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg> },
+    { id: 'cars',        label: 'PICK',     icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 5.4H18l-4.9 3.5 1.8 5.6L10 13l-4.9 3.5 1.8-5.6L2 7.4h6.2L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
+    { id: 'garage',      label: 'GARAGE',   icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M3 9l7-6 7 6v8a1 1 0 01-1 1H4a1 1 0 01-1-1V9z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><rect x="8" y="13" width="4" height="4" rx="0.5" stroke="currentColor" strokeWidth="1.5"/></svg> },
+    { id: 'leaderboard', label: 'RANKS',    icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L10 14.4l-4.8 2.5.9-5.4L2.2 7.7l5.4-.8L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
   ]
 
 // Desktop top-nav row (hidden on mobile via .bp-topnav). Shares NAV_TABS + onNavigate
@@ -571,7 +573,7 @@ const NAV_TABS = [
 function TopNav({ screen, onNavigate }) {
   return (
     <nav className="bp-topnav" style={{ alignItems: 'center', gap: 22 }}>
-      {NAV_TABS.map(t => {
+      {[...NAV_TABS, { id: 'history', label: 'HISTORY' }].map(t => {
         const active = screen === t.id
         return (
           <button key={t.id} onClick={() => onNavigate(t.id)} style={{
@@ -591,21 +593,22 @@ function TopNav({ screen, onNavigate }) {
 
 function BottomTabBar({ screen, onNavigate }) {
   return (
-    <div className="bp-bottomnav" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.bg, borderTop: `1px solid ${C.border}`, paddingBottom: 16, zIndex: 50 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-around', paddingTop: 8 }}>
+    <div className="bp-bottomnav safe-area-pb" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.bg, borderTop: `1px solid ${C.border}`, paddingBottom: 22, zIndex: 50 }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'space-around' }}>
         {NAV_TABS.map(t => {
           const active = screen === t.id
           return (
             <button key={t.id} onClick={() => onNavigate(t.id)} style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-              background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5,
+              background: 'none', border: 'none', cursor: 'pointer',
+              minWidth: 44, minHeight: 60, width: 78, paddingTop: 9, paddingBottom: 5,
               color: active ? C.red : C.faint, position: 'relative',
             }}>
               {active && (
-                <div style={{ position: 'absolute', top: -9, left: '50%', transform: 'translateX(-50%)', width: 20, height: 2, background: C.red, borderRadius: 1 }} />
+                <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 26, height: 2.5, background: C.red, borderRadius: 1.5 }} />
               )}
-              <div style={{ color: active ? C.red : C.faint }}>{t.icon}</div>
-              <span style={{ fontFamily: mono, fontSize: 8, letterSpacing: 1, fontWeight: active ? 800 : 600, color: active ? C.red : C.faint }}>
+              <div style={{ color: active ? C.red : C.faint, lineHeight: 0 }}>{t.icon}</div>
+              <span style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1, fontWeight: active ? 800 : 600, color: active ? C.red : C.faint }}>
                 {t.label}
               </span>
             </button>
@@ -1462,7 +1465,7 @@ export default function BidPrixApp() {
 
         {/* Hero */}
         <div style={{ padding: '22px 18px 18px' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'ui-monospace,monospace', fontSize: 10, color: C.red, letterSpacing: 1.6, fontWeight: 700, background: `${C.red}15`, padding: '5px 8px', border: `1px solid ${C.red}40`, marginBottom: 18 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.red, letterSpacing: 1.6, fontWeight: 700, background: `${C.red}15`, padding: '5px 8px', border: `1px solid ${C.red}40`, marginBottom: 18 }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.red, boxShadow: `0 0 10px ${C.red}`, display: 'inline-block' }} />
             LIVE · 3 LEAGUES DRAFTING
           </div>
@@ -1483,11 +1486,11 @@ export default function BidPrixApp() {
 
         {/* Live ticker */}
         <div style={{ margin: '6px 0 22px', borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, padding: '12px 18px', background: C.surface }}>
-          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9.5, letterSpacing: 1.6, color: C.muted, marginBottom: 8 }}>{'//'} LIVE TICKER</div>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 8 }}>{'//'} LIVE TICKER</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {TICKER_ROWS.map((r, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'ui-monospace,monospace', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
-                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: r.t === 'NEW BID' ? C.red : r.t === 'SOLD' ? C.pos : C.amber, width: 56 }}>{r.t}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: r.t === 'NEW BID' ? C.red : r.t === 'SOLD' ? C.pos : C.amber, width: 56 }}>{r.t}</span>
                 <span style={{ flex: 1, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.n}</span>
                 <span style={{ color: r.good === true ? C.pos : C.text, fontWeight: 700 }}>{r.v}</span>
               </div>
@@ -1497,13 +1500,13 @@ export default function BidPrixApp() {
 
         {/* Featured grid */}
         <div style={{ padding: '0 18px 24px' }}>
-          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>{'//'} THIS WEEK&apos;S GRID — 72 LOTS</div>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>{'//'} THIS WEEK&apos;S GRID — 72 LOTS</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {MOCK_CARS.map(c => (
               <div key={c.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10 }}>
-                <CarPlaceholder tint={c.img} height={86} radius={2} />
-                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: C.muted, letterSpacing: 0.5, marginTop: 8 }}>LOT {c.id.slice(1).padStart(4,'0')} · {c.year}</div>
-                <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 2, height: 32, lineHeight: 1.3, overflow: 'hidden' }}>{c.title.replace(`${c.year} `,'')}</div>
+                <CarPlaceholder tint={c.img} height={118} radius={2} />
+                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 8 }}>LOT {c.id.slice(1).padStart(4,'0')} · {c.year}</div>
+                <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, height: 38, lineHeight: 1.3, overflow: 'hidden' }}>{c.title.replace(`${c.year} `,'')}</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 6 }}>
                   <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>${(c.price/1000).toFixed(0)}k</div>
                   <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: C.pos }}>+{c.trend}%</div>
@@ -1515,7 +1518,7 @@ export default function BidPrixApp() {
 
         {/* The Format */}
         <div style={{ margin: '0 18px', padding: '20px', background: C.surface, border: `1px solid ${C.border}` }}>
-          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, letterSpacing: 1.6, color: C.muted, marginBottom: 14 }}>{'//'} THE FORMAT</div>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 14 }}>{'//'} THE FORMAT</div>
           {[
             { n: '01', t: 'SELECT', d: 'Pick 7 live auctions. Price locks at the 48-hour mark.' },
             { n: '02', t: 'BID',    d: 'Real bids roll in. Watch the market move in your favour.' },
@@ -1585,7 +1588,7 @@ export default function BidPrixApp() {
       borderRadius: 4, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', fontSize: 15,
       padding: '0 14px', outline: 'none',
     }
-    const labelStyle = { fontFamily: mono, fontSize: 10, letterSpacing: 1.4, color: C.muted, display: 'block', marginBottom: 6 }
+    const labelStyle = { fontFamily: mono, fontSize: 11, letterSpacing: 1.4, color: C.muted, display: 'block', marginBottom: 6 }
 
     return (
       <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', padding: '28px 24px', minHeight: '100vh' }}>
@@ -1618,7 +1621,7 @@ export default function BidPrixApp() {
             {!isSignUp && (
               <div style={{ marginTop: 8, textAlign: 'right' }}>
                 <span onClick={() => updateCurrentScreen('forgot-password')}
-                  style={{ fontFamily: mono, fontSize: 10, color: C.muted, letterSpacing: 0.8, cursor: 'pointer' }}>
+                  style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.8, cursor: 'pointer' }}>
                   FORGOT PASSWORD?
                 </span>
               </div>
@@ -1632,7 +1635,7 @@ export default function BidPrixApp() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '24px 0' }}>
           <div style={{ flex: 1, height: 1, background: C.border }} />
-          <span style={{ fontFamily: mono, fontSize: 9, color: C.faint, letterSpacing: 1 }}>OR</span>
+          <span style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>OR</span>
           <div style={{ flex: 1, height: 1, background: C.border }} />
         </div>
 
@@ -1641,7 +1644,7 @@ export default function BidPrixApp() {
         </button>
 
         <div style={{ marginTop: 16, textAlign: 'center' }}>
-          <button onClick={() => updateCurrentScreen('landing')} style={{ fontFamily: mono, fontSize: 10, color: C.faint, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 0.8 }}>
+          <button onClick={() => updateCurrentScreen('landing')} style={{ fontFamily: mono, fontSize: 11, color: C.faint, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 0.8 }}>
             ← BACK TO HOME
           </button>
         </div>
@@ -1674,7 +1677,7 @@ export default function BidPrixApp() {
 
     return (
       <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', padding: '28px 24px', minHeight: '100vh' }}>
-        <button onClick={() => updateCurrentScreen('login')} style={{ fontFamily: mono, fontSize: 10, color: C.muted, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 0.8, marginBottom: 24 }}>
+        <button onClick={() => updateCurrentScreen('login')} style={{ fontFamily: mono, fontSize: 11, color: C.muted, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 0.8, marginBottom: 24 }}>
           ← BACK TO SIGN IN
         </button>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 36 }}><CBrand size={24} /></div>
@@ -1697,7 +1700,7 @@ export default function BidPrixApp() {
             <CheckerBar height={2} />
             <form onSubmit={handleSubmit} style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
               <div>
-                <label style={{ fontFamily: mono, fontSize: 10, letterSpacing: 1.4, color: C.muted, display: 'block', marginBottom: 6 }}>EMAIL ADDRESS</label>
+                <label style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1.4, color: C.muted, display: 'block', marginBottom: 6 }}>EMAIL ADDRESS</label>
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" style={inputStyle} required />
               </div>
               <button type="submit" disabled={loading} style={{ width: '100%', height: 50, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontWeight: 800, fontSize: 13, fontFamily: mono, letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
@@ -1753,7 +1756,7 @@ export default function BidPrixApp() {
     }
 
     const inputStyle = { width: '100%', height: 48, background: C.surface, border: `1px solid ${C.borderHi}`, borderRadius: 4, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', fontSize: 15, padding: '0 14px', outline: 'none' }
-    const labelStyle = { fontFamily: mono, fontSize: 10, letterSpacing: 1.4, color: C.muted, display: 'block', marginBottom: 6 }
+    const labelStyle = { fontFamily: mono, fontSize: 11, letterSpacing: 1.4, color: C.muted, display: 'block', marginBottom: 6 }
 
     return (
       <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', padding: '28px 24px', minHeight: '100vh' }}>
@@ -1775,7 +1778,7 @@ export default function BidPrixApp() {
                 {error}
                 {error.includes('expired') && (
                   <button onClick={() => updateCurrentScreen('forgot-password')}
-                    style={{ display: 'block', marginTop: 8, fontFamily: mono, fontSize: 10, color: C.amber, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 0.8 }}>
+                    style={{ display: 'block', marginTop: 8, fontFamily: mono, fontSize: 11, color: C.amber, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 0.8 }}>
                     REQUEST NEW RESET LINK →
                   </button>
                 )}
@@ -1789,7 +1792,7 @@ export default function BidPrixApp() {
               <div>
                 <label style={labelStyle}>CONFIRM PASSWORD</label>
                 <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="••••••••" style={inputStyle} minLength={8} required />
-                <p style={{ fontFamily: mono, fontSize: 9.5, color: C.faint, marginTop: 6 }}>Must be at least 8 characters.</p>
+                <p style={{ fontFamily: mono, fontSize: 11, color: C.faint, marginTop: 6 }}>Must be at least 8 characters.</p>
               </div>
               <button type="submit" disabled={loading} style={{ width: '100%', height: 50, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontWeight: 800, fontSize: 13, fontFamily: mono, letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
                 {loading ? 'UPDATING...' : 'UPDATE PASSWORD ▸'}
@@ -1830,7 +1833,7 @@ export default function BidPrixApp() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, cursor: 'pointer' }}>SEARCH</span>
             <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.red, cursor: 'pointer' }}>+ NEW</span>
-            <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>
+            <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>
               OUT
             </button>
           </div>
@@ -1839,7 +1842,7 @@ export default function BidPrixApp() {
 
         {/* Page title */}
         <div style={{ padding: '20px 18px 12px' }}>
-          <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 32, fontWeight: 800, letterSpacing: -1.2, lineHeight: 1, textTransform: 'uppercase' }}>
+          <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 40, fontWeight: 800, letterSpacing: -1.6, lineHeight: 1, textTransform: 'uppercase' }}>
             AUCTIONS
           </div>
           <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, marginTop: 6, letterSpacing: 0.5 }}>
@@ -1850,7 +1853,7 @@ export default function BidPrixApp() {
         {/* Filter chips */}
         <div style={{ padding: '4px 18px 18px', display: 'flex', gap: 6, overflowX: 'auto' }}>
           {filters.map(f => (
-            <button key={f} onClick={() => setActiveFilter(f)} style={{ padding: '6px 12px', borderRadius: 3, fontFamily: 'ui-monospace,monospace', fontSize: 10, fontWeight: 700, letterSpacing: 1.2, whiteSpace: 'nowrap', cursor: 'pointer', background: activeFilter === f ? C.text : 'transparent', color: activeFilter === f ? C.bg : C.muted, border: `1px solid ${activeFilter === f ? C.text : C.border}` }}>
+            <button key={f} onClick={() => setActiveFilter(f)} style={{ padding: '6px 12px', borderRadius: 3, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, letterSpacing: 1.2, whiteSpace: 'nowrap', cursor: 'pointer', background: activeFilter === f ? C.text : 'transparent', color: activeFilter === f ? C.bg : C.muted, border: `1px solid ${activeFilter === f ? C.text : C.border}` }}>
               {f}
             </button>
           ))}
@@ -1871,7 +1874,7 @@ export default function BidPrixApp() {
             return (
               <div key={l.id} style={{ marginBottom: 8, padding: '14px 14px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${cfg.borderColor}` }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9.5, letterSpacing: 1.3, fontWeight: 700, color: cfg.pillColor }}>
+                  <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.3, fontWeight: 700, color: cfg.pillColor }}>
                     {cfg.pillLabel}
                   </div>
                   <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>
@@ -1884,7 +1887,7 @@ export default function BidPrixApp() {
                 </div>
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
-                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 9.5, color: C.faint, letterSpacing: 1.2 }}>{timeLabel}</div>
+                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>{timeLabel}</div>
                     <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>{timeVal}</div>
                   </div>
                   <button onClick={() => handleRowAction(l)} style={{ height: 36, padding: '0 16px', borderRadius: 3, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 800, letterSpacing: 1.2, cursor: 'pointer', background: cfg.btnBg, color: cfg.btnColor, border: cfg.btnBorder }}>
@@ -2028,7 +2031,7 @@ export default function BidPrixApp() {
     // Empty state
     if (!selectedLeague) {
       return (
-        <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 80 }}>
+        <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 96 }}>
           <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <CBrand size={16} />
             <TopNav screen="cars" onNavigate={onNavigate} />
@@ -2040,7 +2043,7 @@ export default function BidPrixApp() {
                 <rect key={`${row}-${col}`} x={col*13} y={row*13} width={13} height={13} fill={(row+col)%2===0 ? C.text : 'transparent'} />
               )))}
             </svg>
-            <div style={{ fontFamily: mono, fontSize: 9.5, color: C.red, letterSpacing: 1.6, marginBottom: 8 }}>{'//'} NO AUCTION SELECTED</div>
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 1.6, marginBottom: 8 }}>{'//'} NO AUCTION SELECTED</div>
             <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 800, letterSpacing: -0.8, textTransform: 'uppercase', marginBottom: 10, lineHeight: 1.1 }}>
               JOIN AN AUCTION<br/>FIRST
             </div>
@@ -2074,14 +2077,14 @@ export default function BidPrixApp() {
     const leagueName = selectedLeague?.name || 'Sunday Morning Drivers'
 
     return (
-      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', paddingBottom: 80 }}>
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', paddingBottom: 96 }}>
         {/* Auction context strip */}
         <div style={{ padding: '8px 18px 10px', background: C.surface, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: 1.3, marginBottom: 2 }}>{'//'} PICKING CARS FOR</div>
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.3, marginBottom: 2 }}>{'//'} PICKING CARS FOR</div>
             <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: C.text, letterSpacing: -0.3 }}>{leagueName}</div>
           </div>
-          <button onClick={() => onNavigate('leagues')} style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1, background: 'none', border: `1px solid ${C.border}`, padding: '4px 8px', borderRadius: 3, cursor: 'pointer' }}>
+          <button onClick={() => onNavigate('leagues')} style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1, background: 'none', border: `1px solid ${C.border}`, padding: '4px 8px', borderRadius: 3, cursor: 'pointer' }}>
             SWITCH ▸
           </button>
         </div>
@@ -2090,7 +2093,7 @@ export default function BidPrixApp() {
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <CBrand size={16} />
           <TopNav screen="cars" onNavigate={onNavigate} />
-          <div style={{ fontFamily: mono, fontSize: 9.5, color: canPick ? C.pos : C.muted, letterSpacing: 1.2, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: canPick ? C.pos : C.muted, letterSpacing: 1.2, display: 'flex', alignItems: 'center', gap: 6 }}>
             {canPick && <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.pos, display: 'inline-block', animation: 'bpPulse 1.6s ease-in-out infinite' }} />}
             {canPick ? 'DRAFTING OPEN' : 'DRAFT CLOSED'}
           </div>
@@ -2101,13 +2104,13 @@ export default function BidPrixApp() {
         <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${C.border}` }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 10 }}>
             <div>
-              <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.3, marginBottom: 4 }}>BUDGET REMAINING</div>
-              <div style={{ fontFamily: mono, fontSize: 32, fontWeight: 800, letterSpacing: -1.2, fontVariantNumeric: 'tabular-nums', lineHeight: 1, color: budget < 20000 ? C.red : budget < 40000 ? C.amber : C.text }}>
+              <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.3, marginBottom: 4 }}>BUDGET REMAINING</div>
+              <div style={{ fontFamily: mono, fontSize: 44, fontWeight: 800, letterSpacing: -1.8, fontVariantNumeric: 'tabular-nums', lineHeight: 1, color: budget < 10000 ? C.red : budget < 20000 ? C.amber : C.text }}>
                 {fmtUSD(animatedBudget)}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.3, marginBottom: 4 }}>ROSTER</div>
+              <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.3, marginBottom: 4 }}>ROSTER</div>
               <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 800, color: garage.length >= 7 ? C.pos : C.text }}>
                 {garage.length}<span style={{ color: C.faint }}>/7</span>
               </div>
@@ -2117,8 +2120,8 @@ export default function BidPrixApp() {
             <div style={{ height: '100%', width: `${budgetPct}%`, background: budgetPct > 40 ? C.pos : budgetPct > 15 ? C.amber : C.red, transition: 'width 0.7s cubic-bezier(.22,1,.36,1)', borderRadius: 2 }} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
-            <span style={{ fontFamily: mono, fontSize: 9, color: C.faint }}>{fmtK(budgetTotal - budget)} SPENT</span>
-            <span style={{ fontFamily: mono, fontSize: 9, color: C.faint }}>{fmtK(budgetTotal)} TOTAL</span>
+            <span style={{ fontFamily: mono, fontSize: 11, color: C.faint }}>{fmtK(budgetTotal - budget)} SPENT</span>
+            <span style={{ fontFamily: mono, fontSize: 11, color: C.faint }}>{fmtK(budgetTotal)} TOTAL</span>
           </div>
         </div>
 
@@ -2127,8 +2130,8 @@ export default function BidPrixApp() {
           <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, background: C.surface }}>
             <button onClick={() => setShowBonus(!showBonus)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontFamily: mono, fontSize: 9.5, color: C.amber, letterSpacing: 1.3, fontWeight: 700 }}>★ BONUS CAR</span>
-                <span style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>{bonusCar.title}</span>
+                <span style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: 1.3, fontWeight: 700 }}>★ BONUS CAR</span>
+                <span style={{ fontFamily: mono, fontSize: 11, color: C.muted }}>{bonusCar.title}</span>
               </div>
               <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, transition: 'transform 0.2s', transform: showBonus ? 'rotate(180deg)' : 'rotate(0)' }}>▾</span>
             </button>
@@ -2139,10 +2142,10 @@ export default function BidPrixApp() {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, marginBottom: 4 }}>{bonusCar.title}</div>
-                  <div style={{ fontFamily: mono, fontSize: 10, color: C.muted }}>CURRENT BID</div>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.muted }}>CURRENT BID</div>
                   <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, marginTop: 1 }}>{fmtUSD(bonusCar.currentBid)}</div>
                   <div style={{ marginTop: 8 }}>
-                    <button onClick={() => setShowPredictionModal(true)} style={{ height: 30, padding: '0 12px', borderRadius: 3, border: `1px solid ${C.amber}55`, background: `${C.amber}18`, color: C.amber, fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
+                    <button onClick={() => setShowPredictionModal(true)} style={{ height: 30, padding: '0 12px', borderRadius: 3, border: `1px solid ${C.amber}55`, background: `${C.amber}18`, color: C.amber, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
                       {userPrediction ? `PREDICTION: ${fmtUSD(userPrediction)} ✓` : 'MAKE PREDICTION ▸'}
                     </button>
                   </div>
@@ -2155,9 +2158,9 @@ export default function BidPrixApp() {
         {/* Filter row */}
         <div style={{ padding: '12px 18px 10px', display: 'flex', gap: 6 }}>
           {['ALL', 'AVAILABLE', 'ADDED'].map(f => (
-            <button key={f} onClick={() => setFilter(f)} style={{ padding: '5px 10px', borderRadius: 3, fontFamily: mono, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.1, background: f === filter ? C.text : 'transparent', color: f === filter ? C.bg : C.muted, border: `1px solid ${f === filter ? C.text : C.border}`, cursor: 'pointer' }}>{f}</button>
+            <button key={f} onClick={() => setFilter(f)} style={{ padding: '5px 10px', borderRadius: 3, fontFamily: mono, fontSize: 11, fontWeight: 700, letterSpacing: 1.1, background: f === filter ? C.text : 'transparent', color: f === filter ? C.bg : C.muted, border: `1px solid ${f === filter ? C.text : C.border}`, cursor: 'pointer' }}>{f}</button>
           ))}
-          <div style={{ marginLeft: 'auto', fontFamily: mono, fontSize: 9.5, color: C.faint, alignSelf: 'center' }}>{available.length} LOTS</div>
+          <div style={{ marginLeft: 'auto', fontFamily: mono, fontSize: 11, color: C.faint, alignSelf: 'center' }}>{available.length} LOTS</div>
         </div>
 
         {/* Loading state */}
@@ -2184,7 +2187,7 @@ export default function BidPrixApp() {
               return (
                 <div key={car.id} style={{ background: inGarage ? `${C.red}0a` : C.surface, border: `1px solid ${inGarage ? C.red+'44' : C.border}`, padding: 10, position: 'relative', animation: isGlowing ? 'bpGlow .9s ease-out' : 'none', opacity: isOver && !inGarage ? 0.55 : 1 }}>
                   {isOver && !inGarage && (
-                    <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2, fontFamily: mono, fontSize: 8, fontWeight: 800, letterSpacing: 1, color: C.amber, background: `${C.amber}22`, padding: '2px 5px', border: `1px solid ${C.amber}44` }}>
+                    <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.amber, background: `${C.amber}22`, padding: '2px 5px', border: `1px solid ${C.amber}44` }}>
                       NEED {fmtK(dp - budget)}
                     </div>
                   )}
@@ -2195,25 +2198,25 @@ export default function BidPrixApp() {
                   ) : (
                     <CarImg car={car} height={160} radius={2} />
                   )}
-                  <div style={{ fontFamily: mono, fontSize: 9, color: C.muted, letterSpacing: 0.5, marginTop: 7 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
-                  <div style={{ fontSize: 11.5, fontWeight: 600, marginTop: 1, lineHeight: 1.25, height: 28, overflow: 'hidden' }}>{car.title && car.title.replace(`${car.year} `, '')}</div>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 7 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, lineHeight: 1.25, height: 38, overflow: 'hidden' }}>{car.title && car.title.replace(`${car.year} `, '')}</div>
                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 5, marginBottom: 8 }}>
                     <div>
-                      <div style={{ fontFamily: mono, fontSize: 9, color: C.faint, letterSpacing: 1 }}>DRAFT</div>
+                      <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>DRAFT</div>
                       <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtK(dp)}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontFamily: mono, fontSize: 9, color: C.faint, letterSpacing: 1 }}>NOW</div>
+                      <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>NOW</div>
                       <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: C.pos, fontVariantNumeric: 'tabular-nums' }}>{fmtK(car.currentBid)}</div>
                     </div>
                   </div>
-                  <div style={{ fontFamily: mono, fontSize: 9.5, color: C.faint, marginBottom: 8 }}>{car.timeLeft}</div>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, marginBottom: 8 }}>{car.timeLeft}</div>
                   {inGarage ? (
-                    <button onClick={() => handleRemove(car)} style={{ width: '100%', height: 32, borderRadius: 3, border: `1px solid ${C.red}55`, background: 'transparent', color: C.red, fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1, cursor: canPick ? 'pointer' : 'default' }}>
+                    <button onClick={() => handleRemove(car)} style={{ width: '100%', height: 32, borderRadius: 3, border: `1px solid ${C.red}55`, background: 'transparent', color: C.red, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, cursor: canPick ? 'pointer' : 'default' }}>
                       IN GARAGE ✓
                     </button>
                   ) : (
-                    <button onClick={() => handleAdd(car)} disabled={isAdding || isOver || isFull || !canPick} style={{ width: '100%', height: 32, borderRadius: 3, border: 'none', cursor: 'pointer', background: isOver || isFull || !canPick ? C.surfaceHi : C.red, color: isOver || isFull || !canPick ? C.faint : C.text, fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: isAdding ? 0.7 : 1 }}>
+                    <button onClick={() => handleAdd(car)} disabled={isAdding || isOver || isFull || !canPick} style={{ width: '100%', height: 32, borderRadius: 3, border: 'none', cursor: 'pointer', background: isOver || isFull || !canPick ? C.surfaceHi : C.red, color: isOver || isFull || !canPick ? C.faint : C.text, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: isAdding ? 0.7 : 1 }}>
                       {isAdding ? (
                         <span style={{ display: 'inline-flex', gap: 3 }}>
                           {[0,1,2].map(i => <span key={i} style={{ width: 4, height: 4, borderRadius: '50%', background: C.text, animation: `bpPulse .8s ease-in-out ${i*0.2}s infinite` }}/>)}
@@ -2271,12 +2274,12 @@ export default function BidPrixApp() {
     function gainColor(g) { return g > 0 ? C.pos : g < 0 ? C.neg : C.muted }
 
     return (
-      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', paddingBottom: 80 }}>
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', paddingBottom: 96 }}>
         {/* Header */}
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <CBrand size={16} />
           <TopNav screen="garage" onNavigate={onNavigate} />
-          <div style={{ fontFamily: mono, fontSize: 10, color: canModify ? C.pos : C.red, letterSpacing: 1.2 }}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: canModify ? C.pos : C.red, letterSpacing: 1.2 }}>
             {canModify ? '🔓 DRAFT OPEN' : '🔒 DRAFT LOCKED'}
           </div>
         </div>
@@ -2284,7 +2287,7 @@ export default function BidPrixApp() {
 
         {/* Summary pit-board */}
         <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.4, marginBottom: 8 }}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 8 }}>
             {'//'} MY GARAGE{selectedLeague ? ` · ${selectedLeague.name.toUpperCase()}` : ''}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
@@ -2294,7 +2297,7 @@ export default function BidPrixApp() {
               { label: 'NET GAIN', value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
             ].map(m => (
               <div key={m.label} style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: mono, fontSize: 8.5, color: C.faint, letterSpacing: 1.2 }}>{m.label}</div>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>{m.label}</div>
                 <div style={{ fontFamily: mono, fontSize: 18, fontWeight: 800, fontVariantNumeric: 'tabular-nums', marginTop: 3, color: m.color }}>{m.value}</div>
               </div>
             ))}
@@ -2306,7 +2309,7 @@ export default function BidPrixApp() {
 
         {/* Car slots */}
         <div style={{ padding: '14px 18px 0' }}>
-          <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.6, marginBottom: 10 }}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.6, marginBottom: 10 }}>
             {'//'} ROSTER — {garage.length}/7 SLOTS FILLED
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -2315,8 +2318,8 @@ export default function BidPrixApp() {
                 return (
                   <div key={`empty-${i}`} style={{ height: 170, border: `1px dashed ${C.border}`, borderRadius: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                     <div style={{ fontFamily: mono, fontSize: 22, color: C.faint, fontWeight: 800 }}>{String(i + 1).padStart(2, '0')}</div>
-                    <div style={{ fontFamily: mono, fontSize: 9, color: C.faint, letterSpacing: 1.2 }}>EMPTY SLOT</div>
-                    {canModify && <div style={{ fontFamily: mono, fontSize: 9, color: C.faint }}>DRAFT A CAR</div>}
+                    <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>EMPTY SLOT</div>
+                    {canModify && <div style={{ fontFamily: mono, fontSize: 11, color: C.faint }}>DRAFT A CAR</div>}
                   </div>
                 )
               }
@@ -2324,21 +2327,21 @@ export default function BidPrixApp() {
               const gainPct = car.purchasePrice > 0 ? ((gain / car.purchasePrice) * 100).toFixed(1) : '0.0'
               return (
                 <div key={car.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10, position: 'relative' }}>
-                  <div style={{ fontFamily: mono, fontSize: 9, color: C.red, letterSpacing: 0.8, marginBottom: 5, position: 'absolute', top: 8, right: 8 }}>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 0.8, marginBottom: 5, position: 'absolute', top: 8, right: 8 }}>
                     LOT {String(i + 1).padStart(2, '0')}
                   </div>
-                  <CarImg car={car} height={76} radius={2} />
-                  <div style={{ fontFamily: mono, fontSize: 8.5, color: C.muted, letterSpacing: 0.5, marginTop: 6 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
-                  <div style={{ fontSize: 11.5, fontWeight: 600, marginTop: 1, lineHeight: 1.25, height: 28, overflow: 'hidden' }}>
+                  <CarImg car={car} height={118} radius={2} />
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 6 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, lineHeight: 1.25, height: 38, overflow: 'hidden' }}>
                     {car.title && car.title.replace(`${car.year} `, '')}
                   </div>
                   <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
                     <div>
-                      <div style={{ fontFamily: mono, fontSize: 8, color: C.faint, letterSpacing: 1 }}>DRAFT</div>
+                      <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>DRAFT</div>
                       <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtK(car.purchasePrice)}</div>
                     </div>
                     <div>
-                      <div style={{ fontFamily: mono, fontSize: 8, color: C.faint, letterSpacing: 1 }}>NOW</div>
+                      <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>NOW</div>
                       <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: gainColor(gain) }}>{fmtK(car.currentBid || car.purchasePrice)}</div>
                     </div>
                   </div>
@@ -2346,10 +2349,10 @@ export default function BidPrixApp() {
                     <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: gainColor(gain), fontVariantNumeric: 'tabular-nums' }}>
                       {gain >= 0 ? '+' : ''}{fmtCompact(gain)}
                     </span>
-                    <span style={{ fontFamily: mono, fontSize: 10, color: gainColor(gain) }}>({gain >= 0 ? '+' : ''}{gainPct}%)</span>
+                    <span style={{ fontFamily: mono, fontSize: 11, color: gainColor(gain) }}>({gain >= 0 ? '+' : ''}{gainPct}%)</span>
                   </div>
                   {canModify && (
-                    <button onClick={() => removeFromGarage(car)} style={{ marginTop: 7, width: '100%', height: 26, borderRadius: 2, border: `1px solid ${C.border}`, background: 'transparent', color: C.faint, fontFamily: mono, fontSize: 9, letterSpacing: 0.8, cursor: 'pointer' }}>
+                    <button onClick={() => removeFromGarage(car)} style={{ marginTop: 7, width: '100%', height: 26, borderRadius: 2, border: `1px solid ${C.border}`, background: 'transparent', color: C.faint, fontFamily: mono, fontSize: 11, letterSpacing: 0.8, cursor: 'pointer' }}>
                       REMOVE
                     </button>
                   )}
@@ -2364,11 +2367,11 @@ export default function BidPrixApp() {
           <div style={{ margin: '18px 18px 0', padding: '14px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.amber}` }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <div>
-                <div style={{ fontFamily: mono, fontSize: 9.5, color: C.amber, letterSpacing: 1.3, fontWeight: 700, marginBottom: 3 }}>★ BONUS CAR</div>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: 1.3, fontWeight: 700, marginBottom: 3 }}>★ BONUS CAR</div>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{bonusCar.title}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontFamily: mono, fontSize: 8.5, color: C.faint, letterSpacing: 1 }}>CURRENT</div>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>CURRENT</div>
                 <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700 }}>{fmtUSD(bonusCar.currentBid)}</div>
               </div>
             </div>
@@ -2381,13 +2384,13 @@ export default function BidPrixApp() {
                 <input value={prediction} onChange={e => setPrediction(e.target.value)} placeholder="$32,500"
                   style={{ flex: 1, height: 36, background: C.bg, border: `1px solid ${C.borderHi}`, borderRadius: 3, color: C.text, fontFamily: mono, fontSize: 13, padding: '0 10px', outline: 'none' }} />
                 <button onClick={() => { const p = parseFloat(prediction.replace(/[^0-9.]/g, '')); if (p > 0) { submitPrediction(p); setSubmitted(true) } }}
-                  style={{ height: 36, padding: '0 14px', borderRadius: 3, border: 'none', background: C.amber, color: '#000', fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
+                  style={{ height: 36, padding: '0 14px', borderRadius: 3, border: 'none', background: C.amber, color: '#000', fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
                   LOCK ▸
                 </button>
               </div>
             ) : (
               <button onClick={() => setShowPredict(true)}
-                style={{ height: 34, padding: '0 14px', borderRadius: 3, border: `1px solid ${C.amber}55`, background: `${C.amber}18`, color: C.amber, fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
+                style={{ height: 34, padding: '0 14px', borderRadius: 3, border: `1px solid ${C.amber}55`, background: `${C.amber}18`, color: C.amber, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
                 MAKE PREDICTION · 2× SCORE
               </button>
             )}
@@ -2421,7 +2424,7 @@ export default function BidPrixApp() {
         </div>
         <CheckerBar height={3} />
         <div style={{ padding: '20px 18px' }}>
-          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 32, fontWeight: 800, textTransform: 'uppercase', letterSpacing: -1.2 }}>STANDINGS</div>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 40, fontWeight: 800, textTransform: 'uppercase', letterSpacing: -1.6 }}>STANDINGS</div>
           <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, color: C.faint, marginTop: 24, textAlign: 'center', paddingTop: 40 }}>
             NO ACTIVE AUCTIONS<br/>
             <button onClick={() => onNavigate('leagues')} style={{ marginTop: 16, height: 40, padding: '0 20px', borderRadius: 3, background: C.red, color: C.text, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 800, letterSpacing: 1.2, border: 'none', cursor: 'pointer' }}>
@@ -2791,7 +2794,7 @@ export default function BidPrixApp() {
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <CBrand size={14} />
           <TopNav screen="leaderboard" onNavigate={onNavigate} />
-          <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>
+          <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>
             OUT
           </button>
         </div>
@@ -2799,10 +2802,10 @@ export default function BidPrixApp() {
 
         {/* Eyebrow + title */}
         <div style={{ padding: '18px 18px 8px' }}>
-          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, letterSpacing: 1.6, color: C.red }}>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.red }}>
             {'//'} {selectedLeague?.name?.toUpperCase() || 'STANDINGS'}
           </div>
-          <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 32, fontWeight: 800, letterSpacing: -1.2, marginTop: 4, textTransform: 'uppercase' }}>
+          <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 40, fontWeight: 800, letterSpacing: -1.6, marginTop: 4, textTransform: 'uppercase' }}>
             STANDINGS
           </div>
         </div>
@@ -2828,35 +2831,35 @@ export default function BidPrixApp() {
         {!loading && me && (
           <div style={{ margin: '12px 18px 18px', background: C.surface, border: `1px solid ${C.borderHi}`, padding: '14px 16px', borderLeft: `4px solid ${C.red}` }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-              <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, letterSpacing: 1.4, color: C.muted }}>
+              <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.4, color: C.muted }}>
                 P{String(myRank).padStart(2,'0')} · {me.username?.toUpperCase()}
               </div>
               {me.totalDollarGain !== undefined && (
-                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: me.totalDollarGain >= 0 ? C.pos : C.neg, fontWeight: 700 }}>
+                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: me.totalDollarGain >= 0 ? C.pos : C.neg, fontWeight: 700 }}>
                   {me.totalDollarGain >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(me.totalDollarGain / 1000)).toFixed(0)}k
                 </div>
               )}
             </div>
-            <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 36, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>
+            <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 46, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1.8, lineHeight: 1 }}>
               ${Math.round(me.totalScore || 0).toLocaleString()}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
               <div>
-                <div style={{ color: C.faint, fontSize: 9, letterSpacing: 1.2 }}>NET</div>
+                <div style={{ color: C.faint, fontSize: 11, letterSpacing: 1.2 }}>NET</div>
                 <div style={{ color: me.totalDollarGain >= 0 ? C.pos : C.neg, fontWeight: 700, marginTop: 2 }}>
                   {me.totalDollarGain >= 0 ? '+' : ''}${Math.round(me.totalDollarGain || 0).toLocaleString()}
                 </div>
               </div>
               <div>
-                <div style={{ color: C.faint, fontSize: 9, letterSpacing: 1.2 }}>GAP TO P1</div>
+                <div style={{ color: C.faint, fontSize: 11, letterSpacing: 1.2 }}>GAP TO P1</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{gapToP1 !== null ? (gapToP1 >= 0 ? '+' : '') + '$' + Math.abs(Math.round(gapToP1)).toLocaleString() : '—'}</div>
               </div>
               <div>
-                <div style={{ color: C.faint, fontSize: 9, letterSpacing: 1.2 }}>ROSTER</div>
+                <div style={{ color: C.faint, fontSize: 11, letterSpacing: 1.2 }}>ROSTER</div>
                 <div style={{ fontWeight: 700, marginTop: 2 }}>{me.carsCount}/7</div>
               </div>
               <div>
-                <div style={{ color: C.faint, fontSize: 9, letterSpacing: 1.2 }}>% GAIN</div>
+                <div style={{ color: C.faint, fontSize: 11, letterSpacing: 1.2 }}>% GAIN</div>
                 <div style={{ color: me.totalPercentGain >= 0 ? C.pos : C.neg, fontWeight: 700, marginTop: 2 }}>
                   {me.totalPercentGain >= 0 ? '+' : ''}{(me.totalPercentGain || 0).toFixed(1)}%
                 </div>
@@ -2869,11 +2872,11 @@ export default function BidPrixApp() {
         {!loading && standings.length > 0 && (
           <div style={{ margin: '0 18px 8px', display: 'flex', gap: 0, borderBottom: `1px solid ${C.border}` }}>
             {sortTabs.map(tab => (
-              <button key={tab.key} onClick={() => handleSortChange(tab.key)} style={{ padding: '8px 12px', fontFamily: 'ui-monospace,monospace', fontSize: 10, fontWeight: 700, letterSpacing: 1.4, cursor: 'pointer', background: 'none', borderBottom: sortBy === tab.key ? `2px solid ${C.red}` : '2px solid transparent', marginBottom: -1, color: sortBy === tab.key ? C.red : C.muted, border: 'none', borderBottomWidth: 2, borderBottomStyle: 'solid', borderBottomColor: sortBy === tab.key ? C.red : 'transparent' }}>
+              <button key={tab.key} onClick={() => handleSortChange(tab.key)} style={{ padding: '8px 12px', fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, letterSpacing: 1.4, cursor: 'pointer', background: 'none', borderBottom: sortBy === tab.key ? `2px solid ${C.red}` : '2px solid transparent', marginBottom: -1, color: sortBy === tab.key ? C.red : C.muted, border: 'none', borderBottomWidth: 2, borderBottomStyle: 'solid', borderBottomColor: sortBy === tab.key ? C.red : 'transparent' }}>
                 {tab.label}
               </button>
             ))}
-            <button onClick={fetchLeaderboard} style={{ marginLeft: 'auto', padding: '8px 10px', fontFamily: 'ui-monospace,monospace', fontSize: 9, color: C.faint, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 1 }}>
+            <button onClick={fetchLeaderboard} style={{ marginLeft: 'auto', padding: '8px 10px', fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.faint, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 1 }}>
               ↻ REFRESH
             </button>
           </div>
@@ -2894,9 +2897,9 @@ export default function BidPrixApp() {
                   <div>
                     <div style={{ fontSize: 13.5, fontWeight: 700 }}>
                       {player.username}
-                      {isMe && <span style={{ marginLeft: 6, fontFamily: 'ui-monospace,monospace', fontSize: 9, fontWeight: 800, letterSpacing: 1, color: C.red }}>· YOU</span>}
+                      {isMe && <span style={{ marginLeft: 6, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.red }}>· YOU</span>}
                     </div>
-                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: C.muted, marginTop: 2, letterSpacing: 0.5 }}>
+                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, marginTop: 2, letterSpacing: 0.5 }}>
                       {player.carsCount}/7 LOTS{player.totalPercentGain > 0 ? ` · +${player.totalPercentGain.toFixed(1)}%` : ''}
                     </div>
                   </div>
@@ -2904,7 +2907,7 @@ export default function BidPrixApp() {
                     <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                       ${(Math.round(player.totalScore || 0) / 1000).toFixed(1)}k
                     </div>
-                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10.5, fontWeight: 700, color: positive ? C.pos : C.neg, marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>
+                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: positive ? C.pos : C.neg, marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>
                       {positive ? '+' : ''}{fmtCompact(player.totalDollarGain || 0)}
                     </div>
                   </div>
@@ -2952,31 +2955,77 @@ export default function BidPrixApp() {
     function gainColor(n) { return n > 0 ? C.pos : n < 0 ? C.neg : C.muted }
 
     return (
-      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', paddingBottom: 80, minHeight: '100vh' }}>
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', paddingBottom: 96, minHeight: '100vh' }}>
         {/* Header */}
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <CBrand size={16} />
+          <CBrand size={18} />
           <TopNav screen="dashboard" onNavigate={onNavigate} />
-          <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, letterSpacing: 0.8 }}>{timeStr} · {dateStr}</div>
+          {/* Time/date chip is the History entry point (HISTORY is not a bottom tab) */}
+          <button onClick={() => onNavigate('history')} style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.8, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            {timeStr} · {dateStr} <span style={{ color: C.red }}>▸</span>
+          </button>
         </div>
         <CheckerBar height={3} />
 
         {/* Welcome */}
-        <div style={{ padding: '14px 18px 12px', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.4, marginBottom: 4 }}>{'//'} WELCOME BACK</div>
-          <div style={{ fontFamily: mono, fontSize: 26, fontWeight: 800, letterSpacing: -0.8, textTransform: 'uppercase', lineHeight: 1 }}>{username}</div>
-          <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 4 }}>
+        <div style={{ padding: '16px 22px 14px', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 5 }}>{'//'} WELCOME BACK</div>
+          <div style={{ fontFamily: mono, fontSize: 38, fontWeight: 800, letterSpacing: -1.4, textTransform: 'uppercase', lineHeight: 1 }}>{username}</div>
+          <div style={{ fontFamily: mono, fontSize: 12, color: C.muted, marginTop: 6 }}>
             {selectedLeague ? selectedLeague.name : 'No league — join one to start'}
           </div>
         </div>
 
-        {/* Garage hero card */}
-        <div style={{ margin: '14px 18px', background: C.surface, border: `1px solid ${C.borderHi}`, padding: '14px 16px', borderLeft: `4px solid ${C.red}` }}>
-          <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, letterSpacing: 1.4, marginBottom: 8 }}>GARAGE OVERVIEW</div>
-          <div style={{ fontFamily: mono, fontSize: 32, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>
+        {/* HERO LOT — full-bleed top car (car-forward centerpiece) */}
+        {bestCar && (
+          <div style={{ margin: '16px 22px 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: 1.4, fontWeight: 700 }}>★ TOP LOT IN YOUR GARAGE</div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 1.2, fontWeight: 700 }}>
+                <LiveDot /> LIVE
+              </div>
+            </div>
+            <div style={{ position: 'relative', borderRadius: 3, overflow: 'hidden', border: `1px solid ${C.borderHi}` }}>
+              <CarImg car={bestCar} height={196} radius={0} />
+              {/* gradient scrim */}
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 38%, rgba(10,10,12,0.95) 100%)', pointerEvents: 'none' }} />
+              {/* gain badge */}
+              <div style={{ position: 'absolute', top: 12, right: 12, fontFamily: mono, fontSize: 13, fontWeight: 800, color: C.pos, background: 'rgba(92,209,122,0.16)', border: `1px solid ${C.pos}55`, borderRadius: 2, padding: '4px 8px', fontVariantNumeric: 'tabular-nums' }}>
+                {bestGain >= 0 ? '+' : ''}{fmtCompact(bestGain)}
+              </div>
+              {/* overlaid title */}
+              <div style={{ position: 'absolute', left: 14, right: 14, bottom: 12 }}>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.2, marginBottom: 3 }}>
+                  {bestCar.year} · {bestCar.make && bestCar.make.toUpperCase()}
+                </div>
+                <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.2, color: C.text }}>
+                  {bestCar.title && bestCar.title.replace(`${bestCar.year} `, '')}
+                </div>
+              </div>
+            </div>
+            {/* stat footer */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: `1px solid ${C.border}`, borderTop: 'none' }}>
+              {[
+                { label: 'DRAFTED',  value: fmtK(bestCar.purchasePrice), color: C.text },
+                { label: 'NOW',      value: fmtK(bestCar.currentBid || bestCar.purchasePrice), color: C.text },
+                { label: 'NET GAIN', value: (bestGain >= 0 ? '+' : '') + fmtCompact(bestGain), color: gainColor(bestGain) },
+              ].map((s, i) => (
+                <div key={s.label} style={{ padding: '12px 14px', borderLeft: i === 0 ? 'none' : `1px solid ${C.border}` }}>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1.2, marginBottom: 4 }}>{s.label}</div>
+                  <div style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Total-value card */}
+        <div style={{ margin: '16px 22px', background: C.surface, border: `1px solid ${C.borderHi}`, padding: '16px 18px', borderLeft: `4px solid ${C.red}` }}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 8 }}>TOTAL VALUE</div>
+          <div style={{ fontFamily: mono, fontSize: 46, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1.8, lineHeight: 1 }}>
             {fmtUSD(totalCurrent)}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', marginTop: 10, gap: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', marginTop: 14, gap: 0 }}>
             {[
               { label: 'NET',    value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
               { label: 'ROSTER', value: `${garage.length}/7`, color: garage.length === 7 ? C.pos : C.text },
@@ -2984,61 +3033,22 @@ export default function BidPrixApp() {
               { label: 'LEAGUE', value: selectedLeague ? 'ACTIVE' : '—', color: selectedLeague ? C.pos : C.faint },
             ].map(s => (
               <div key={s.label}>
-                <div style={{ fontFamily: mono, fontSize: 8, color: C.faint, letterSpacing: 1.2 }}>{s.label}</div>
-                <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, marginTop: 2, color: s.color, fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>{s.label}</div>
+                <div style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, marginTop: 3, color: s.color, fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Stats strip */}
-        <div style={{ padding: '0 18px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {[
-            { label: 'AUCTION EARNINGS', value: (totalGain >= 0 ? '+' : '') + fmtUSD(totalGain), color: gainColor(totalGain), sub: 'vs draft prices' },
-            { label: 'CARS DRAFTED',     value: `${garage.length}/7`, color: garage.length === 7 ? C.pos : C.text, sub: 'roster slots filled' },
-          ].map(s => (
-            <div key={s.label} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: '12px' }}>
-              <div style={{ fontFamily: mono, fontSize: 8.5, color: C.muted, letterSpacing: 1.3, marginBottom: 6 }}>{s.label}</div>
-              <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 800, color: s.color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{s.value}</div>
-              <div style={{ fontFamily: mono, fontSize: 8.5, color: C.faint, marginTop: 4 }}>{s.sub}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Best performer */}
-        {bestCar && (
-          <div style={{ margin: '0 18px 14px', background: C.surface, border: `1px solid ${C.amber}44`, padding: '12px', borderLeft: `3px solid ${C.amber}` }}>
-            <div style={{ fontFamily: mono, fontSize: 9.5, color: C.amber, letterSpacing: 1.3, marginBottom: 8 }}>★ BEST PERFORMER</div>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <div style={{ width: 80, flexShrink: 0 }}><CarImg car={bestCar} height={60} radius={2} /></div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3, marginBottom: 4 }}>
-                  {bestCar.title && bestCar.title.replace(`${bestCar.year} `, '')}
-                </div>
-                <div style={{ display: 'flex', gap: 16 }}>
-                  <div>
-                    <div style={{ fontFamily: mono, fontSize: 8, color: C.faint, letterSpacing: 1 }}>DRAFT</div>
-                    <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700 }}>{fmtK(bestCar.purchasePrice)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontFamily: mono, fontSize: 8, color: C.faint, letterSpacing: 1 }}>NET GAIN</div>
-                    <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: gainColor(bestGain) }}>{bestGain >= 0 ? '+' : ''}{fmtCompact(bestGain)}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Live ticker */}
         {recentUpdates.length > 0 && (
-          <div style={{ margin: '0 18px 14px', background: C.surface, border: `1px solid ${C.border}`, padding: '12px' }}>
-            <div style={{ fontFamily: mono, fontSize: 9.5, color: C.muted, letterSpacing: 1.6, marginBottom: 8 }}>{'//'} LIVE MARKET</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <div style={{ margin: '0 22px 16px', background: C.surface, border: `1px solid ${C.border}`, padding: '14px 16px' }}>
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.6, marginBottom: 10 }}>{'//'} LIVE MARKET</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {recentUpdates.slice(0, 4).map((t, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: mono, fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
-                  <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: 1, color: C.red, width: 52, flexShrink: 0 }}>BID UP</span>
-                  <span style={{ flex: 1, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11.5 }}>{t.carTitle}</span>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: mono, fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.red, width: 56, flexShrink: 0 }}>BID UP</span>
+                  <span style={{ flex: 1, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}>{t.carTitle}</span>
                   <span style={{ color: C.pos, fontWeight: 700 }}>+{fmtK(t.amount)}</span>
                 </div>
               ))}
@@ -3047,11 +3057,11 @@ export default function BidPrixApp() {
         )}
 
         {/* Quick links */}
-        <div style={{ margin: '0 18px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <button onClick={() => onNavigate('leaderboard')} style={{ height: 44, borderRadius: 3, background: C.surface, border: `1px solid ${C.border}`, color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 700, letterSpacing: 1.1, cursor: 'pointer' }}>
+        <div style={{ margin: '0 22px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <button onClick={() => onNavigate('leaderboard')} style={{ height: 48, borderRadius: 3, background: C.surface, border: `1px solid ${C.border}`, color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 700, letterSpacing: 1.1, cursor: 'pointer' }}>
             VIEW STANDINGS ▸
           </button>
-          <button onClick={() => onNavigate('cars')} style={{ height: 44, borderRadius: 3, background: C.red, border: 'none', color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: 1.1, cursor: 'pointer' }}>
+          <button onClick={() => onNavigate('cars')} style={{ height: 48, borderRadius: 3, background: C.red, border: 'none', color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1.1, cursor: 'pointer' }}>
             PICK CARS ▸
           </button>
         </div>
@@ -3064,16 +3074,16 @@ export default function BidPrixApp() {
   function HistoryScreenC({ onNavigate }) {
     const username = user?.user_metadata?.username || user?.email?.split('@')[0] || 'DRIVER'
     return (
-      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 80 }}>
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 96 }}>
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <CBrand size={16} />
           <TopNav screen="history" onNavigate={onNavigate} />
-          <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: mono, fontSize: 10, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>OUT</button>
+          <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: mono, fontSize: 11, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>OUT</button>
         </div>
         <CheckerBar height={3} />
         <div style={{ padding: '14px 18px 8px', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ fontFamily: mono, fontSize: 9.5, color: C.red, letterSpacing: 1.6, marginBottom: 4 }}>{'//'} {username.toUpperCase()}</div>
-          <div style={{ fontFamily: mono, fontSize: 28, fontWeight: 800, letterSpacing: -1, textTransform: 'uppercase' }}>HISTORY</div>
+          <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 1.6, marginBottom: 4 }}>{'//'} {username.toUpperCase()}</div>
+          <div style={{ fontFamily: mono, fontSize: 40, fontWeight: 800, letterSpacing: -1.6, textTransform: 'uppercase' }}>HISTORY</div>
         </div>
         <UserHistory supabase={supabase} user={user} />
         <BottomTabBar screen="history" onNavigate={onNavigate} />
@@ -3085,7 +3095,7 @@ export default function BidPrixApp() {
     const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
     const isDraftOpen = draftStatus.status === 'open'
     return (
-      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 80 }}>
+      <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 96 }}>
         <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <CBrand size={16} />
           <TopNav screen="draft-results" onNavigate={onNavigate} />
@@ -3100,7 +3110,7 @@ export default function BidPrixApp() {
             </div>
             {selectedLeague && (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: C.surface, border: `1px solid ${C.amber}44` }}>
-                <span style={{ fontFamily: mono, fontSize: 9.5, color: C.amber, letterSpacing: 1.2 }}>STATUS</span>
+                <span style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: 1.2 }}>STATUS</span>
                 <span style={{ fontFamily: mono, fontSize: 14, fontWeight: 800, color: C.amber }}>{draftStatus.message}</span>
               </div>
             )}
@@ -3108,8 +3118,8 @@ export default function BidPrixApp() {
         ) : (
           <>
             <div style={{ padding: '14px 18px 10px' }}>
-              <div style={{ fontFamily: mono, fontSize: 9.5, color: C.red, letterSpacing: 1.6, marginBottom: 4 }}>{'//'} DRAFT CLOSED</div>
-              <div style={{ fontFamily: mono, fontSize: 28, fontWeight: 800, letterSpacing: -1, textTransform: 'uppercase' }}>DRAFT PICKS</div>
+              <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 1.6, marginBottom: 4 }}>{'//'} DRAFT CLOSED</div>
+              <div style={{ fontFamily: mono, fontSize: 40, fontWeight: 800, letterSpacing: -1.6, textTransform: 'uppercase' }}>DRAFT PICKS</div>
             </div>
             <DraftResults supabase={supabase} selectedLeague={selectedLeague} draftStatus={draftStatus} getDefaultCarImage={getDefaultCarImage} />
           </>
