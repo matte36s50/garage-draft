@@ -466,10 +466,13 @@ function fmtCompact(n) {
   return `$${Math.round(n)}`
 }
 
-function CarPlaceholder({ tint = '#3a4a6b', height = 86, radius = 2 }) {
+function CarPlaceholder({ tint = '#3a4a6b', height = 86, radius = 2, aspect, maxHeight }) {
+  const box = aspect
+    ? { width: '100%', aspectRatio: aspect, maxHeight }
+    : { height }
   return (
     <div style={{
-      height, borderRadius: radius, background: tint, overflow: 'hidden',
+      ...box, borderRadius: radius, background: tint, overflow: 'hidden',
       backgroundImage: `repeating-linear-gradient(135deg,rgba(0,0,0,0.15) 0 4px,transparent 4px 8px)`,
     }} />
   )
@@ -512,13 +515,45 @@ function useCountUp(target, duration) {
   return displayed
 }
 
-function CarImg({ car, height, radius }) {
+// Viewport hook — true at/above the web breakpoint (default 700px).
+// Used to switch car photos from the mobile fixed-height banner crop to a
+// ratio-locked crop on the web build so the whole car stays in frame.
+function useIsWide(breakpoint) {
+  breakpoint = breakpoint || 700
+  const query = `(min-width: ${breakpoint}px)`
+  const [wide, setWide] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(query).matches
+      : false
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia(query)
+    const onChange = e => setWide(e.matches)
+    setWide(mq.matches)
+    if (mq.addEventListener) mq.addEventListener('change', onChange)
+    else mq.addListener(onChange)
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange)
+      else mq.removeListener(onChange)
+    }
+  }, [query])
+  return wide
+}
+
+function CarImg({ car, height, radius, aspect, maxHeight, objectPosition }) {
   height = height || 100; radius = radius || 3
+  objectPosition = objectPosition || 'center 60%'
+  // Web build: lock the crop ratio (aspect) so the photo grows taller with the
+  // card; cap with maxHeight. Mobile build: keep the fixed-height banner crop.
+  const box = aspect
+    ? { width: '100%', aspectRatio: aspect, maxHeight, borderRadius: radius }
+    : { width: '100%', height, borderRadius: radius }
   const [err, setErr] = useState(false)
   if (err || !car || !car.imageUrl) {
     return (
       <div style={{
-        height, borderRadius: radius, width: '100%',
+        ...box,
         background: 'repeating-linear-gradient(135deg,rgba(255,255,255,0.05) 0 6px,rgba(0,0,0,0.12) 6px 12px)',
         backgroundColor: '#1e1e28', display: 'flex', alignItems: 'flex-end', padding: '6px 8px',
       }}>
@@ -529,7 +564,7 @@ function CarImg({ car, height, radius }) {
     )
   }
   return <img src={car.imageUrl} alt={car.title} onError={() => setErr(true)}
-    style={{ width: '100%', height, objectFit: 'cover', objectPosition: 'center 60%', borderRadius: radius, display: 'block' }} />
+    style={{ ...box, objectFit: 'cover', objectPosition, display: 'block' }} />
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -1441,6 +1476,7 @@ export default function BidPrixApp() {
   }, [selectedLeague, user, bonusCar])
 
   function LandingScreen({ onGetStarted }) {
+    const isWide = useIsWide(700)
     const TICKER_ROWS = [
       { t: 'NEW BID', n: '1991 BMW M5', v: '+$2,700', good: true },
       { t: 'SELECTED', n: 'shop_rat → S2000', v: '$24.0k', good: null },
@@ -1504,7 +1540,7 @@ export default function BidPrixApp() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {MOCK_CARS.map(c => (
               <div key={c.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10 }}>
-                <CarPlaceholder tint={c.img} height={118} radius={2} />
+                <CarPlaceholder tint={c.img} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 320 : undefined} radius={2} />
                 <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 8 }}>LOT {c.id.slice(1).padStart(4,'0')} · {c.year}</div>
                 <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, height: 38, lineHeight: 1.3, overflow: 'hidden' }}>{c.title.replace(`${c.year} `,'')}</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 6 }}>
@@ -1978,6 +2014,7 @@ export default function BidPrixApp() {
   }
 
   function CarsScreen({ onNavigate, currentScreen }) {
+    const isWide = useIsWide(700)
     const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
     const canPick = draftStatus.status === 'open'
     const budgetTotal = selectedLeague?.spending_limit || 200000
@@ -2193,10 +2230,10 @@ export default function BidPrixApp() {
                   )}
                   {car.auctionUrl ? (
                     <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
-                      <CarImg car={car} height={160} radius={2} />
+                      <CarImg car={car} height={isWide ? undefined : 160} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 360 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={2} />
                     </a>
                   ) : (
-                    <CarImg car={car} height={160} radius={2} />
+                    <CarImg car={car} height={isWide ? undefined : 160} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 360 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={2} />
                   )}
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 7 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
                   <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, lineHeight: 1.25, height: 38, overflow: 'hidden' }}>{car.title && car.title.replace(`${car.year} `, '')}</div>
@@ -2260,6 +2297,7 @@ export default function BidPrixApp() {
   }
 
   function GarageScreen({ onNavigate, currentScreen }) {
+    const isWide = useIsWide(700)
     const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
     const canModify = draftStatus.status === 'open'
     const [prediction, setPrediction] = useState('')
@@ -2330,7 +2368,7 @@ export default function BidPrixApp() {
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 0.8, marginBottom: 5, position: 'absolute', top: 8, right: 8 }}>
                     LOT {String(i + 1).padStart(2, '0')}
                   </div>
-                  <CarImg car={car} height={118} radius={2} />
+                  <CarImg car={car} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 360 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={2} />
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 6 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
                   <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, lineHeight: 1.25, height: 38, overflow: 'hidden' }}>
                     {car.title && car.title.replace(`${car.year} `, '')}
@@ -2937,6 +2975,7 @@ export default function BidPrixApp() {
   }
 
   function DashboardScreenC({ onNavigate }) {
+    const isWide = useIsWide(700)
     const now = new Date()
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
     const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()
@@ -2986,7 +3025,7 @@ export default function BidPrixApp() {
               </div>
             </div>
             <div style={{ position: 'relative', borderRadius: 3, overflow: 'hidden', border: `1px solid ${C.borderHi}` }}>
-              <CarImg car={bestCar} height={196} radius={0} />
+              <CarImg car={bestCar} height={isWide ? undefined : 196} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 440 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={0} />
               {/* gradient scrim */}
               <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 38%, rgba(10,10,12,0.95) 100%)', pointerEvents: 'none' }} />
               {/* gain badge */}
