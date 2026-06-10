@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Car, Trophy, Users, DollarSign, LogOut, Zap, TrendingUp, LayoutDashboard, History, ChevronDown, Check } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import LeagueChat from './components/LeagueChat'
@@ -676,6 +676,8 @@ export default function BidPrixApp() {
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [recentUpdates, setRecentUpdates] = useState([])
   const [isChatOpen, setIsChatOpen] = useState(false)
+  const [authLinkError, setAuthLinkError] = useState('')
+  const authLinkErrorRef = useRef(false)
 
   const updateCurrentScreen = (screen) => {
     setCurrentScreen(screen)
@@ -1305,6 +1307,18 @@ export default function BidPrixApp() {
   }
 
   useEffect(() => {
+    // Supabase reports auth-link failures (expired/used reset or magic links) as
+    // hash params, e.g. #error=access_denied&error_code=otp_expired&error_description=...
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    if (hashParams.get('error')) {
+      const code = hashParams.get('error_code')
+      setAuthLinkError(code === 'otp_expired'
+        ? 'That link has expired or was already used. Request a fresh one below.'
+        : (hashParams.get('error_description') || 'Sign-in link failed. Request a fresh one below.'))
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      authLinkErrorRef.current = true
+      updateCurrentScreen('forgot-password')
+    }
     supabase.auth.getSession().then(async ({ data: { session }}) => {
       if (session) {
         setUser(session.user)
@@ -1343,6 +1357,10 @@ export default function BidPrixApp() {
             updateCurrentScreen('leagues')
           }
         }
+      } else if (authLinkErrorRef.current) {
+        // Keep the forgot-password screen visible after a failed auth link;
+        // the no-session INITIAL_SESSION event would otherwise bounce to landing.
+        authLinkErrorRef.current = false
       } else {
         updateCurrentScreen('landing')
       }
@@ -1697,6 +1715,7 @@ export default function BidPrixApp() {
       e.preventDefault()
       if (!email.trim()) return
       setLoading(true)
+      setAuthLinkError('')
       try {
         const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin })
         if (error) console.error('Password reset error:', error)
@@ -1734,6 +1753,11 @@ export default function BidPrixApp() {
             <div style={{ fontFamily: mono, fontSize: 24, fontWeight: 800, letterSpacing: -0.8, textTransform: 'uppercase', marginBottom: 6 }}>RESET PASSWORD</div>
             <div style={{ fontSize: 13, color: C.muted, marginBottom: 28 }}>Enter your email and we&apos;ll send a reset link.</div>
             <CheckerBar height={2} />
+            {authLinkError && (
+              <div style={{ marginTop: 16, padding: '12px 14px', background: `${C.amber}18`, border: `1px solid ${C.amber}44`, borderRadius: 4, fontFamily: mono, fontSize: 11, color: C.amber }}>
+                {authLinkError}
+              </div>
+            )}
             <form onSubmit={handleSubmit} style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
               <div>
                 <label style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1.4, color: C.muted, display: 'block', marginBottom: 6 }}>EMAIL ADDRESS</label>
