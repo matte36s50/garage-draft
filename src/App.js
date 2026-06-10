@@ -600,7 +600,7 @@ const NAV_TABS = [
     { id: 'leagues',     label: 'AUCTIONS', icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><circle cx="7" cy="8" r="3" stroke="currentColor" strokeWidth="1.7"/><path d="M2 17c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M14 6c1.1 0 2 .9 2 2s-.9 2-2 2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M18 17c0-2.21-1.79-4-4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg> },
     { id: 'cars',        label: 'PICK',     icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 5.4H18l-4.9 3.5 1.8 5.6L10 13l-4.9 3.5 1.8-5.6L2 7.4h6.2L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
     { id: 'garage',      label: 'GARAGE',   icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M3 9l7-6 7 6v8a1 1 0 01-1 1H4a1 1 0 01-1-1V9z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><rect x="8" y="13" width="4" height="4" rx="0.5" stroke="currentColor" strokeWidth="1.5"/></svg> },
-    { id: 'leaderboard', label: 'RANKS',    icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L10 14.4l-4.8 2.5.9-5.4L2.2 7.7l5.4-.8L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
+    { id: 'leaderboard', label: 'STANDINGS', icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L10 14.4l-4.8 2.5.9-5.4L2.2 7.7l5.4-.8L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
   ]
 
 // Desktop top-nav row (hidden on mobile via .bp-topnav). Shares NAV_TABS + onNavigate
@@ -1265,7 +1265,7 @@ export default function BidPrixApp() {
     if (garage.length >= 7) { alert('Garage is full!'); return }
     const draftPrice = auction.baselinePrice || auction.currentBid
     if (budget < draftPrice) { alert('Not enough budget remaining!'); return }
-    if (!user || !selectedLeague || !userGarageId) { alert('Please join a league first!'); return }
+    if (!user || !selectedLeague || !userGarageId) { alert('Please join an auction first!'); return }
 
     // Server-side enforcement: the draft_car RPC validates the budget, the 7-car
     // cap, the draft window and the auction pool, and deducts the budget atomically.
@@ -2085,11 +2085,11 @@ export default function BidPrixApp() {
               JOIN AN AUCTION<br/>FIRST
             </div>
             <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.55, maxWidth: 260, margin: '0 0 28px' }}>
-              Head to Auctions, pick an open league, and join it. Then come back here to choose your 7 cars.
+              Head to Auctions, pick an open auction, and join it. Then come back here to choose your 7 cars.
             </p>
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 28 }}>
               {[
-                { n: '01', t: 'GO TO AUCTIONS', d: 'Find an open league to join', active: false },
+                { n: '01', t: 'GO TO AUCTIONS', d: 'Find an open auction to join', active: false },
                 { n: '02', t: 'PICK 7 CARS', d: "You're here — choose your garage", active: true },
                 { n: '03', t: 'WATCH THE MARKET', d: 'Live bids update every minute', active: false },
               ].map(s => (
@@ -3011,7 +3011,7 @@ export default function BidPrixApp() {
           <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 5 }}>{'//'} WELCOME BACK</div>
           <div style={{ fontFamily: mono, fontSize: 38, fontWeight: 800, letterSpacing: -1.4, textTransform: 'uppercase', lineHeight: 1 }}>{username}</div>
           <div style={{ fontFamily: mono, fontSize: 12, color: C.muted, marginTop: 6 }}>
-            {selectedLeague ? selectedLeague.name : 'No league — join one to start'}
+            {selectedLeague ? selectedLeague.name : 'No auction — join one to start'}
           </div>
         </div>
 
@@ -3069,7 +3069,7 @@ export default function BidPrixApp() {
               { label: 'NET',    value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
               { label: 'ROSTER', value: `${garage.length}/7`, color: garage.length === 7 ? C.pos : C.text },
               { label: 'BUDGET', value: fmtK(budget), color: budget < 20000 ? C.amber : C.text },
-              { label: 'LEAGUE', value: selectedLeague ? 'ACTIVE' : '—', color: selectedLeague ? C.pos : C.faint },
+              { label: 'AUCTION', value: selectedLeague ? 'ACTIVE' : '—', color: selectedLeague ? C.pos : C.faint },
             ].map(s => (
               <div key={s.label}>
                 <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>{s.label}</div>

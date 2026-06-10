@@ -130,7 +130,7 @@ export default function UserHistory({ supabase, user }) {
       <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.5, marginBottom: 12 }}>{'//'} CAREER STATS</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: `1px solid ${C.border}`, background: C.surface }}>
         {[
-          { label: 'RACES', value: stats.totalLeagues, color: C.text },
+          { label: 'AUCTIONS', value: stats.totalLeagues, color: C.text },
           { label: 'WINS', value: stats.wins, color: stats.wins > 0 ? C.amber : C.text },
           { label: 'BEST FINISH', value: stats.bestFinish ? `P${String(stats.bestFinish).padStart(2, '0')}` : '—', color: stats.bestFinish === 1 ? C.amber : C.text },
         ].map((s, i) => (
