@@ -43,7 +43,7 @@ export default function UserHistory({ supabase, user }) {
 
       if (error) {
         console.error('Error fetching history:', error);
-        setFetchError(error.message || 'Failed to load auction history');
+        setFetchError(error.message || 'Failed to load event history');
         setResults([]);
         return;
       }
@@ -65,7 +65,7 @@ export default function UserHistory({ supabase, user }) {
       }
     } catch (error) {
       console.error('Failed to fetch history:', error);
-      setFetchError(error.message || 'Failed to load auction history');
+      setFetchError(error.message || 'Failed to load event history');
     } finally {
       setLoading(false);
     }
@@ -130,7 +130,7 @@ export default function UserHistory({ supabase, user }) {
       <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.5, marginBottom: 12 }}>{'//'} CAREER STATS</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: `1px solid ${C.border}`, background: C.surface }}>
         {[
-          { label: 'AUCTIONS', value: stats.totalLeagues, color: C.text },
+          { label: 'EVENTS', value: stats.totalLeagues, color: C.text },
           { label: 'WINS', value: stats.wins, color: stats.wins > 0 ? C.amber : C.text },
           { label: 'BEST FINISH', value: stats.bestFinish ? `P${String(stats.bestFinish).padStart(2, '0')}` : '—', color: stats.bestFinish === 1 ? C.amber : C.text },
         ].map((s, i) => (
@@ -148,8 +148,8 @@ export default function UserHistory({ supabase, user }) {
         </span>
       </div>
 
-      {/* Past Auctions */}
-      <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.5, margin: '22px 0 12px' }}>{'//'} PAST AUCTIONS</div>
+      {/* Past Events */}
+      <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.5, margin: '22px 0 12px' }}>{'//'} PAST EVENTS</div>
 
       {fetchError ? (
         <div style={{ background: 'rgba(239,58,50,0.08)', border: `1px solid ${C.red}55`, padding: 24, textAlign: 'center' }}>
@@ -158,8 +158,8 @@ export default function UserHistory({ supabase, user }) {
         </div>
       ) : results.length === 0 ? (
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 28, textAlign: 'center' }}>
-          <p style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: C.muted, letterSpacing: 1.2 }}>NO COMPLETED AUCTIONS YET</p>
-          <p style={{ fontSize: 13, color: C.faint, marginTop: 6 }}>Your auction history will appear here once auctions are completed.</p>
+          <p style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: C.muted, letterSpacing: 1.2 }}>NO COMPLETED EVENTS YET</p>
+          <p style={{ fontSize: 13, color: C.faint, marginTop: 6 }}>Your event history will appear here once events are completed.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -186,7 +186,7 @@ export default function UserHistory({ supabase, user }) {
                       )}
                     </div>
                     <div style={{ fontSize: 17, fontWeight: 700, color: C.text, lineHeight: 1.2, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {league?.name || 'Unknown Auction'}
+                      {league?.name || 'Unknown Event'}
                     </div>
                     <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 5 }}>
                       {league?.draft_starts_at && league?.draft_ends_at
