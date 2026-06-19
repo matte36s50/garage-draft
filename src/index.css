@@ -58,6 +58,14 @@
 .bg-bpGold{background-color:var(--bp-gold)}
 .border-bpNavy\/20{border-color:rgba(15,26,43,0.2)}
 
+/* Bonus-car prediction slider (amber, Direction C) */
+.bp-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 3px; outline: none; cursor: pointer; }
+.bp-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 28px; height: 28px; border-radius: 50%; background: var(--c-amber); border: 4px solid var(--c-bg); cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }
+.bp-slider::-moz-range-thumb { width: 28px; height: 28px; border-radius: 50%; background: var(--c-amber); border: 4px solid var(--c-bg); cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }
+.bp-slider:disabled { cursor: default; }
+.bp-slider:disabled::-webkit-slider-thumb { cursor: default; }
+.bp-slider:disabled::-moz-range-thumb { cursor: default; }
+
 /* Safe area for mobile bottom nav */
 .safe-area-pb { padding-bottom: env(safe-area-inset-bottom, 0px); }
 

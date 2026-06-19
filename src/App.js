@@ -478,6 +478,31 @@ function CarPlaceholder({ tint = '#3a4a6b', height = 86, radius = 2, aspect, max
   )
 }
 
+// Value-trajectory sparkline (SVG area + line). vectorEffect keeps the stroke crisp
+// when the viewBox is stretched to full width; color is driven by gain (green/red).
+function Sparkline({ data, color, width = 300, height = 44 }) {
+  if (!data || data.length < 2) return null
+  const min = Math.min(...data), max = Math.max(...data)
+  const span = max - min || 1
+  const stepX = width / (data.length - 1)
+  const pts = data.map((v, i) => [i * stepX, height - ((v - min) / span) * (height - 6) - 3])
+  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ')
+  const area = `${line} L${width.toFixed(1)} ${height} L0 ${height} Z`
+  const gid = `spark-${String(color).replace(/[^a-z0-9]/gi, '')}`
+  return (
+    <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${gid})`} />
+      <path d={line} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 // Direction C shared atoms ────────────────────────────────────────────────────
 const mono = 'ui-monospace,"JetBrains Mono",monospace'
 
@@ -602,29 +627,6 @@ const NAV_TABS = [
     { id: 'garage',      label: 'GARAGE',   icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M3 9l7-6 7 6v8a1 1 0 01-1 1H4a1 1 0 01-1-1V9z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><rect x="8" y="13" width="4" height="4" rx="0.5" stroke="currentColor" strokeWidth="1.5"/></svg> },
     { id: 'leaderboard', label: 'RANKS',    icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect x="2" y="10" width="4.5" height="7" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><rect x="7.75" y="5" width="4.5" height="12" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><rect x="13.5" y="12.5" width="4.5" height="4.5" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
   ]
-
-// Desktop top-nav row (hidden on mobile via .bp-topnav). Shares NAV_TABS + onNavigate
-// with the mobile BottomTabBar so both navs run the same click logic.
-function TopNav({ screen, onNavigate }) {
-  return (
-    <nav className="bp-topnav" style={{ alignItems: 'center', gap: 22 }}>
-      {[...NAV_TABS, { id: 'history', label: 'HISTORY' }].map(t => {
-        const active = screen === t.id
-        return (
-          <button key={t.id} onClick={() => onNavigate(t.id)} style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
-            fontFamily: mono, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1,
-            color: active ? C.red : C.faint,
-            borderBottom: active ? `2px solid ${C.red}` : '2px solid transparent',
-            lineHeight: 1.4,
-          }}>
-            {t.label}
-          </button>
-        )
-      })}
-    </nav>
-  )
-}
 
 function BottomTabBar({ screen, onNavigate }) {
   return (
@@ -764,6 +766,136 @@ export default function BidPrixApp() {
       Lamborghini: 'https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=640&h=420&fit=crop'
     }
     return (make && map[make]) || map['Ford']
+  }
+
+  // Desktop top-nav bar — clarified WEB-NAV spec. Icon + label items, three-way
+  // active state (red icon + bold white label + 3px red underline) and a live
+  // status pill driven by the current event's lifecycle. History is intentionally
+  // not a nav item (reached via the dashboard "PAST EVENTS" link, same as mobile).
+  function TopNav({ screen, onNavigate }) {
+    const ds = selectedLeague ? getDraftStatus(selectedLeague) : null
+    const pill = !ds ? null
+      : ds.status === 'open'     ? { label: 'DRAFT OPEN', color: C.pos }
+      : ds.status === 'closed'   ? { label: 'LIVE',       color: '#3a8aef' }
+      : ds.status === 'upcoming' ? { label: 'OPENS SOON', color: C.muted }
+      :                            { label: 'FINISHED',   color: C.muted }
+    return (
+      <nav className="bp-topnav" style={{ alignItems: 'center', gap: 2, flex: 1, justifyContent: 'center' }}>
+        {NAV_TABS.map(t => {
+          const active = screen === t.id
+          return (
+            <button key={t.id} onClick={() => onNavigate(t.id)} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 9, height: 44, padding: '0 14px',
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontFamily: mono, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.2,
+              fontWeight: active ? 800 : 600,
+              color: active ? C.text : C.muted,
+              borderBottom: active ? `3px solid ${C.red}` : '3px solid transparent',
+            }}>
+              <span style={{ color: active ? C.red : 'currentColor', lineHeight: 0, display: 'inline-flex' }}>
+                {React.cloneElement(t.icon, { width: 18, height: 18 })}
+              </span>
+              {t.label}
+            </button>
+          )
+        })}
+        {pill && (
+          <span style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 7, border: `1px solid ${pill.color}44`, borderRadius: 999, padding: '7px 14px' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: pill.color, boxShadow: `0 0 0 3px ${pill.color}33`, flexShrink: 0 }} />
+            <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: pill.color, letterSpacing: 1 }}>{pill.label}</span>
+          </span>
+        )}
+      </nav>
+    )
+  }
+
+  // Bonus-car prediction module (BONUS-CAR-SPEC). One prominent, shared card used on
+  // both Garage and Dashboard so the locked call shows identically everywhere. Backed
+  // by the real bonus-prediction record (userPrediction / submitPrediction) — one
+  // prediction per player per event, editable until the lot closes.
+  function BonusCarCard({ isWide }) {
+    const car = bonusCar
+    const lo = Math.round(car.currentBid) || 0
+    const hi = Math.max(lo + 1000, Math.round((car.currentBid * 2) / 1000) * 1000)
+    const def = Math.min(hi, Math.max(lo, Math.round((car.currentBid * 1.2) / 500) * 500))
+    const [editing, setEditing] = useState(false)
+    const [pred, setPred] = useState(() =>
+      Math.min(hi, Math.max(lo, Math.round(userPrediction != null ? userPrediction : def)))
+    )
+    const locked = userPrediction != null && !editing
+    const pct = hi > lo ? (pred - lo) / (hi - lo) : 0
+    const overBid = pred - car.currentBid
+    const model = car.title && car.year ? car.title.replace(`${car.year} `, '') : car.title
+    const lock = () => { submitPrediction(pred); setEditing(false) }
+    const edit = () => setEditing(true)
+
+    return (
+      <div style={{ position: 'relative', background: C.surface, border: `1px solid ${C.amber}55`, borderTop: `3px solid ${C.amber}`, overflow: 'hidden' }}>
+        {/* Header band */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px 12px', borderBottom: `1px solid ${C.border}`, background: `${C.amber}0e` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <span style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 800, color: C.amber, letterSpacing: 1.4 }}>★ BONUS CAR</span>
+            <span style={{ fontFamily: mono, fontSize: 10.5, fontWeight: 800, color: '#000', background: C.amber, padding: '2px 7px', borderRadius: 3, letterSpacing: 0.8 }}>2× POINTS</span>
+          </div>
+          {car.timeLeft && <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1 }}>CLOSES {car.timeLeft}</span>}
+        </div>
+
+        {/* Cinematic image with overlaid title */}
+        <div style={{ position: 'relative' }}>
+          <CarImg car={car} height={isWide ? undefined : 168} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 380 : undefined} objectPosition="center 45%" radius={0} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(10,10,12,0) 35%,rgba(10,10,12,0.5) 66%,rgba(10,10,12,0.94) 100%)' }} />
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '14px 16px' }}>
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: 1, marginBottom: 4 }}>{car.year} · {car.make && car.make.toUpperCase()}</div>
+            <div style={{ fontSize: 19, fontWeight: 700, lineHeight: 1.12, letterSpacing: -0.3 }}>{model}</div>
+          </div>
+        </div>
+
+        {/* Mechanic + prediction */}
+        <div style={{ padding: 16 }}>
+          <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5, marginBottom: 16 }}>
+            You don't own this lot — <strong style={{ color: C.text }}>call its final hammer price</strong>. The closest prediction in your event scores a <strong style={{ color: C.amber }}>2× points bonus</strong>.
+          </div>
+
+          {/* Your call vs current bid */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div>
+              <div style={{ fontFamily: mono, fontSize: 10.5, color: C.amber, letterSpacing: 1.3, marginBottom: 4 }}>YOUR CALL</div>
+              <div style={{ fontFamily: mono, fontSize: 34, fontWeight: 800, color: C.amber, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>{fmtUSD(pred)}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>CURRENT BID</div>
+              <div style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmtUSD(car.currentBid)}</div>
+              <div style={{ fontFamily: mono, fontSize: 11, color: overBid >= 0 ? C.pos : C.neg, marginTop: 3 }}>{overBid >= 0 ? '+' : ''}{fmtK(overBid)} vs now</div>
+            </div>
+          </div>
+
+          {/* Slider */}
+          <input
+            type="range" className="bp-slider"
+            min={lo} max={hi} step={500} value={pred}
+            disabled={locked}
+            onChange={e => setPred(parseInt(e.target.value, 10))}
+            style={{ background: `linear-gradient(90deg, ${C.amber} 0%, ${C.amber} ${pct * 100}%, ${C.border} ${pct * 100}%, ${C.border} 100%)`, opacity: locked ? 0.55 : 1 }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
+            <span style={{ fontFamily: mono, fontSize: 10.5, color: C.faint }}>{fmtK(lo)}</span>
+            <span style={{ fontFamily: mono, fontSize: 10.5, color: C.faint }}>{fmtK(hi)}</span>
+          </div>
+
+          {/* Action */}
+          {locked ? (
+            <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: `${C.pos}12`, border: `1px solid ${C.pos}44`, borderRadius: 4 }}>
+              <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: C.pos, letterSpacing: 0.6 }}>✓ CALL LOCKED · {fmtUSD(userPrediction)}</span>
+              <button onClick={edit} style={{ fontFamily: mono, fontSize: 11.5, fontWeight: 700, color: C.muted, background: 'none', border: `1px solid ${C.border}`, borderRadius: 3, padding: '6px 12px', letterSpacing: 0.8, cursor: 'pointer' }}>EDIT</button>
+            </div>
+          ) : (
+            <button onClick={lock} style={{ marginTop: 16, width: '100%', height: 50, borderRadius: 4, border: 'none', background: C.amber, color: '#000', fontFamily: mono, fontSize: 13, fontWeight: 800, letterSpacing: 1.4, cursor: 'pointer', textTransform: 'uppercase' }}>
+              Lock in prediction ▸
+            </button>
+          )}
+        </div>
+      </div>
+    )
   }
 
   const fetchBonusCar = async (leagueId) => {
@@ -2325,10 +2457,6 @@ export default function BidPrixApp() {
     const isWide = useIsWide(700)
     const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
     const canModify = draftStatus.status === 'open'
-    const [prediction, setPrediction] = useState('')
-    const [submitted, setSubmitted] = useState(!!userPrediction)
-    const [showPredict, setShowPredict] = useState(false)
-
     const totalCurrentValue = garage.reduce((s, c) => s + (c.currentBid || c.purchasePrice || 0), 0)
     const totalDraftValue   = garage.reduce((s, c) => s + (c.purchasePrice || 0), 0)
     const totalGain         = totalCurrentValue - totalDraftValue
@@ -2437,38 +2565,10 @@ export default function BidPrixApp() {
           </div>
         </div>
 
-        {/* Bonus car prediction */}
+        {/* Bonus car prediction — shared prominent module (BONUS-CAR-SPEC) */}
         {bonusCar && (
-          <div style={{ margin: '18px 18px 0', padding: '14px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.amber}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <div>
-                <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: 1.3, fontWeight: 700, marginBottom: 3 }}>★ BONUS CAR</div>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{bonusCar.title}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>CURRENT</div>
-                <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700 }}>{fmtUSD(bonusCar.currentBid)}</div>
-              </div>
-            </div>
-            {submitted || userPrediction ? (
-              <div style={{ fontFamily: mono, fontSize: 11, color: C.pos, letterSpacing: 0.8 }}>
-                ✓ PREDICTION LOCKED: {fmtUSD(userPrediction || parseInt((prediction || '0').replace(/\D/g,''), 10))}
-              </div>
-            ) : showPredict ? (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input value={prediction} onChange={e => setPrediction(e.target.value)} placeholder="$32,500"
-                  style={{ flex: 1, height: 36, background: C.bg, border: `1px solid ${C.borderHi}`, borderRadius: 3, color: C.text, fontFamily: mono, fontSize: 13, padding: '0 10px', outline: 'none' }} />
-                <button onClick={() => { const p = parseFloat(prediction.replace(/[^0-9.]/g, '')); if (p > 0) { submitPrediction(p); setSubmitted(true) } }}
-                  style={{ height: 36, padding: '0 14px', borderRadius: 3, border: 'none', background: C.amber, color: '#000', fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
-                  LOCK ▸
-                </button>
-              </div>
-            ) : (
-              <button onClick={() => setShowPredict(true)}
-                style={{ height: 34, padding: '0 14px', borderRadius: 3, border: `1px solid ${C.amber}55`, background: `${C.amber}18`, color: C.amber, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
-                MAKE PREDICTION · 2× SCORE
-              </button>
-            )}
+          <div style={{ margin: '18px 18px 0' }}>
+            <BonusCarCard isWide={isWide} />
           </div>
         )}
 
@@ -3033,6 +3133,20 @@ export default function BidPrixApp() {
     const totalDraft   = garage.reduce((s, c) => s + (c.purchasePrice || 0), 0)
     const totalCurrent = garage.reduce((s, c) => s + (c.currentBid || c.purchasePrice || 0), 0)
     const totalGain    = totalCurrent - totalDraft
+
+    // Value-since-draft series for the P-rank sparkline. We have no per-day history,
+    // so synthesize a smooth draft→current curve (production: sample real value history).
+    const valueSeries = (() => {
+      const n = 16
+      const out = []
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1)
+        const ease = t * t * (3 - 2 * t)
+        const wiggle = (i === 0 || i === n - 1) ? 0 : Math.sin(t * Math.PI * 3) * totalGain * 0.06
+        out.push(totalDraft + (totalCurrent - totalDraft) * ease + wiggle)
+      }
+      return out
+    })()
     const bestCar = garage.length > 0 ? garage.reduce((best, c) => {
       const g = (c.currentBid || c.purchasePrice || 0) - (c.purchasePrice || 0)
       const bg = (best.currentBid || best.purchasePrice || 0) - (best.purchasePrice || 0)
@@ -3062,6 +3176,14 @@ export default function BidPrixApp() {
           <div style={{ fontFamily: mono, fontSize: 12, color: C.muted, marginTop: 6 }}>
             {selectedLeague ? `${selectedLeague.name}${eventDay ? ` · DAY ${eventDay} OF 7` : ''}` : 'No event — enter one to start'}
           </div>
+          {/* 7-segment day-progress bar (filled = days elapsed) */}
+          {eventDay && (
+            <div style={{ display: 'flex', gap: 4, marginTop: 10 }}>
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} style={{ flex: 1, height: 4, borderRadius: 1, background: i < eventDay ? C.red : C.surfaceHi }} />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* HERO LOT — full-bleed top car (car-forward centerpiece) */}
@@ -3107,12 +3229,28 @@ export default function BidPrixApp() {
           </div>
         )}
 
+        {/* Bonus car — prominent module directly under the top lot (BONUS-CAR-SPEC) */}
+        {bonusCar && (
+          <div style={{ margin: '16px 22px 0' }}>
+            <BonusCarCard isWide={isWide} />
+          </div>
+        )}
+
         {/* Total-value card */}
         <div style={{ margin: '16px 22px', background: C.surface, border: `1px solid ${C.borderHi}`, padding: '16px 18px', borderLeft: `4px solid ${C.red}` }}>
           <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 8 }}>TOTAL VALUE</div>
           <div style={{ fontFamily: mono, fontSize: 46, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1.8, lineHeight: 1 }}>
             {fmtUSD(totalCurrent)}
           </div>
+          {/* Value-since-draft sparkline */}
+          {garage.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <Sparkline data={valueSeries} color={gainColor(totalGain)} />
+              <div style={{ fontFamily: mono, fontSize: 11, color: gainColor(totalGain), letterSpacing: 1, marginTop: 6 }}>
+                {totalGain >= 0 ? '▲ +' : '▼ '}{fmtK(Math.abs(totalGain))} SINCE DRAFT
+              </div>
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', marginTop: 14, gap: 0 }}>
             {[
               { label: 'NET',    value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
