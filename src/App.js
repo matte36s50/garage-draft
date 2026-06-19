@@ -597,10 +597,10 @@ function SectionEyebrow({ children }) {
 // appends a HISTORY link separately so it stays reachable on wide screens.
 const NAV_TABS = [
     { id: 'dashboard',   label: 'DASH',     icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="11" y="2" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="2" y="11" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="11" y="11" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7"/></svg> },
-    { id: 'leagues',     label: 'AUCTIONS', icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><circle cx="7" cy="8" r="3" stroke="currentColor" strokeWidth="1.7"/><path d="M2 17c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M14 6c1.1 0 2 .9 2 2s-.9 2-2 2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M18 17c0-2.21-1.79-4-4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg> },
+    { id: 'leagues',     label: 'EVENTS',   icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect x="2.5" y="4" width="15" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><path d="M2.5 8h15" stroke="currentColor" strokeWidth="1.7"/><path d="M6.5 2v3.5M13.5 2v3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg> },
     { id: 'cars',        label: 'PICK',     icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 5.4H18l-4.9 3.5 1.8 5.6L10 13l-4.9 3.5 1.8-5.6L2 7.4h6.2L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
     { id: 'garage',      label: 'GARAGE',   icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M3 9l7-6 7 6v8a1 1 0 01-1 1H4a1 1 0 01-1-1V9z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><rect x="8" y="13" width="4" height="4" rx="0.5" stroke="currentColor" strokeWidth="1.5"/></svg> },
-    { id: 'leaderboard', label: 'STANDINGS', icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L10 14.4l-4.8 2.5.9-5.4L2.2 7.7l5.4-.8L10 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
+    { id: 'leaderboard', label: 'RANKS',    icon: <svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect x="2" y="10" width="4.5" height="7" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><rect x="7.75" y="5" width="4.5" height="12" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><rect x="13.5" y="12.5" width="4.5" height="4.5" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg> },
   ]
 
 // Desktop top-nav row (hidden on mobile via .bp-topnav). Shares NAV_TABS + onNavigate
@@ -1133,7 +1133,7 @@ export default function BidPrixApp() {
     
     const draftStatus = getDraftStatus(league)
     if (draftStatus.status !== 'open') {
-      alert(`Cannot join auction: ${draftStatus.message}`)
+      alert(`Cannot enter event: ${draftStatus.message}`)
       return
     }
     
@@ -1167,7 +1167,7 @@ export default function BidPrixApp() {
         .from('league_members')
         .insert([{ league_id: league.id, user_id: user.id, total_score: 0 }])
       
-      if (me) { alert('Error joining auction: '+me.message); return }
+      if (me) { alert('Error entering event: '+me.message); return }
       
       updateSelectedLeague(league)
       setUserGarageId(g.id)
@@ -1181,8 +1181,8 @@ export default function BidPrixApp() {
       updateCurrentScreen('cars')
       
     } catch (error) {
-      console.error('Error joining auction:', error)
-      alert('Error joining auction')
+      console.error('Error entering event:', error)
+      alert('Error entering event')
     }
   }
 
@@ -1503,7 +1503,7 @@ export default function BidPrixApp() {
         <div style={{ padding: '22px 18px 18px' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.red, letterSpacing: 1.6, fontWeight: 700, background: `${C.red}15`, padding: '5px 8px', border: `1px solid ${C.red}40`, marginBottom: 18 }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.red, boxShadow: `0 0 10px ${C.red}`, display: 'inline-block' }} />
-            LIVE · 3 LEAGUES DRAFTING
+            LIVE · 3 EVENTS DRAFTING
           </div>
           <h1 style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 'clamp(36px,10vw,52px)', fontWeight: 800, lineHeight: 0.95, letterSpacing: -2, margin: '0 0 16px', textTransform: 'uppercase' }}>
             RACE THE<br/>
@@ -1842,23 +1842,36 @@ export default function BidPrixApp() {
 
   function LeaguesScreen({ onNavigate, currentScreen }) {
     const [activeFilter, setActiveFilter] = useState('ALL')
-    const filters = ['ALL', 'LIVE', 'IN PLAY', 'PUBLIC', 'INVITES']
+    const filters = ['ALL', 'DRAFTING', 'LIVE', 'ENTERED']
 
+    // One event-lifecycle vocabulary everywhere: OPENS → DRAFTING → LIVE → FINISHED.
+    // getDraftStatus → lifecycle: upcoming=OPENS, open=DRAFTING, closed=LIVE (auction running).
     const getRowConfig = (l) => {
       const joined = userLeagues.some(ul => ul.id === l.id)
       const ds = getDraftStatus(l)
-      if (joined)              return { borderColor: C.red,    pillColor: C.red,    pillLabel: '★ ENTERED', btnBg: 'transparent', btnColor: C.red,  btnBorder: `1px solid ${C.red}55`, btnLabel: 'OPEN ▸' }
-      if (ds.status === 'open')    return { borderColor: C.amber,  pillColor: C.amber,  pillLabel: '◉ LIVE',    btnBg: C.red,          btnColor: C.text, btnBorder: 'none',                  btnLabel: 'JOIN ▸' }
-      if (ds.status === 'closed')  return { borderColor: '#3a8aef', pillColor: '#3a8aef', pillLabel: '▸ IN PLAY', btnBg: C.surfaceHi,    btnColor: C.muted, btnBorder: 'none',                 btnLabel: 'PREVIEW' }
-      return                       { borderColor: C.border,  pillColor: C.muted,  pillLabel: '○ OPENS',   btnBg: C.surfaceHi,    btnColor: C.muted, btnBorder: 'none',                  btnLabel: 'PREVIEW' }
+      if (joined)                  return { borderColor: C.red,     pillColor: C.red,     pillLabel: '★ ENTERED',  btnBg: 'transparent', btnColor: C.red,   btnBorder: `1px solid ${C.red}55`, btnLabel: 'DRAFT ▸' }
+      if (ds.status === 'open')    return { borderColor: C.amber,   pillColor: C.amber,   pillLabel: '◉ DRAFTING', btnBg: C.red,         btnColor: C.text,  btnBorder: 'none',                  btnLabel: 'ENTER ▸' }
+      if (ds.status === 'closed')  return { borderColor: '#3a8aef', pillColor: '#3a8aef', pillLabel: '▸ LIVE',     btnBg: C.surfaceHi,   btnColor: C.muted, btnBorder: 'none',                  btnLabel: 'WATCH' }
+      return                       { borderColor: C.border,   pillColor: C.faint,   pillLabel: '○ OPENS',    btnBg: C.surfaceHi,   btnColor: C.muted, btnBorder: 'none',                  btnLabel: 'PREVIEW' }
     }
 
     const handleRowAction = (l) => {
       const joined = userLeagues.some(ul => ul.id === l.id)
       const ds = getDraftStatus(l)
-      if (joined) { updateSelectedLeague(l); onNavigate('dashboard') }
-      else if (ds.status === 'open') joinLeague(l)
+      if (joined) { updateSelectedLeague(l); onNavigate('cars') }       // DRAFT ▸
+      else if (ds.status === 'open') joinLeague(l)                       // ENTER ▸
+      else if (ds.status === 'closed') { updateSelectedLeague(l); onNavigate('dashboard') } // WATCH
     }
+
+    const visibleLeagues = leagues.filter(l => {
+      if (activeFilter === 'ALL') return true
+      const joined = userLeagues.some(ul => ul.id === l.id)
+      const ds = getDraftStatus(l)
+      if (activeFilter === 'DRAFTING') return ds.status === 'open'
+      if (activeFilter === 'LIVE')     return ds.status === 'closed'
+      if (activeFilter === 'ENTERED')  return joined
+      return true
+    })
 
     return (
       <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -1879,10 +1892,10 @@ export default function BidPrixApp() {
         {/* Page title */}
         <div style={{ padding: '20px 18px 12px' }}>
           <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 40, fontWeight: 800, letterSpacing: -1.6, lineHeight: 1, textTransform: 'uppercase' }}>
-            AUCTIONS
+            EVENTS
           </div>
           <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, marginTop: 6, letterSpacing: 0.5 }}>
-            {leagues.length} OPEN · {userLeagues.length} YOU&apos;RE IN
+            {leagues.filter(l => getDraftStatus(l).status === 'open').length} DRAFTING · {userLeagues.length} ENTERED
           </div>
         </div>
 
@@ -1897,16 +1910,21 @@ export default function BidPrixApp() {
 
         {/* League rows */}
         <div style={{ padding: '0 18px 32px' }}>
-          {leagues.length === 0 && (
+          {visibleLeagues.length === 0 && (
             <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, color: C.faint, textAlign: 'center', padding: '48px 0' }}>
-              NO ACTIVE AUCTIONS
+              NO EVENTS FOUND
             </div>
           )}
-          {leagues.map(l => {
+          {visibleLeagues.map(l => {
             const cfg = getRowConfig(l)
             const ds = getDraftStatus(l)
-            const timeLabel = ds.status === 'upcoming' ? 'OPENS' : 'CLOSES'
-            const timeVal = l.end_date ? calculateTimeLeft(new Date(l.end_date)) : '—'
+            // Lifecycle time labels: OPENS · <date> / DRAFT CLOSES · <countdown> / ENDS · <countdown>
+            const timeLabel = ds.status === 'upcoming' ? 'OPENS' : ds.status === 'open' ? 'DRAFT CLOSES' : 'ENDS'
+            const timeVal = ds.status === 'upcoming'
+              ? (l.draft_starts_at ? new Date(l.draft_starts_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—')
+              : ds.status === 'open'
+                ? (l.draft_ends_at ? calculateTimeLeft(new Date(l.draft_ends_at)) : '—')
+                : (l.end_date ? calculateTimeLeft(new Date(l.end_date)) : '—')
             return (
               <div key={l.id} style={{ marginBottom: 8, padding: '14px 14px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${cfg.borderColor}` }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -2080,18 +2098,18 @@ export default function BidPrixApp() {
                 <rect key={`${row}-${col}`} x={col*13} y={row*13} width={13} height={13} fill={(row+col)%2===0 ? C.text : 'transparent'} />
               )))}
             </svg>
-            <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 1.6, marginBottom: 8 }}>{'//'} NO AUCTION SELECTED</div>
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 1.6, marginBottom: 8 }}>{'//'} NO EVENT ENTERED</div>
             <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 800, letterSpacing: -0.8, textTransform: 'uppercase', marginBottom: 10, lineHeight: 1.1 }}>
-              JOIN AN AUCTION<br/>FIRST
+              ENTER AN EVENT<br/>FIRST
             </div>
             <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.55, maxWidth: 260, margin: '0 0 28px' }}>
-              Head to Auctions, pick an open auction, and join it. Then come back here to choose your 7 cars.
+              Head to Events, find one that&apos;s drafting, and enter it. Then come back here to draft your 7 cars.
             </p>
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 28 }}>
               {[
-                { n: '01', t: 'GO TO AUCTIONS', d: 'Find an open auction to join', active: false },
-                { n: '02', t: 'PICK 7 CARS', d: "You're here — choose your garage", active: true },
-                { n: '03', t: 'WATCH THE MARKET', d: 'Live bids update every minute', active: false },
+                { n: '01', t: 'GO TO EVENTS', d: "Find an event that's drafting", active: false },
+                { n: '02', t: 'DRAFT 7 CARS', d: "You're here — build your garage", active: true },
+                { n: '03', t: 'WATCH THE LOTS', d: 'Live bids update every minute', active: false },
               ].map(s => (
                 <div key={s.n} style={{ display: 'grid', gridTemplateColumns: '32px 1fr', gap: 10, padding: '10px 12px', background: s.active ? `${C.red}12` : C.surface, border: `1px solid ${s.active ? C.red+'44' : C.border}`, opacity: s.active ? 1 : 0.5 }}>
                   <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 800, color: s.active ? C.red : C.faint }}>{s.n}</div>
@@ -2103,7 +2121,7 @@ export default function BidPrixApp() {
               ))}
             </div>
             <button onClick={() => onNavigate('leagues')} style={{ height: 50, padding: '0 28px', borderRadius: 4, border: 'none', background: C.red, color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer' }}>
-              BROWSE AUCTIONS ▸
+              BROWSE EVENTS ▸
             </button>
           </div>
           <BottomTabBar screen="cars" onNavigate={onNavigate} />
@@ -2118,7 +2136,7 @@ export default function BidPrixApp() {
         {/* Auction context strip */}
         <div style={{ padding: '8px 18px 10px', background: C.surface, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.3, marginBottom: 2 }}>{'//'} PICKING CARS FOR</div>
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.3, marginBottom: 2 }}>{'//'} DRAFTING FOR</div>
             <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: C.text, letterSpacing: -0.3 }}>{leagueName}</div>
           </div>
           <button onClick={() => onNavigate('leagues')} style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1, background: 'none', border: `1px solid ${C.border}`, padding: '4px 8px', borderRadius: 3, cursor: 'pointer' }}>
@@ -2161,6 +2179,14 @@ export default function BidPrixApp() {
             <span style={{ fontFamily: mono, fontSize: 11, color: C.faint }}>{fmtK(budgetTotal)} TOTAL</span>
           </div>
         </div>
+
+        {/* Rivals' picks — hidden until the draft closes; opens Draft Results */}
+        <button onClick={() => onNavigate('draft-results')} style={{ width: '100%', padding: '11px 18px', background: C.surface, borderTop: 'none', borderBottom: `1px solid ${C.border}`, borderLeft: 'none', borderRight: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+          <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.2 }}>
+            RIVALS&apos; PICKS · {canPick ? 'HIDDEN UNTIL DRAFT CLOSES' : 'REVEALED'}
+          </span>
+          <span style={{ color: C.red, fontFamily: mono, fontSize: 13 }}>▸</span>
+        </button>
 
         {/* Bonus car */}
         {bonusCar && (
@@ -2464,9 +2490,9 @@ export default function BidPrixApp() {
         <div style={{ padding: '20px 18px' }}>
           <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 40, fontWeight: 800, textTransform: 'uppercase', letterSpacing: -1.6 }}>STANDINGS</div>
           <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, color: C.faint, marginTop: 24, textAlign: 'center', paddingTop: 40 }}>
-            NO ACTIVE AUCTIONS<br/>
+            NO ACTIVE EVENTS<br/>
             <button onClick={() => onNavigate('leagues')} style={{ marginTop: 16, height: 40, padding: '0 20px', borderRadius: 3, background: C.red, color: C.text, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 800, letterSpacing: 1.2, border: 'none', cursor: 'pointer' }}>
-              BROWSE AUCTIONS ▸
+              BROWSE EVENTS ▸
             </button>
           </div>
         </div>
@@ -2903,6 +2929,9 @@ export default function BidPrixApp() {
                 </div>
               </div>
             </div>
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${C.border}`, fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.faint, letterSpacing: 0.4, lineHeight: 1.5 }}>
+              VALUE = $175K BUDGET + NET — your cars marked to their live bids
+            </div>
           </div>
         )}
 
@@ -2981,6 +3010,15 @@ export default function BidPrixApp() {
     const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()
     const username = user?.user_metadata?.username || user?.email?.split('@')[0] || 'Driver'
 
+    // Time-in-event reads "DAY X OF 7" (never "WK 3"), derived from the event's start.
+    const eventDay = (() => {
+      if (!selectedLeague) return null
+      const start = selectedLeague.draft_starts_at || selectedLeague.start_date
+      if (!start) return null
+      const d = Math.floor((Date.now() - new Date(start)) / 86400000) + 1
+      return d >= 1 && d <= 7 ? d : null
+    })()
+
     const totalDraft   = garage.reduce((s, c) => s + (c.purchasePrice || 0), 0)
     const totalCurrent = garage.reduce((s, c) => s + (c.currentBid || c.purchasePrice || 0), 0)
     const totalGain    = totalCurrent - totalDraft
@@ -3011,7 +3049,7 @@ export default function BidPrixApp() {
           <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 5 }}>{'//'} WELCOME BACK</div>
           <div style={{ fontFamily: mono, fontSize: 38, fontWeight: 800, letterSpacing: -1.4, textTransform: 'uppercase', lineHeight: 1 }}>{username}</div>
           <div style={{ fontFamily: mono, fontSize: 12, color: C.muted, marginTop: 6 }}>
-            {selectedLeague ? selectedLeague.name : 'No auction — join one to start'}
+            {selectedLeague ? `${selectedLeague.name}${eventDay ? ` · DAY ${eventDay} OF 7` : ''}` : 'No event — enter one to start'}
           </div>
         </div>
 
@@ -3069,13 +3107,16 @@ export default function BidPrixApp() {
               { label: 'NET',    value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
               { label: 'ROSTER', value: `${garage.length}/7`, color: garage.length === 7 ? C.pos : C.text },
               { label: 'BUDGET', value: fmtK(budget), color: budget < 20000 ? C.amber : C.text },
-              { label: 'AUCTION', value: selectedLeague ? 'ACTIVE' : '—', color: selectedLeague ? C.pos : C.faint },
+              { label: 'EVENT', value: selectedLeague ? 'ACTIVE' : '—', color: selectedLeague ? C.pos : C.faint },
             ].map(s => (
               <div key={s.label}>
                 <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>{s.label}</div>
                 <div style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, marginTop: 3, color: s.color, fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
               </div>
             ))}
+          </div>
+          <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${C.border}`, fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 0.4, lineHeight: 1.5 }}>
+            VALUE = $175K BUDGET + NET — your cars marked to their live bids
           </div>
         </div>
 
@@ -3098,7 +3139,7 @@ export default function BidPrixApp() {
         {/* Quick links */}
         <div style={{ margin: '0 22px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <button onClick={() => onNavigate('leaderboard')} style={{ height: 48, borderRadius: 3, background: C.surface, border: `1px solid ${C.border}`, color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 700, letterSpacing: 1.1, cursor: 'pointer' }}>
-            VIEW STANDINGS ▸
+            VIEW RANKS ▸
           </button>
           <button onClick={() => onNavigate('cars')} style={{ height: 48, borderRadius: 3, background: C.red, border: 'none', color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1.1, cursor: 'pointer' }}>
             PICK CARS ▸
