@@ -1841,8 +1841,8 @@ export default function BidPrixApp() {
   }
 
   function LeaguesScreen({ onNavigate, currentScreen }) {
-    const [activeFilter, setActiveFilter] = useState('ALL')
-    const filters = ['ALL', 'DRAFTING', 'LIVE', 'ENTERED']
+    const [activeFilter, setActiveFilter] = useState('DRAFTING')
+    const filters = ['DRAFTING', 'LIVE', 'ENTERED']
 
     // One event-lifecycle vocabulary everywhere: OPENS → DRAFTING → LIVE → FINISHED.
     // getDraftStatus → lifecycle: upcoming=OPENS, open=DRAFTING, closed=LIVE (auction running).
@@ -1864,7 +1864,6 @@ export default function BidPrixApp() {
     }
 
     const visibleLeagues = leagues.filter(l => {
-      if (activeFilter === 'ALL') return true
       const joined = userLeagues.some(ul => ul.id === l.id)
       const ds = getDraftStatus(l)
       if (activeFilter === 'DRAFTING') return ds.status === 'open'
