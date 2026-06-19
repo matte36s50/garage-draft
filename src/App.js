@@ -2389,15 +2389,27 @@ export default function BidPrixApp() {
               }
               const gain = (car.currentBid || car.purchasePrice || 0) - (car.purchasePrice || 0)
               const gainPct = car.purchasePrice > 0 ? ((gain / car.purchasePrice) * 100).toFixed(1) : '0.0'
+              const hasAuctionLink = car.auctionUrl && car.auctionUrl !== '#'
+              const carTitle = car.title && car.title.replace(`${car.year} `, '')
               return (
                 <div key={car.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10, position: 'relative' }}>
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 0.8, marginBottom: 5, position: 'absolute', top: 8, right: 8 }}>
                     LOT {String(i + 1).padStart(2, '0')}
                   </div>
-                  <CarImg car={car} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 360 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={2} />
+                  {hasAuctionLink ? (
+                    <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
+                      <CarImg car={car} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 360 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={2} />
+                    </a>
+                  ) : (
+                    <CarImg car={car} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 360 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={2} />
+                  )}
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 6 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
                   <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, lineHeight: 1.25, height: 38, overflow: 'hidden' }}>
-                    {car.title && car.title.replace(`${car.year} `, '')}
+                    {hasAuctionLink ? (
+                      <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
+                        {carTitle}
+                      </a>
+                    ) : carTitle}
                   </div>
                   <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
                     <div>
