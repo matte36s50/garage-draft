@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Car, Trophy, Users, DollarSign, LogOut, Zap, TrendingUp, LayoutDashboard, History, ChevronDown, Check } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import LeagueChat from './components/LeagueChat'
 import UserHistory from './components/UserHistory'
 import DraftResults from './components/DraftResults'
+import { getLeagueEndTime, getEventPhase } from './utils/leagueLifecycle'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
@@ -503,6 +504,75 @@ function Sparkline({ data, color, width = 300, height = 44 }) {
   )
 }
 
+// One-shot checkered-flag confetti for the end-of-event finish. Pure CSS/JS — no
+// extra dependency — and renders nothing when the user prefers reduced motion.
+function Confetti({ count = 44 }) {
+  const reduce = typeof window !== 'undefined' && window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const palette = [C.red, C.amber, C.text, C.pos]
+  const pieces = useMemo(() => Array.from({ length: count }, (_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    delay: Math.random() * 0.7,
+    dur: 2.6 + Math.random() * 1.8,
+    w: 6 + Math.random() * 6,
+    drift: Math.round((Math.random() * 2 - 1) * 80),
+    spin: 540 + Math.round(Math.random() * 540),
+    color: palette[i % palette.length],
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  })), [count])
+  if (reduce) return null
+  return (
+    <div aria-hidden style={{ position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 60 }}>
+      <style>{`@keyframes bpConfFall{0%{transform:translate(0,-12vh) rotate(0deg);opacity:1}100%{transform:translate(var(--bp-x,0px),112vh) rotate(var(--bp-r,720deg));opacity:.85}}`}</style>
+      {pieces.map(p => (
+        <span key={p.id} style={{
+          position: 'absolute', top: 0, left: `${p.left}%`, width: p.w, height: p.w * 0.62,
+          background: p.color, borderRadius: 1,
+          animation: `bpConfFall ${p.dur}s cubic-bezier(.25,.6,.5,1) ${p.delay}s forwards`,
+          '--bp-x': `${p.drift}px`, '--bp-r': `${p.spin}deg`,
+        }} />
+      ))}
+    </div>
+  )
+}
+
+// Final-standings podium: P2 (left) · P1 (center, tallest) · P3 (right).
+function PodiumFinish({ standings = [], meId }) {
+  const top = standings.slice(0, 3)
+  if (top.length === 0) return null
+  const order = [top[1], top[0], top[2]] // visual L→R: 2nd, 1st, 3rd
+  const meta = {
+    1: { h: 104, color: C.amber, medal: '1', tag: 'CHAMPION' },
+    2: { h: 74, color: '#c2c5cc', medal: '2', tag: 'RUNNER-UP' },
+    3: { h: 56, color: '#cd7f4d', medal: '3', tag: 'THIRD' },
+  }
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', alignItems: 'end', gap: 8, padding: '8px 18px 4px' }}>
+      {order.map((p, i) => {
+        if (!p) return <div key={i} />
+        const rank = standings.indexOf(p) + 1
+        const m = meta[rank] || meta[3]
+        const isMe = p.userId === meId
+        return (
+          <div key={p.userId} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0 }}>
+            <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 1.2, color: m.color, fontWeight: 800, marginBottom: 4 }}>{m.tag}</div>
+            <div title={p.username} style={{ fontSize: 12.5, fontWeight: 700, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center', color: isMe ? C.amber : C.text }}>
+              {p.username}{isMe ? ' ·YOU' : ''}
+            </div>
+            <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>
+              ${(Math.round(p.totalScore || 0) / 1000).toFixed(1)}k
+            </div>
+            <div style={{ width: '100%', height: m.h, background: `${m.color}1f`, border: `1px solid ${m.color}`, borderBottom: 'none', borderTopLeftRadius: 3, borderTopRightRadius: 3, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 8 }}>
+              <span style={{ fontFamily: mono, fontSize: 26, fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.medal}</span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // Direction C shared atoms ────────────────────────────────────────────────────
 const mono = 'ui-monospace,"JetBrains Mono",monospace'
 
@@ -678,6 +748,18 @@ export default function BidPrixApp() {
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [recentUpdates, setRecentUpdates] = useState([])
   const [isChatOpen, setIsChatOpen] = useState(false)
+  // When the selected event's last auction ends. Drives the FINAL / checkered-flag
+  // state so a finished event no longer reads as perpetually "LIVE".
+  const [eventEndTime, setEventEndTime] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!selectedLeague) { setEventEndTime(null); return }
+    getLeagueEndTime(supabase, selectedLeague).then((t) => {
+      if (!cancelled) setEventEndTime(t)
+    })
+    return () => { cancelled = true }
+  }, [selectedLeague])
 
   const updateCurrentScreen = (screen) => {
     setCurrentScreen(screen)
@@ -773,12 +855,12 @@ export default function BidPrixApp() {
   // status pill driven by the current event's lifecycle. History is intentionally
   // not a nav item (reached via the dashboard "PAST EVENTS" link, same as mobile).
   function TopNav({ screen, onNavigate }) {
-    const ds = selectedLeague ? getDraftStatus(selectedLeague) : null
-    const pill = !ds ? null
-      : ds.status === 'open'     ? { label: 'DRAFT OPEN', color: C.pos }
-      : ds.status === 'closed'   ? { label: 'LIVE',       color: '#3a8aef' }
-      : ds.status === 'upcoming' ? { label: 'OPENS SOON', color: C.muted }
-      :                            { label: 'FINISHED',   color: C.muted }
+    const phase = selectedLeague ? getEventPhase(selectedLeague, eventEndTime) : null
+    const pill = !phase ? null
+      : phase === 'drafting' ? { label: 'DRAFT OPEN', color: C.pos }
+      : phase === 'live'     ? { label: 'LIVE',       color: '#3a8aef' }
+      : phase === 'upcoming' ? { label: 'OPENS SOON', color: C.muted }
+      :                        { label: 'FINAL',      color: C.amber }
     return (
       <nav className="bp-topnav" style={{ alignItems: 'center', gap: 2, flex: 1, justifyContent: 'center' }}>
         {NAV_TABS.map(t => {
@@ -1976,23 +2058,26 @@ export default function BidPrixApp() {
     const [activeFilter, setActiveFilter] = useState('DRAFTING')
     const filters = ['DRAFTING', 'LIVE', 'ENTERED']
 
-    // One event-lifecycle vocabulary everywhere: OPENS → DRAFTING → LIVE → FINISHED.
-    // getDraftStatus → lifecycle: upcoming=OPENS, open=DRAFTING, closed=LIVE (auction running).
+    // One event-lifecycle vocabulary everywhere: OPENS → DRAFTING → LIVE → FINAL.
+    // getEventPhase → lifecycle: upcoming=OPENS, drafting=DRAFTING, live=LIVE (auctions
+    // running), final=🏁 (every auction ended; results are in).
     const getRowConfig = (l) => {
       const joined = userLeagues.some(ul => ul.id === l.id)
-      const ds = getDraftStatus(l)
+      const phase = getEventPhase(l, l.end_date)
+      if (phase === 'final')       return { borderColor: C.amber,   pillColor: C.amber,   pillLabel: '🏁 FINAL',   btnBg: C.amber,       btnColor: '#000',  btnBorder: 'none',                  btnLabel: 'RESULTS ▸' }
       if (joined)                  return { borderColor: C.red,     pillColor: C.red,     pillLabel: '★ ENTERED',  btnBg: 'transparent', btnColor: C.red,   btnBorder: `1px solid ${C.red}55`, btnLabel: 'DRAFT ▸' }
-      if (ds.status === 'open')    return { borderColor: C.amber,   pillColor: C.amber,   pillLabel: '◉ DRAFTING', btnBg: C.red,         btnColor: C.text,  btnBorder: 'none',                  btnLabel: 'ENTER ▸' }
-      if (ds.status === 'closed')  return { borderColor: '#3a8aef', pillColor: '#3a8aef', pillLabel: '▸ LIVE',     btnBg: C.surfaceHi,   btnColor: C.muted, btnBorder: 'none',                  btnLabel: 'WATCH' }
+      if (phase === 'drafting')    return { borderColor: C.amber,   pillColor: C.amber,   pillLabel: '◉ DRAFTING', btnBg: C.red,         btnColor: C.text,  btnBorder: 'none',                  btnLabel: 'ENTER ▸' }
+      if (phase === 'live')        return { borderColor: '#3a8aef', pillColor: '#3a8aef', pillLabel: '▸ LIVE',     btnBg: C.surfaceHi,   btnColor: C.muted, btnBorder: 'none',                  btnLabel: 'WATCH' }
       return                       { borderColor: C.border,   pillColor: C.faint,   pillLabel: '○ OPENS',    btnBg: C.surfaceHi,   btnColor: C.muted, btnBorder: 'none',                  btnLabel: 'PREVIEW' }
     }
 
     const handleRowAction = (l) => {
       const joined = userLeagues.some(ul => ul.id === l.id)
-      const ds = getDraftStatus(l)
-      if (joined) { updateSelectedLeague(l); onNavigate('cars') }       // DRAFT ▸
-      else if (ds.status === 'open') joinLeague(l)                       // ENTER ▸
-      else if (ds.status === 'closed') { updateSelectedLeague(l); onNavigate('dashboard') } // WATCH
+      const phase = getEventPhase(l, l.end_date)
+      if (phase === 'final') { updateSelectedLeague(l); onNavigate('leaderboard') } // RESULTS ▸
+      else if (joined) { updateSelectedLeague(l); onNavigate('cars') }       // DRAFT ▸
+      else if (phase === 'drafting') joinLeague(l)                           // ENTER ▸
+      else { updateSelectedLeague(l); onNavigate('dashboard') }              // WATCH
     }
 
     const visibleLeagues = leagues.filter(l => {
@@ -2048,14 +2133,16 @@ export default function BidPrixApp() {
           )}
           {visibleLeagues.map(l => {
             const cfg = getRowConfig(l)
-            const ds = getDraftStatus(l)
-            // Lifecycle time labels: OPENS · <date> / DRAFT CLOSES · <countdown> / ENDS · <countdown>
-            const timeLabel = ds.status === 'upcoming' ? 'OPENS' : ds.status === 'open' ? 'DRAFT CLOSES' : 'ENDS'
-            const timeVal = ds.status === 'upcoming'
-              ? (l.draft_starts_at ? new Date(l.draft_starts_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—')
-              : ds.status === 'open'
-                ? (l.draft_ends_at ? calculateTimeLeft(new Date(l.draft_ends_at)) : '—')
-                : (l.end_date ? calculateTimeLeft(new Date(l.end_date)) : '—')
+            const phase = getEventPhase(l, l.end_date)
+            // Lifecycle time labels: OPENS · <date> / DRAFT CLOSES · <countdown> / ENDS · <countdown> / ENDED · FINAL
+            const timeLabel = phase === 'upcoming' ? 'OPENS' : phase === 'drafting' ? 'DRAFT CLOSES' : phase === 'final' ? 'ENDED' : 'ENDS'
+            const timeVal = phase === 'final'
+              ? 'FINAL'
+              : phase === 'upcoming'
+                ? (l.draft_starts_at ? new Date(l.draft_starts_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—')
+                : phase === 'drafting'
+                  ? (l.draft_ends_at ? calculateTimeLeft(new Date(l.draft_ends_at)) : '—')
+                  : (l.end_date ? calculateTimeLeft(new Date(l.end_date)) : '—')
             return (
               <div key={l.id} style={{ marginBottom: 8, padding: '14px 14px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${cfg.borderColor}` }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -2583,13 +2670,29 @@ export default function BidPrixApp() {
     const [loading, setLoading] = useState(true)
     const [sortBy, setSortBy] = useState('total_percent')
     const [, setBonusWinner] = useState(null)
-  
+    const [showConfetti, setShowConfetti] = useState(false)
+    const [confettiDone, setConfettiDone] = useState(false)
+
+    // The event is FINAL once its last auction has ended (see getEventPhase).
+    const phase = selectedLeague ? getEventPhase(selectedLeague, eventEndTime) : null
+    const isFinal = phase === 'final'
+
     useEffect(() => {
     if (selectedLeague) {
       fetchLeaderboard()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLeague])
+
+    // Fire the checkered-flag confetti once, when the final results first land.
+    useEffect(() => {
+      if (isFinal && !loading && standings.length > 0 && !confettiDone) {
+        setShowConfetti(true)
+        const t = setTimeout(() => { setShowConfetti(false); setConfettiDone(true) }, 4500)
+        return () => clearTimeout(t)
+      }
+    }, [isFinal, loading, standings.length, confettiDone])
+
   if (!selectedLeague && !leagueLoading) {
     return (
       <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -2975,15 +3078,41 @@ export default function BidPrixApp() {
         </div>
         <CheckerBar height={3} />
 
+        {showConfetti && <Confetti />}
+
         {/* Eyebrow + title */}
         <div style={{ padding: '18px 18px 8px' }}>
-          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.red }}>
-            {'//'} {selectedLeague?.name?.toUpperCase() || 'STANDINGS'}
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: isFinal ? C.amber : C.red }}>
+            {isFinal ? '🏁' : '//'} {selectedLeague?.name?.toUpperCase() || 'STANDINGS'}{isFinal ? ' · FINAL RESULTS' : ''}
           </div>
           <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 40, fontWeight: 800, letterSpacing: -1.6, marginTop: 4, textTransform: 'uppercase' }}>
-            STANDINGS
+            {isFinal ? 'FINAL RESULTS' : 'STANDINGS'}
           </div>
+          {isFinal && (
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginTop: 6, letterSpacing: 0.3 }}>
+              Every auction has ended — these results are locked in.
+            </div>
+          )}
         </div>
+
+        {/* Champion hero + podium (final only) */}
+        {isFinal && !loading && p1 && (
+          <>
+            <div style={{ margin: '4px 18px 10px', background: `${C.amber}12`, border: `1px solid ${C.amber}`, borderLeft: `4px solid ${C.amber}`, padding: '14px 16px' }}>
+              <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1.6, color: C.amber, fontWeight: 800 }}>🏆 CHAMPION</div>
+              <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.6, marginTop: 4 }}>
+                {p1.username}{p1.userId === user?.id ? ' · YOU' : ''}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 6, fontFamily: mono, fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ fontSize: 22, fontWeight: 800 }}>${Math.round(p1.totalScore || 0).toLocaleString()}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: p1.totalDollarGain >= 0 ? C.pos : C.neg }}>
+                  {p1.totalDollarGain >= 0 ? '+' : ''}${Math.round(p1.totalDollarGain || 0).toLocaleString()} net
+                </span>
+              </div>
+            </div>
+            <PodiumFinish standings={standings} meId={user?.id} />
+          </>
+        )}
 
         {/* Loading skeletons */}
         {loading && (
@@ -3060,6 +3189,13 @@ export default function BidPrixApp() {
           </div>
         )}
 
+        {/* Finishing-order header (final only) */}
+        {isFinal && !loading && standings.length > 0 && (
+          <div style={{ padding: '6px 18px 0', fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1.4, color: C.faint }}>
+            FULL FINISHING ORDER
+          </div>
+        )}
+
         {/* Player rows */}
         {!loading && standings.length > 0 && (
           <div style={{ padding: '0 18px 80px' }}>
@@ -3121,6 +3257,8 @@ export default function BidPrixApp() {
     const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()
     const username = user?.user_metadata?.username || user?.email?.split('@')[0] || 'Driver'
 
+    const dashFinal = selectedLeague ? getEventPhase(selectedLeague, eventEndTime) === 'final' : false
+
     // Time-in-event reads "DAY X OF 7" (never "WK 3"), derived from the event's start.
     const eventDay = (() => {
       if (!selectedLeague) return null
@@ -3169,18 +3307,29 @@ export default function BidPrixApp() {
         </div>
         <CheckerBar height={3} />
 
+        {/* Event-finished banner — makes "this event is over" unmistakable and routes to results */}
+        {dashFinal && (
+          <button onClick={() => onNavigate('leaderboard')} style={{ width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 22px', background: `${C.amber}14`, border: 'none', borderBottom: `1px solid ${C.amber}55`, borderLeft: `4px solid ${C.amber}` }}>
+            <div>
+              <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1.4, color: C.amber }}>🏁 EVENT FINISHED</div>
+              <div style={{ fontFamily: mono, fontSize: 12, color: C.muted, marginTop: 3 }}>Results are final — see who took the podium.</div>
+            </div>
+            <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1.2, color: '#000', background: C.amber, padding: '8px 12px', borderRadius: 3, whiteSpace: 'nowrap' }}>RESULTS ▸</span>
+          </button>
+        )}
+
         {/* Welcome */}
         <div style={{ padding: '16px 22px 14px', borderBottom: `1px solid ${C.border}` }}>
           <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 5 }}>{'//'} WELCOME BACK</div>
           <div style={{ fontFamily: mono, fontSize: 38, fontWeight: 800, letterSpacing: -1.4, textTransform: 'uppercase', lineHeight: 1 }}>{username}</div>
           <div style={{ fontFamily: mono, fontSize: 12, color: C.muted, marginTop: 6 }}>
-            {selectedLeague ? `${selectedLeague.name}${eventDay ? ` · DAY ${eventDay} OF 7` : ''}` : 'No event — enter one to start'}
+            {selectedLeague ? `${selectedLeague.name}${dashFinal ? ' · FINAL' : eventDay ? ` · DAY ${eventDay} OF 7` : ''}` : 'No event — enter one to start'}
           </div>
-          {/* 7-segment day-progress bar (filled = days elapsed) */}
-          {eventDay && (
+          {/* 7-segment day-progress bar (filled = days elapsed; all amber once final) */}
+          {(eventDay || dashFinal) && (
             <div style={{ display: 'flex', gap: 4, marginTop: 10 }}>
               {Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} style={{ flex: 1, height: 4, borderRadius: 1, background: i < eventDay ? C.red : C.surfaceHi }} />
+                <div key={i} style={{ flex: 1, height: 4, borderRadius: 1, background: dashFinal ? C.amber : (i < eventDay ? C.red : C.surfaceHi) }} />
               ))}
             </div>
           )}
