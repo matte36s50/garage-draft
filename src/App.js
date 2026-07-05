@@ -733,21 +733,28 @@ export default function BidPrixApp() {
     if (!league.draft_starts_at || !league.draft_ends_at) {
       return { status: 'open', message: 'Draft Open' }
     }
-    
+
     const now = new Date()
     const start = new Date(league.draft_starts_at)
     const end = new Date(league.draft_ends_at)
-    
+    // Terminal lifecycle state: the event is FINISHED once its end_date passes.
+    // Leagues without an end_date fall back to one week after the draft closes
+    // (the 7-day event format), so old events can never read as LIVE forever.
+    const eventEnd = league.end_date ? new Date(league.end_date) : new Date(+end + 7 * 86400000)
+    if (now > eventEnd) {
+      return { status: 'ended', message: 'Event finished' }
+    }
+
     if (now < start) {
       const timeUntil = calculateTimeLeft(start)
       return { status: 'upcoming', message: `Draft opens in ${timeUntil}` }
     }
-    
+
     if (now >= start && now <= end) {
       const timeLeft = calculateTimeLeft(end)
       return { status: 'open', message: `Draft closes in ${timeLeft}` }
     }
-    
+
     return { status: 'closed', message: 'Draft closed' }
   }
 
@@ -775,10 +782,10 @@ export default function BidPrixApp() {
   function TopNav({ screen, onNavigate }) {
     const ds = selectedLeague ? getDraftStatus(selectedLeague) : null
     const pill = !ds ? null
-      : ds.status === 'open'     ? { label: 'DRAFT OPEN', color: C.pos }
-      : ds.status === 'closed'   ? { label: 'LIVE',       color: '#3a8aef' }
-      : ds.status === 'upcoming' ? { label: 'OPENS SOON', color: C.muted }
-      :                            { label: 'FINISHED',   color: C.muted }
+      : ds.status === 'open'     ? { label: 'DRAFT OPEN',  color: C.pos }
+      : ds.status === 'closed'   ? { label: 'LIVE',        color: '#3a8aef' }
+      : ds.status === 'upcoming' ? { label: 'OPENS SOON',  color: C.muted }
+      :                            { label: '🏁 FINISHED', color: C.amber }
     return (
       <nav className="bp-topnav" style={{ alignItems: 'center', gap: 2, flex: 1, justifyContent: 'center' }}>
         {NAV_TABS.map(t => {
@@ -816,18 +823,36 @@ export default function BidPrixApp() {
   function BonusCarCard({ isWide }) {
     const car = bonusCar
     const lo = Math.round(car.currentBid) || 0
+    // Quick-pick slider range: current bid → 2× current bid. Typed exact amounts
+    // have no upper cap — the slider max stretches to follow a higher typed call.
     const hi = Math.max(lo + 1000, Math.round((car.currentBid * 2) / 1000) * 1000)
     const def = Math.min(hi, Math.max(lo, Math.round((car.currentBid * 1.2) / 500) * 500))
     const [editing, setEditing] = useState(false)
     const [pred, setPred] = useState(() =>
-      Math.min(hi, Math.max(lo, Math.round(userPrediction != null ? userPrediction : def)))
+      Math.max(lo, Math.round(userPrediction != null ? userPrediction : def))
     )
+    const [typing, setTyping] = useState(false)
+    const [typed, setTyped] = useState('')
+    // Sticky extended max: typing a call above 2× stretches the slider and it
+    // stays stretched, so dragging back down doesn't re-scale the track.
+    const [hiExt, setHiExt] = useState(() => Math.round(userPrediction || 0))
     const locked = userPrediction != null && !editing
-    const pct = hi > lo ? (pred - lo) / (hi - lo) : 0
+    const hiSlider = Math.max(hi, hiExt, pred)
+    const pct = hiSlider > lo ? Math.min(1, (pred - lo) / (hiSlider - lo)) : 0
     const overBid = pred - car.currentBid
     const model = car.title && car.year ? car.title.replace(`${car.year} `, '') : car.title
     const lock = () => { submitPrediction(pred); setEditing(false) }
     const edit = () => setEditing(true)
+    const applyTyped = () => {
+      const v = Math.round(parseFloat(typed.replace(/[^0-9.]/g, '')))
+      if (!isNaN(v) && v > 0) {
+        const call = Math.max(lo, v)
+        setPred(call)
+        setHiExt(prev => Math.max(prev, call))
+      }
+      setTyping(false)
+      setTyped('')
+    }
 
     return (
       <div style={{ position: 'relative', background: C.surface, border: `1px solid ${C.amber}55`, borderTop: `3px solid ${C.amber}`, overflow: 'hidden' }}>
@@ -869,18 +894,43 @@ export default function BidPrixApp() {
             </div>
           </div>
 
-          {/* Slider */}
+          {/* Slider — quick pick between current bid and 2× current bid */}
           <input
             type="range" className="bp-slider"
-            min={lo} max={hi} step={500} value={pred}
+            min={lo} max={hiSlider} step={500} value={pred}
             disabled={locked}
             onChange={e => setPred(parseInt(e.target.value, 10))}
             style={{ background: `linear-gradient(90deg, ${C.amber} 0%, ${C.amber} ${pct * 100}%, ${C.border} ${pct * 100}%, ${C.border} 100%)`, opacity: locked ? 0.55 : 1 }}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
             <span style={{ fontFamily: mono, fontSize: 10.5, color: C.faint }}>{fmtK(lo)}</span>
-            <span style={{ fontFamily: mono, fontSize: 10.5, color: C.faint }}>{fmtK(hi)}</span>
+            <span style={{ fontFamily: mono, fontSize: 10.5, color: C.faint }}>{fmtK(hiSlider)}</span>
           </div>
+
+          {/* Exact-amount entry — no upper cap, for calls beyond the slider range */}
+          {!locked && (
+            typing ? (
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: C.surfaceHi, border: `1px solid ${C.amber}66`, borderRadius: 4, padding: '0 12px' }}>
+                  <span style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, color: C.amber, marginRight: 4 }}>$</span>
+                  <input
+                    type="text" inputMode="numeric" autoFocus
+                    value={typed}
+                    onChange={e => setTyped(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') applyTyped(); if (e.key === 'Escape') { setTyping(false); setTyped('') } }}
+                    placeholder={`${pred.toLocaleString()}`}
+                    style={{ flex: 1, minWidth: 0, height: 42, background: 'none', border: 'none', outline: 'none', color: C.text, fontFamily: mono, fontSize: 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
+                  />
+                </div>
+                <button onClick={applyTyped} style={{ height: 44, padding: '0 16px', borderRadius: 4, border: 'none', background: C.amber, color: '#000', fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>SET</button>
+                <button onClick={() => { setTyping(false); setTyped('') }} style={{ height: 44, width: 44, borderRadius: 4, border: `1px solid ${C.border}`, background: 'none', color: C.muted, fontFamily: mono, fontSize: 14, cursor: 'pointer' }}>✕</button>
+              </div>
+            ) : (
+              <button onClick={() => setTyping(true)} style={{ marginTop: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: mono, fontSize: 11.5, fontWeight: 700, color: C.muted, letterSpacing: 0.8, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                TYPE EXACT AMOUNT — go beyond the slider ▸
+              </button>
+            )
+          )}
 
           {/* Action */}
           {locked ? (
@@ -1977,10 +2027,12 @@ export default function BidPrixApp() {
     const filters = ['DRAFTING', 'LIVE', 'ENTERED']
 
     // One event-lifecycle vocabulary everywhere: OPENS → DRAFTING → LIVE → FINISHED.
-    // getDraftStatus → lifecycle: upcoming=OPENS, open=DRAFTING, closed=LIVE (auction running).
+    // getDraftStatus → lifecycle: upcoming=OPENS, open=DRAFTING, closed=LIVE (auction
+    // running), ended=FINISHED (terminal — results only, even for entered events).
     const getRowConfig = (l) => {
       const joined = userLeagues.some(ul => ul.id === l.id)
       const ds = getDraftStatus(l)
+      if (ds.status === 'ended')   return { borderColor: C.amber,   pillColor: C.amber,   pillLabel: '🏁 FINISHED', btnBg: 'transparent', btnColor: C.amber, btnBorder: `1px solid ${C.amber}55`, btnLabel: 'RESULTS ▸' }
       if (joined)                  return { borderColor: C.red,     pillColor: C.red,     pillLabel: '★ ENTERED',  btnBg: 'transparent', btnColor: C.red,   btnBorder: `1px solid ${C.red}55`, btnLabel: 'DRAFT ▸' }
       if (ds.status === 'open')    return { borderColor: C.amber,   pillColor: C.amber,   pillLabel: '◉ DRAFTING', btnBg: C.red,         btnColor: C.text,  btnBorder: 'none',                  btnLabel: 'ENTER ▸' }
       if (ds.status === 'closed')  return { borderColor: '#3a8aef', pillColor: '#3a8aef', pillLabel: '▸ LIVE',     btnBg: C.surfaceHi,   btnColor: C.muted, btnBorder: 'none',                  btnLabel: 'WATCH' }
@@ -1990,7 +2042,8 @@ export default function BidPrixApp() {
     const handleRowAction = (l) => {
       const joined = userLeagues.some(ul => ul.id === l.id)
       const ds = getDraftStatus(l)
-      if (joined) { updateSelectedLeague(l); onNavigate('cars') }       // DRAFT ▸
+      if (ds.status === 'ended') { updateSelectedLeague(l); onNavigate('leaderboard') } // RESULTS ▸
+      else if (joined) { updateSelectedLeague(l); onNavigate('cars') }   // DRAFT ▸
       else if (ds.status === 'open') joinLeague(l)                       // ENTER ▸
       else if (ds.status === 'closed') { updateSelectedLeague(l); onNavigate('dashboard') } // WATCH
     }
@@ -2049,13 +2102,15 @@ export default function BidPrixApp() {
           {visibleLeagues.map(l => {
             const cfg = getRowConfig(l)
             const ds = getDraftStatus(l)
-            // Lifecycle time labels: OPENS · <date> / DRAFT CLOSES · <countdown> / ENDS · <countdown>
-            const timeLabel = ds.status === 'upcoming' ? 'OPENS' : ds.status === 'open' ? 'DRAFT CLOSES' : 'ENDS'
+            // Lifecycle time labels: OPENS · <date> / DRAFT CLOSES · <countdown> / ENDS · <countdown> / ENDED · <date>
+            const timeLabel = ds.status === 'upcoming' ? 'OPENS' : ds.status === 'open' ? 'DRAFT CLOSES' : ds.status === 'ended' ? 'ENDED' : 'ENDS'
             const timeVal = ds.status === 'upcoming'
               ? (l.draft_starts_at ? new Date(l.draft_starts_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—')
               : ds.status === 'open'
                 ? (l.draft_ends_at ? calculateTimeLeft(new Date(l.draft_ends_at)) : '—')
-                : (l.end_date ? calculateTimeLeft(new Date(l.end_date)) : '—')
+                : ds.status === 'ended'
+                  ? (l.end_date ? new Date(l.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'FINAL')
+                  : (l.end_date ? calculateTimeLeft(new Date(l.end_date)) : '—')
             return (
               <div key={l.id} style={{ marginBottom: 8, padding: '14px 14px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${cfg.borderColor}` }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -2281,7 +2336,7 @@ export default function BidPrixApp() {
           <TopNav screen="cars" onNavigate={onNavigate} />
           <div style={{ fontFamily: mono, fontSize: 11, color: canPick ? C.pos : C.muted, letterSpacing: 1.2, display: 'flex', alignItems: 'center', gap: 6 }}>
             {canPick && <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.pos, display: 'inline-block', animation: 'bpPulse 1.6s ease-in-out infinite' }} />}
-            {canPick ? 'DRAFTING OPEN' : 'DRAFT CLOSED'}
+            {canPick ? 'DRAFTING OPEN' : draftStatus.status === 'ended' ? '🏁 EVENT ENDED' : 'DRAFT CLOSED'}
           </div>
         </div>
         <CheckerBar height={3} />
@@ -2953,6 +3008,7 @@ export default function BidPrixApp() {
       setStandings(sortStandings(standings, newSort))
     }
 
+    const eventOver = selectedLeague ? getDraftStatus(selectedLeague).status === 'ended' : false
     const me = standings.find(p => p.userId === user?.id)
     const myRank = me ? standings.indexOf(me) + 1 : null
     const p1 = standings[0]
@@ -2975,13 +3031,13 @@ export default function BidPrixApp() {
         </div>
         <CheckerBar height={3} />
 
-        {/* Eyebrow + title */}
+        {/* Eyebrow + title — reads FINAL STANDINGS once the event is over */}
         <div style={{ padding: '18px 18px 8px' }}>
-          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.red }}>
-            {'//'} {selectedLeague?.name?.toUpperCase() || 'STANDINGS'}
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: eventOver ? C.amber : C.red }}>
+            {'//'} {selectedLeague?.name?.toUpperCase() || 'STANDINGS'}{eventOver ? ' · 🏁 EVENT FINISHED' : ''}
           </div>
           <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 40, fontWeight: 800, letterSpacing: -1.6, marginTop: 4, textTransform: 'uppercase' }}>
-            STANDINGS
+            {eventOver ? 'FINAL STANDINGS' : 'STANDINGS'}
           </div>
         </div>
 
@@ -3121,6 +3177,10 @@ export default function BidPrixApp() {
     const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()
     const username = user?.user_metadata?.username || user?.email?.split('@')[0] || 'Driver'
 
+    // Terminal state: once the event is over the dashboard switches from a live
+    // pit-wall into a race-recap — checkered banner, final numbers, results CTA.
+    const eventOver = selectedLeague ? getDraftStatus(selectedLeague).status === 'ended' : false
+
     // Time-in-event reads "DAY X OF 7" (never "WK 3"), derived from the event's start.
     const eventDay = (() => {
       if (!selectedLeague) return null
@@ -3173,27 +3233,73 @@ export default function BidPrixApp() {
         <div style={{ padding: '16px 22px 14px', borderBottom: `1px solid ${C.border}` }}>
           <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 5 }}>{'//'} WELCOME BACK</div>
           <div style={{ fontFamily: mono, fontSize: 38, fontWeight: 800, letterSpacing: -1.4, textTransform: 'uppercase', lineHeight: 1 }}>{username}</div>
-          <div style={{ fontFamily: mono, fontSize: 12, color: C.muted, marginTop: 6 }}>
-            {selectedLeague ? `${selectedLeague.name}${eventDay ? ` · DAY ${eventDay} OF 7` : ''}` : 'No event — enter one to start'}
+          <div style={{ fontFamily: mono, fontSize: 12, color: eventOver ? C.amber : C.muted, marginTop: 6 }}>
+            {selectedLeague
+              ? eventOver ? `${selectedLeague.name} · EVENT COMPLETE` : `${selectedLeague.name}${eventDay ? ` · DAY ${eventDay} OF 7` : ''}`
+              : 'No event — enter one to start'}
           </div>
-          {/* 7-segment day-progress bar (filled = days elapsed) */}
-          {eventDay && (
+          {/* 7-segment day-progress bar (filled = days elapsed; all amber when finished) */}
+          {(eventDay || eventOver) && (
             <div style={{ display: 'flex', gap: 4, marginTop: 10 }}>
               {Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} style={{ flex: 1, height: 4, borderRadius: 1, background: i < eventDay ? C.red : C.surfaceHi }} />
+                <div key={i} style={{ flex: 1, height: 4, borderRadius: 1, background: eventOver ? C.amber : i < eventDay ? C.red : C.surfaceHi }} />
               ))}
             </div>
           )}
         </div>
+
+        {/* RACE FINISHED — end-of-event recap banner (terminal state, replaces live UI cues) */}
+        {eventOver && (
+          <div style={{ margin: '16px 22px 0', background: C.surface, border: `1px solid ${C.amber}55`, borderTop: `3px solid ${C.amber}`, overflow: 'hidden' }}>
+            <div style={{ padding: '14px 16px 12px', borderBottom: `1px solid ${C.border}`, background: `${C.amber}0e`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 800, color: C.amber, letterSpacing: 1.4 }}>🏁 EVENT FINISHED</span>
+              {selectedLeague.end_date && (
+                <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1 }}>
+                  ENDED {new Date(selectedLeague.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase()}
+                </span>
+              )}
+            </div>
+            <div style={{ padding: 16 }}>
+              <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5, marginBottom: 14 }}>
+                The checkered flag is out — all lots have hammered and the standings are final.
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 24, marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>FINAL GARAGE VALUE</div>
+                  <div style={{ fontFamily: mono, fontSize: 32, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>{fmtUSD(totalCurrent)}</div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>NET</div>
+                  <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 800, color: gainColor(totalGain), fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{(totalGain >= 0 ? '+' : '') + fmtCompact(totalGain)}</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <button onClick={() => onNavigate('leaderboard')} style={{ height: 50, borderRadius: 4, border: 'none', background: C.amber, color: '#000', fontFamily: mono, fontSize: 12.5, fontWeight: 800, letterSpacing: 1.2, cursor: 'pointer' }}>
+                  FINAL RESULTS ▸
+                </button>
+                <button onClick={() => onNavigate('leagues')} style={{ height: 50, borderRadius: 4, background: 'transparent', border: `1px solid ${C.borderHi}`, color: C.text, fontFamily: mono, fontSize: 12.5, fontWeight: 700, letterSpacing: 1.2, cursor: 'pointer' }}>
+                  JOIN NEXT EVENT ▸
+                </button>
+              </div>
+              <button onClick={() => onNavigate('history')} style={{ marginTop: 12, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: mono, fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 0.8, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                VIEW PAST EVENTS ▸
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* HERO LOT — full-bleed top car (car-forward centerpiece) */}
         {bestCar && (
           <div style={{ margin: '16px 22px 0' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: 1.4, fontWeight: 700 }}>★ TOP LOT IN YOUR GARAGE</div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 1.2, fontWeight: 700 }}>
-                <LiveDot /> LIVE
-              </div>
+              {eventOver ? (
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.2, fontWeight: 700 }}>🏁 FINAL</div>
+              ) : (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 1.2, fontWeight: 700 }}>
+                  <LiveDot /> LIVE
+                </div>
+              )}
             </div>
             <div style={{ position: 'relative', borderRadius: 3, overflow: 'hidden', border: `1px solid ${C.borderHi}` }}>
               <CarImg car={bestCar} height={isWide ? undefined : 196} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 440 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={0} />
@@ -3237,8 +3343,8 @@ export default function BidPrixApp() {
         )}
 
         {/* Total-value card */}
-        <div style={{ margin: '16px 22px', background: C.surface, border: `1px solid ${C.borderHi}`, padding: '16px 18px', borderLeft: `4px solid ${C.red}` }}>
-          <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 8 }}>TOTAL VALUE</div>
+        <div style={{ margin: '16px 22px', background: C.surface, border: `1px solid ${C.borderHi}`, padding: '16px 18px', borderLeft: `4px solid ${eventOver ? C.amber : C.red}` }}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 8 }}>{eventOver ? 'FINAL VALUE' : 'TOTAL VALUE'}</div>
           <div style={{ fontFamily: mono, fontSize: 46, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1.8, lineHeight: 1 }}>
             {fmtUSD(totalCurrent)}
           </div>
@@ -3256,7 +3362,7 @@ export default function BidPrixApp() {
               { label: 'NET',    value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
               { label: 'ROSTER', value: `${garage.length}/7`, color: garage.length === 7 ? C.pos : C.text },
               { label: 'BUDGET', value: fmtK(budget), color: budget < 20000 ? C.amber : C.text },
-              { label: 'EVENT', value: selectedLeague ? 'ACTIVE' : '—', color: selectedLeague ? C.pos : C.faint },
+              { label: 'EVENT', value: selectedLeague ? (eventOver ? 'ENDED' : 'ACTIVE') : '—', color: selectedLeague ? (eventOver ? C.amber : C.pos) : C.faint },
             ].map(s => (
               <div key={s.label}>
                 <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>{s.label}</div>
@@ -3265,12 +3371,14 @@ export default function BidPrixApp() {
             ))}
           </div>
           <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${C.border}`, fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 0.4, lineHeight: 1.5 }}>
-            VALUE = $175K BUDGET + NET — your cars marked to their live bids
+            {eventOver
+              ? 'VALUE = $175K BUDGET + NET — event over, prices are final hammer prices'
+              : 'VALUE = $175K BUDGET + NET — your cars marked to their live bids'}
           </div>
         </div>
 
-        {/* Live ticker */}
-        {recentUpdates.length > 0 && (
+        {/* Live ticker (suppressed once the event is over) */}
+        {!eventOver && recentUpdates.length > 0 && (
           <div style={{ margin: '0 22px 16px', background: C.surface, border: `1px solid ${C.border}`, padding: '14px 16px' }}>
             <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.6, marginBottom: 10 }}>{'//'} LIVE MARKET</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -3285,14 +3393,20 @@ export default function BidPrixApp() {
           </div>
         )}
 
-        {/* Quick links */}
+        {/* Quick links — a finished event points at results/next event, never PICK CARS */}
         <div style={{ margin: '0 22px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <button onClick={() => onNavigate('leaderboard')} style={{ height: 48, borderRadius: 3, background: C.surface, border: `1px solid ${C.border}`, color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 700, letterSpacing: 1.1, cursor: 'pointer' }}>
-            VIEW RANKS ▸
+            {eventOver ? 'FINAL RESULTS ▸' : 'VIEW RANKS ▸'}
           </button>
-          <button onClick={() => onNavigate('cars')} style={{ height: 48, borderRadius: 3, background: C.red, border: 'none', color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1.1, cursor: 'pointer' }}>
-            PICK CARS ▸
-          </button>
+          {eventOver ? (
+            <button onClick={() => onNavigate('leagues')} style={{ height: 48, borderRadius: 3, background: C.red, border: 'none', color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1.1, cursor: 'pointer' }}>
+              NEXT EVENT ▸
+            </button>
+          ) : (
+            <button onClick={() => onNavigate('cars')} style={{ height: 48, borderRadius: 3, background: C.red, border: 'none', color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1.1, cursor: 'pointer' }}>
+              PICK CARS ▸
+            </button>
+          )}
         </div>
 
         <BottomTabBar screen="dashboard" onNavigate={onNavigate} />
