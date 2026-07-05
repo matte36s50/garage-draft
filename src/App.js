@@ -1670,6 +1670,48 @@ export default function BidPrixApp() {
       { id: 'c3', title: '1987 Toyota Land Cruiser', year: 1987, price: 42000, img: '#3a5a4a', trend: 6 },
       { id: 'c4', title: '1972 Datsun 240Z',         year: 1972, price: 28500, img: '#5a4a3a', trend: 9 },
     ]
+    // Pull a few real open auctions (with photos) so the grid shows live lots
+    // instead of color placeholders. Falls back to MOCK_CARS if the fetch is
+    // empty or fails, so the landing page always renders.
+    const [gridCars, setGridCars] = useState(null)
+    const [lotCount, setLotCount] = useState(null)
+    useEffect(() => {
+      let active = true
+      ;(async () => {
+        try {
+          const nowSec = Math.floor(Date.now() / 1000)
+          const { data, error, count } = await supabase
+            .from('auctions')
+            .select('auction_id, title, make, year, current_bid, price_at_48h, image_url', { count: 'exact' })
+            .not('image_url', 'is', null)
+            .is('final_price', null)
+            .gte('timestamp_end', nowSec)
+            .order('timestamp_end', { ascending: true })
+            .limit(4)
+          if (error) throw error
+          if (!active) return
+          const cars = (data || []).map((a) => {
+            const baseline = parseFloat(a.price_at_48h)
+            const current = parseFloat(a.current_bid) || baseline || 0
+            const trend = baseline ? Math.round(((current - baseline) / baseline) * 100) : 0
+            return {
+              id: a.auction_id,
+              title: a.title || `${a.year || ''} ${a.make || ''}`.trim(),
+              make: a.make,
+              year: a.year,
+              price: current,
+              imageUrl: a.image_url || getDefaultCarImage(a.make),
+              trend,
+            }
+          })
+          if (cars.length) setGridCars(cars)
+          if (typeof count === 'number') setLotCount(count)
+        } catch (e) {
+          console.warn('Landing grid: falling back to mock cars', e)
+        }
+      })()
+      return () => { active = false }
+    }, [])
     return (
       <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
         {/* App bar */}
@@ -1718,16 +1760,18 @@ export default function BidPrixApp() {
 
         {/* Featured grid */}
         <div style={{ padding: '0 18px 24px' }}>
-          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>{'//'} THIS WEEK&apos;S GRID — 72 LOTS</div>
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>{'//'} THIS WEEK&apos;S GRID — {lotCount ?? 72} LOTS</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {MOCK_CARS.map(c => (
+            {(gridCars || MOCK_CARS).map((c, i) => (
               <div key={c.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10 }}>
-                <CarPlaceholder tint={c.img} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 320 : undefined} radius={2} />
-                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 8 }}>LOT {c.id.slice(1).padStart(4,'0')} · {c.year}</div>
+                {c.imageUrl
+                  ? <CarImg car={c} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 320 : undefined} radius={2} />
+                  : <CarPlaceholder tint={c.img} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 320 : undefined} radius={2} />}
+                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 8 }}>LOT {String(i + 1).padStart(4,'0')} · {c.year}</div>
                 <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, height: 38, lineHeight: 1.3, overflow: 'hidden' }}>{c.title.replace(`${c.year} `,'')}</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 6 }}>
                   <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>${(c.price/1000).toFixed(0)}k</div>
-                  <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: C.pos }}>+{c.trend}%</div>
+                  <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: c.trend >= 0 ? C.pos : C.red }}>{c.trend >= 0 ? '+' : ''}{c.trend}%</div>
                 </div>
               </div>
             ))}
