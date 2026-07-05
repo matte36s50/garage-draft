@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Car, Trophy, Users, DollarSign, LogOut, Zap, TrendingUp, LayoutDashboard, History, ChevronDown, Check } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import LeagueChat from './components/LeagueChat'
@@ -500,6 +500,75 @@ function Sparkline({ data, color, width = 300, height = 44 }) {
       <path d={area} fill={`url(#${gid})`} />
       <path d={line} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
+  )
+}
+
+// One-shot checkered-flag confetti for the end-of-event finish. Pure CSS/JS — no
+// extra dependency — and renders nothing when the user prefers reduced motion.
+function Confetti({ count = 44 }) {
+  const reduce = typeof window !== 'undefined' && window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const palette = [C.red, C.amber, C.text, C.pos]
+  const pieces = useMemo(() => Array.from({ length: count }, (_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    delay: Math.random() * 0.7,
+    dur: 2.6 + Math.random() * 1.8,
+    w: 6 + Math.random() * 6,
+    drift: Math.round((Math.random() * 2 - 1) * 80),
+    spin: 540 + Math.round(Math.random() * 540),
+    color: palette[i % palette.length],
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  })), [count])
+  if (reduce) return null
+  return (
+    <div aria-hidden style={{ position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 60 }}>
+      <style>{`@keyframes bpConfFall{0%{transform:translate(0,-12vh) rotate(0deg);opacity:1}100%{transform:translate(var(--bp-x,0px),112vh) rotate(var(--bp-r,720deg));opacity:.85}}`}</style>
+      {pieces.map(p => (
+        <span key={p.id} style={{
+          position: 'absolute', top: 0, left: `${p.left}%`, width: p.w, height: p.w * 0.62,
+          background: p.color, borderRadius: 1,
+          animation: `bpConfFall ${p.dur}s cubic-bezier(.25,.6,.5,1) ${p.delay}s forwards`,
+          '--bp-x': `${p.drift}px`, '--bp-r': `${p.spin}deg`,
+        }} />
+      ))}
+    </div>
+  )
+}
+
+// Final-standings podium: P2 (left) · P1 (center, tallest) · P3 (right).
+function PodiumFinish({ standings = [], meId }) {
+  const top = standings.slice(0, 3)
+  if (top.length === 0) return null
+  const order = [top[1], top[0], top[2]] // visual L→R: 2nd, 1st, 3rd
+  const meta = {
+    1: { h: 104, color: C.amber, medal: '1', tag: 'CHAMPION' },
+    2: { h: 74, color: '#c2c5cc', medal: '2', tag: 'RUNNER-UP' },
+    3: { h: 56, color: '#cd7f4d', medal: '3', tag: 'THIRD' },
+  }
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', alignItems: 'end', gap: 8, padding: '8px 18px 4px' }}>
+      {order.map((p, i) => {
+        if (!p) return <div key={i} />
+        const rank = standings.indexOf(p) + 1
+        const m = meta[rank] || meta[3]
+        const isMe = p.userId === meId
+        return (
+          <div key={p.userId} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0 }}>
+            <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 1.2, color: m.color, fontWeight: 800, marginBottom: 4 }}>{m.tag}</div>
+            <div title={p.username} style={{ fontSize: 12.5, fontWeight: 700, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center', color: isMe ? C.amber : C.text }}>
+              {p.username}{isMe ? ' · YOU' : ''}
+            </div>
+            <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>
+              ${(Math.round(p.totalScore || 0) / 1000).toFixed(1)}k
+            </div>
+            <div style={{ width: '100%', height: m.h, background: `${m.color}1f`, border: `1px solid ${m.color}`, borderBottom: 'none', borderTopLeftRadius: 3, borderTopRightRadius: 3, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 8 }}>
+              <span style={{ fontFamily: mono, fontSize: 26, fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.medal}</span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -2711,7 +2780,19 @@ export default function BidPrixApp() {
     const [loading, setLoading] = useState(true)
     const [sortBy, setSortBy] = useState('total_percent')
     const [, setBonusWinner] = useState(null)
-  
+    const [showConfetti, setShowConfetti] = useState(false)
+    const [confettiDone, setConfettiDone] = useState(false)
+    const isFinal = selectedLeague ? getDraftStatus(selectedLeague).status === 'ended' : false
+
+    // Fire the checkered-flag confetti once, when the final results first land.
+    useEffect(() => {
+      if (isFinal && !loading && standings.length > 0 && !confettiDone) {
+        setShowConfetti(true)
+        const t = setTimeout(() => { setShowConfetti(false); setConfettiDone(true) }, 4500)
+        return () => clearTimeout(t)
+      }
+    }, [isFinal, loading, standings.length, confettiDone])
+
     useEffect(() => {
     if (selectedLeague) {
       fetchLeaderboard()
@@ -3081,7 +3162,6 @@ export default function BidPrixApp() {
       setStandings(sortStandings(standings, newSort))
     }
 
-    const eventOver = selectedLeague ? getDraftStatus(selectedLeague).status === 'ended' : false
     const me = standings.find(p => p.userId === user?.id)
     const myRank = me ? standings.indexOf(me) + 1 : null
     const p1 = standings[0]
@@ -3104,15 +3184,41 @@ export default function BidPrixApp() {
         </div>
         <CheckerBar height={3} />
 
+        {showConfetti && <Confetti />}
+
         {/* Eyebrow + title — reads FINAL STANDINGS once the event is over */}
         <div style={{ padding: '18px 18px 8px' }}>
-          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: eventOver ? C.amber : C.red }}>
-            {'//'} {selectedLeague?.name?.toUpperCase() || 'STANDINGS'}{eventOver ? ' · 🏁 EVENT FINISHED' : ''}
+          <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: isFinal ? C.amber : C.red }}>
+            {'//'} {selectedLeague?.name?.toUpperCase() || 'STANDINGS'}{isFinal ? ' · 🏁 EVENT FINISHED' : ''}
           </div>
           <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 40, fontWeight: 800, letterSpacing: -1.6, marginTop: 4, textTransform: 'uppercase' }}>
-            {eventOver ? 'FINAL STANDINGS' : 'STANDINGS'}
+            {isFinal ? 'FINAL STANDINGS' : 'STANDINGS'}
           </div>
+          {isFinal && (
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginTop: 6, letterSpacing: 0.3 }}>
+              Every auction has ended — these results are locked in.
+            </div>
+          )}
         </div>
+
+        {/* Champion hero + podium (final only) */}
+        {isFinal && !loading && p1 && (
+          <>
+            <div style={{ margin: '4px 18px 10px', background: `${C.amber}12`, border: `1px solid ${C.amber}`, borderLeft: `4px solid ${C.amber}`, padding: '14px 16px' }}>
+              <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1.6, color: C.amber, fontWeight: 800 }}>🏆 CHAMPION</div>
+              <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.6, marginTop: 4 }}>
+                {p1.username}{p1.userId === user?.id ? ' · YOU' : ''}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 6, fontFamily: mono, fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ fontSize: 22, fontWeight: 800 }}>${Math.round(p1.totalScore || 0).toLocaleString()}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: p1.totalDollarGain >= 0 ? C.pos : C.neg }}>
+                  {p1.totalDollarGain >= 0 ? '+' : ''}${Math.round(p1.totalDollarGain || 0).toLocaleString()} net
+                </span>
+              </div>
+            </div>
+            <PodiumFinish standings={standings} meId={user?.id} />
+          </>
+        )}
 
         {/* Loading skeletons */}
         {loading && (
