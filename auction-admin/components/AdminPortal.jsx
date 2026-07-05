@@ -232,7 +232,7 @@ const AdminPortal = () => {
           league:league_id(name),
           garage_cars(
             *,
-            auction:auction_id(title, make, model, final_price)
+            auction:auction_id(title, make, model, final_price, reserve_not_met, current_bid)
           )
         `);
       setGarages(garageData || []);
@@ -402,14 +402,16 @@ const AdminPortal = () => {
     }
   };
 
-  // Load recently finalized auctions (have a final_price set) for editing
+  // Load recently finalized auctions (sold OR reserve-not-met) for review/editing.
+  // RNM rows keep final_price NULL by design, so we must match on either condition —
+  // filtering on final_price alone made RNM auctions invisible in this tab.
   const loadFinalizedAuctions = async () => {
     try {
       const { supabase } = await import('@/lib/supabase');
       const { data, error } = await supabase
         .from('auctions')
         .select('*')
-        .not('final_price', 'is', null)
+        .or('final_price.not.is.null,reserve_not_met.is.true')
         .order('timestamp_end', { ascending: false })
         .limit(200);
       if (error) throw error;
@@ -429,19 +431,43 @@ const AdminPortal = () => {
     setEditingFinalizedId(auctionId);
     try {
       const { supabase } = await import('@/lib/supabase');
+      // Setting a sale price also clears reserve_not_met, so an RNM row can be
+      // corrected to Sold from this list (no-op for rows that were already sold).
       const { error } = await supabase
         .from('auctions')
-        .update({ final_price: parseFloat(newPrice) })
+        .update({ final_price: parseFloat(newPrice), reserve_not_met: false })
         .eq('auction_id', auctionId);
       if (error) throw error;
       setFinalizedAuctions(prev =>
-        prev.map(a => a.auction_id === auctionId ? { ...a, final_price: parseFloat(newPrice) } : a)
+        prev.map(a => a.auction_id === auctionId ? { ...a, final_price: parseFloat(newPrice), reserve_not_met: false } : a)
       );
       setEditFinalPriceInputs(prev => { const n = { ...prev }; delete n[auctionId]; return n; });
       alert(`Final price updated to $${parseFloat(newPrice).toLocaleString()}`);
     } catch (error) {
       console.error('Error editing final price:', error);
       alert('Failed to update: ' + error.message);
+    } finally {
+      setEditingFinalizedId(null);
+    }
+  };
+
+  // Undo a "Reserve Not Met" marking: the auction returns to the pending
+  // Finalize list (final_price stays NULL) so it can be re-finalized.
+  const handleUnmarkReserveNotMet = async (auctionId) => {
+    if (!confirm('Un-mark "Reserve Not Met"? The auction will return to the pending Finalize list.')) return;
+    setEditingFinalizedId(auctionId);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase
+        .from('auctions')
+        .update({ reserve_not_met: false })
+        .eq('auction_id', auctionId);
+      if (error) throw error;
+      setFinalizedAuctions(prev => prev.filter(a => a.auction_id !== auctionId));
+      await loadEndedAuctions();
+    } catch (error) {
+      console.error('Error un-marking reserve not met:', error);
+      alert('Failed to un-mark: ' + error.message);
     } finally {
       setEditingFinalizedId(null);
     }
@@ -2178,13 +2204,15 @@ const AdminPortal = () => {
                 className="flex items-center gap-2 text-slate-300 hover:text-white font-semibold text-base"
               >
                 <Edit size={18} className={showEditFinalized ? 'text-yellow-400' : 'text-slate-400'} />
-                {showEditFinalized ? 'Hide' : 'Show'} Finalized Auctions (Edit Prices)
+                {showEditFinalized ? 'Hide' : 'Show'} Finalized Auctions (Sold & Reserve Not Met)
               </button>
 
               {showEditFinalized && (
                 <div className="mt-4">
                   <p className="text-slate-400 text-sm mb-4">
-                    Use this section to correct a finalized price that was entered incorrectly.
+                    Sold auctions and confirmed Reserve Not Met auctions. Correct a mistaken price,
+                    flip an RNM auction to Sold by entering its price, or un-mark RNM to send it back
+                    to the pending list above.
                   </p>
                   <div className="flex gap-2 mb-4">
                     <button
@@ -2199,24 +2227,42 @@ const AdminPortal = () => {
                   ) : (
                     <div className="space-y-3">
                       {finalizedAuctions.map(auction => (
-                        <div key={auction.auction_id} className="bg-slate-800/70 p-4 rounded-lg border border-slate-600">
+                        <div
+                          key={auction.auction_id}
+                          className={`bg-slate-800/70 p-4 rounded-lg border ${
+                            auction.reserve_not_met ? 'border-yellow-700/70' : 'border-slate-600'
+                          }`}
+                        >
                           <div className="flex justify-between items-start gap-4">
                             <div className="flex-1 min-w-0">
-                              <div className="text-white font-semibold truncate">{auction.title}</div>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="text-white font-semibold truncate">{auction.title}</div>
+                                {auction.reserve_not_met && (
+                                  <span className="bg-yellow-900/50 text-yellow-400 text-xs px-2 py-0.5 rounded-full border border-yellow-700 shrink-0">
+                                    Reserve Not Met
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-slate-400 text-xs">
                                 <span>{auction.year} {auction.make} {auction.model}</span>
                                 {auction.auction_reference && (
                                   <span className="text-blue-400">{auction.auction_reference}</span>
                                 )}
                               </div>
-                              <div className="mt-1 text-green-400 text-sm font-semibold">
-                                Current: ${parseFloat(auction.final_price).toLocaleString()}
-                              </div>
+                              {auction.reserve_not_met ? (
+                                <div className="mt-1 text-yellow-400/90 text-sm">
+                                  No sale{auction.current_bid > 0 && ` — high bid $${parseFloat(auction.current_bid).toLocaleString()}`} · scored at 25% of high bid
+                                </div>
+                              ) : (
+                                <div className="mt-1 text-green-400 text-sm font-semibold">
+                                  Current: ${parseFloat(auction.final_price).toLocaleString()}
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               <input
                                 type="number"
-                                placeholder="New price..."
+                                placeholder={auction.reserve_not_met ? 'Sold price...' : 'New price...'}
                                 value={editFinalPriceInputs[auction.auction_id] || ''}
                                 onChange={(e) => setEditFinalPriceInputs(prev => ({
                                   ...prev,
@@ -2231,8 +2277,20 @@ const AdminPortal = () => {
                                 className="bg-yellow-600 hover:bg-yellow-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-3 py-2 rounded text-sm flex items-center gap-1"
                               >
                                 <Edit size={14} />
-                                {editingFinalizedId === auction.auction_id ? 'Saving...' : 'Update'}
+                                {editingFinalizedId === auction.auction_id
+                                  ? 'Saving...'
+                                  : auction.reserve_not_met ? 'Mark Sold' : 'Update'}
                               </button>
+                              {auction.reserve_not_met && (
+                                <button
+                                  onClick={() => handleUnmarkReserveNotMet(auction.auction_id)}
+                                  disabled={editingFinalizedId === auction.auction_id}
+                                  className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-600 text-white px-3 py-2 rounded text-sm"
+                                  title="Clear the RNM flag and send this auction back to the pending Finalize list"
+                                >
+                                  Un-mark
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -2629,7 +2687,18 @@ const AdminPortal = () => {
                               Purchase: ${car.purchase_price?.toLocaleString()}
                             </div>
                           </div>
-                          {car.auction?.final_price && (
+                          {car.auction?.reserve_not_met ? (
+                            <div className="text-right">
+                              <span className="bg-yellow-900/50 text-yellow-400 text-xs px-2 py-0.5 rounded-full border border-yellow-700">
+                                Reserve Not Met
+                              </span>
+                              <div className="text-slate-400 text-xs mt-1">
+                                {car.auction.current_bid > 0
+                                  ? `High bid $${parseFloat(car.auction.current_bid).toLocaleString()} · scored at 25%`
+                                  : 'No sale · scored at 25% of high bid'}
+                              </div>
+                            </div>
+                          ) : car.auction?.final_price ? (
                             <div className="text-right">
                               <div className="text-white font-semibold">
                                 ${car.auction.final_price?.toLocaleString()}
@@ -2640,7 +2709,7 @@ const AdminPortal = () => {
                                 {calculateGain(car.purchase_price, car.auction.final_price)}%
                               </div>
                             </div>
-                          )}
+                          ) : null}
                         </div>
                       ))}
                     </div>
