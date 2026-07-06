@@ -133,10 +133,23 @@ function extractPriceFromHtml(html) {
     }
   }
 
-  // Pass 2: raw HTML text patterns + <strong> tag patterns
+  // Pass 2: raw HTML text patterns
   const rawResult = matchText(html);
   if (rawResult) return rawResult;
 
+  // Pass 3: strip all HTML tags, retry (handles price split across elements).
+  // This MUST run before the bare <strong> fallback: BaT wraps the result
+  // amount in a tag ("Bid to <strong>EUR €7,000</strong>"), so only the
+  // stripped text reveals whether the amount is a sale price or a
+  // reserve-not-met high bid.
+  const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ');
+  const strippedResult = matchText(stripped);
+  if (strippedResult) { console.log('   (matched after stripping HTML tags)'); return strippedResult; }
+
+  // Pass 4: bare <strong>-wrapped amount. Ambiguous on its own — the same
+  // markup carries both sale prices and reserve-not-met high bids — so check
+  // the text immediately before the tag and only report 'sold' when nothing
+  // marks the amount as a bid.
   const strongPatterns = [
     { pattern: /<strong>\s*(?:USD\s+)?\$\s*([\d,]+)\s*<\/strong>/i, currency: 'USD' },
     { pattern: /<strong>\s*EUR\s*€?\s*([\d,\.]+)\s*<\/strong>/i, currency: 'EUR' },
@@ -148,19 +161,22 @@ function extractPriceFromHtml(html) {
     const match = html.match(pattern);
     if (match) {
       const price = parsePrice(match[1], currency);
-      if (price) {
-        console.log(`   💰 Found: ${currency} ${price.toLocaleString()} (sold, via <strong>)`);
-        return { price, status: 'sold', currency };
+      if (!price) continue;
+      const context = html
+        .slice(Math.max(0, match.index - 300), match.index)
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .slice(-80);
+      if (/(?:bid\s+to|high\s+bid|current\s+bid|reserve\s+not\s+met)[\s:]*$/i.test(context)) {
+        console.log(`   ⚠️ Found: ${currency} ${price.toLocaleString()} (reserve not met, via <strong>)`);
+        return { price, status: 'no_sale', currency };
       }
+      console.log(`   💰 Found: ${currency} ${price.toLocaleString()} (sold, via <strong>)`);
+      return { price, status: 'sold', currency };
     }
   }
 
-  // Pass 3: strip all HTML tags, retry (handles price split across elements)
-  const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ');
-  const strippedResult = matchText(stripped);
-  if (strippedResult) { console.log('   (matched after stripping HTML tags)'); return strippedResult; }
-
-  // Pass 4: reserve not met with no extractable price
+  // Pass 5: reserve not met with no extractable price
   if (/reserve\s+not\s+met/i.test(stripped)) {
     console.log('   ⚠️ Detected: Reserve Not Met (no price found)');
     return { price: null, status: 'no_sale', currency: null };
@@ -205,14 +221,17 @@ function extractPriceFromNextData(html) {
   const listingKeys = Object.keys(listing);
   console.log(`   📦 __NEXT_DATA__ listing keys: ${listingKeys.slice(0, 20).join(', ')}`);
 
+  // Explicit sale-price fields only. bid_amount/current_bid are NOT proof of
+  // a sale — on a reserve-not-met listing they hold the losing high bid,
+  // which is how "Bid to €7,000" listings used to get recorded as sold.
   const soldPrice =
     listing.sold_price ??
     listing.sale_price ??
     listing.final_price ??
     listing.auction_price ??
-    listing.bid_amount ??
-    listing.winning_bid ??
-    listing.current_bid;
+    listing.winning_bid;
+
+  const highBid = listing.bid_amount ?? listing.current_bid;
 
   const currency = (
     listing.currency ||
@@ -229,22 +248,26 @@ function extractPriceFromNextData(html) {
     listing.reserve_status === 'no_sale'
   );
 
-  if (soldPrice && Number(soldPrice) >= MIN_PLAUSIBLE_PRICE) {
-    const price = parseInt(soldPrice, 10);
-    if (isRnm) {
-      console.log(`   ⚠️ __NEXT_DATA__: ${currency} ${price.toLocaleString()} (reserve not met)`);
-      return { price, status: 'no_sale', currency };
-    }
-    console.log(`   💰 __NEXT_DATA__: ${currency} ${price.toLocaleString()} (sold)`);
-    return { price, status: 'sold', currency };
-  }
-
   if (isRnm) {
+    const bid = Number(highBid ?? soldPrice);
+    if (bid >= MIN_PLAUSIBLE_PRICE) {
+      console.log(`   ⚠️ __NEXT_DATA__: ${currency} ${bid.toLocaleString()} (reserve not met)`);
+      return { price: parseInt(bid, 10), status: 'no_sale', currency };
+    }
     console.log('   ⚠️ __NEXT_DATA__: reserve not met (no price)');
     return { price: null, status: 'no_sale', currency: null };
   }
 
-  console.log(`   📦 __NEXT_DATA__ status=${listing.status} sold_price=${listing.sold_price} bid_amount=${listing.bid_amount}`);
+  if (soldPrice && Number(soldPrice) >= MIN_PLAUSIBLE_PRICE) {
+    const price = parseInt(soldPrice, 10);
+    console.log(`   💰 __NEXT_DATA__: ${currency} ${price.toLocaleString()} (sold)`);
+    return { price, status: 'sold', currency };
+  }
+
+  // Only a bid amount and no positive sold/RNM signal — inconclusive. Fall
+  // through to the HTML text passes, which can read the "Sold for"/"Bid to"
+  // label next to the amount.
+  console.log(`   📦 __NEXT_DATA__ inconclusive: status=${listing.status} sold_price=${listing.sold_price} bid_amount=${listing.bid_amount}`);
   return null;
 }
 
