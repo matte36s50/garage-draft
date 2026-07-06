@@ -28,6 +28,15 @@ function getSupabaseClient() {
   );
 }
 
+// Target a row by auction_id when present, falling back to url for legacy
+// rows inserted without one — updates filtered on a NULL auction_id match
+// nothing, so those rows could never be finalized and were re-scraped forever.
+function eqAuction(query, auction) {
+  return auction.auction_id != null
+    ? query.eq('auction_id', auction.auction_id)
+    : query.eq('url', auction.url);
+}
+
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
@@ -461,8 +470,11 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
     const seen = new Set();
     const auctions = [];
     for (const a of [...(unfinalized || []), ...(recheck || []), ...(suspiciousWithdrawn || [])]) {
-      if (!seen.has(a.auction_id)) {
-        seen.add(a.auction_id);
+      // Key by url when auction_id is null so distinct legacy rows aren't
+      // collapsed into one by a shared null key.
+      const key = a.auction_id ?? a.url;
+      if (!seen.has(key)) {
+        seen.add(key);
         auctions.push(a);
       }
     }
@@ -501,10 +513,12 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       }
 
       if (status === 'sold' && price > 0) {
-        const { error: updateError } = await supabase
-          .from('auctions')
-          .update({ final_price: price, reserve_not_met: false, ...makeModelUpdate })
-          .eq('auction_id', auction.auction_id);
+        const { error: updateError } = await eqAuction(
+          supabase
+            .from('auctions')
+            .update({ final_price: price, reserve_not_met: false, ...makeModelUpdate }),
+          auction
+        );
 
         if (updateError) {
           console.log(`   ❌ DB update failed: ${updateError.message}`);
@@ -527,7 +541,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
           // showing a bogus high bid and scoring falls back sensibly.
           updateData.current_bid = null;
         }
-        await supabase.from('auctions').update(updateData).eq('auction_id', auction.auction_id);
+        await eqAuction(supabase.from('auctions').update(updateData), auction);
         console.log(`   ⚠️ Reserve not met${price ? ` — high bid ${price.toLocaleString()}` : ''}`);
         results.noSale.push({ id: auction.auction_id, title: auction.title, highBid: price || null });
         continue;
@@ -535,7 +549,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
 
       // No definitive price result — but still persist make/model if we found them
       if (Object.keys(makeModelUpdate).length > 0) {
-        await supabase.from('auctions').update(makeModelUpdate).eq('auction_id', auction.auction_id);
+        await eqAuction(supabase.from('auctions').update(makeModelUpdate), auction);
       }
 
       // Leave final_price NULL, retry next run
