@@ -451,6 +451,29 @@ const AdminPortal = () => {
     }
   };
 
+  // Flip a wrongly-recorded Sold row to Reserve Not Met (e.g. the scraper
+  // mistook a "Bid to" high bid for a sale price).
+  const handleMarkFinalizedRnm = async (auctionId) => {
+    if (!confirm('Reclassify this auction as "Reserve Not Met"? The final price will be cleared and the 25% penalty will apply in scoring.')) return;
+    setEditingFinalizedId(auctionId);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase
+        .from('auctions')
+        .update({ final_price: null, reserve_not_met: true })
+        .eq('auction_id', auctionId);
+      if (error) throw error;
+      setFinalizedAuctions(prev =>
+        prev.map(a => a.auction_id === auctionId ? { ...a, final_price: null, reserve_not_met: true } : a)
+      );
+    } catch (error) {
+      console.error('Error reclassifying as reserve not met:', error);
+      alert('Failed to reclassify: ' + error.message);
+    } finally {
+      setEditingFinalizedId(null);
+    }
+  };
+
   // Undo a "Reserve Not Met" marking: the auction returns to the pending
   // Finalize list (final_price stays NULL) so it can be re-finalized.
   const handleUnmarkReserveNotMet = async (auctionId) => {
@@ -2281,7 +2304,7 @@ const AdminPortal = () => {
                                   ? 'Saving...'
                                   : auction.reserve_not_met ? 'Mark Sold' : 'Update'}
                               </button>
-                              {auction.reserve_not_met && (
+                              {auction.reserve_not_met ? (
                                 <button
                                   onClick={() => handleUnmarkReserveNotMet(auction.auction_id)}
                                   disabled={editingFinalizedId === auction.auction_id}
@@ -2289,6 +2312,15 @@ const AdminPortal = () => {
                                   title="Clear the RNM flag and send this auction back to the pending Finalize list"
                                 >
                                   Un-mark
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleMarkFinalizedRnm(auction.auction_id)}
+                                  disabled={editingFinalizedId === auction.auction_id}
+                                  className="bg-orange-700 hover:bg-orange-600 disabled:bg-slate-600 text-white px-3 py-2 rounded text-sm"
+                                  title="This didn't actually sell — clear the price and reclassify as Reserve Not Met"
+                                >
+                                  Mark RNM
                                 </button>
                               )}
                             </div>

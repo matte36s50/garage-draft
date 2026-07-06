@@ -70,19 +70,7 @@ def extract_price_from_html(html_content: str):
         (r"Sold\s+for\s+CHF\s*([\d,\']+)", "CHF"),
         (r"Sold\s+for\s+€\s*([\d,\.]+)", "EUR"),
         (r"Sold\s+for\s+£\s*([\d,]+)", "GBP"),
-        # Strong tag patterns (BaT often wraps the sale price in <strong>)
-        (r"<strong>\s*(?:USD\s+)?\$\s*([\d,]+)\s*</strong>", "USD"),
-        (r"<strong>\s*EUR\s*€?\s*([\d,\.]+)\s*</strong>", "EUR"),
-        (r"<strong>\s*GBP\s*£?\s*([\d,]+)\s*</strong>", "GBP"),
     ]
-
-    for pattern, currency in sale_patterns:
-        m = re.search(pattern, html_content, re.IGNORECASE)
-        if m:
-            price = clean_price(m.group(1), currency)
-            if price:
-                print(f"   💰 Found: {currency} {price:,} (sold)")
-                return price, "sold", currency
 
     # RESERVE-NOT-MET (no sale). "Bid to X" = high bid, reserve not met.
     high_bid_patterns = [
@@ -102,13 +90,58 @@ def extract_price_from_html(html_content: str):
         (r"Reserve\s+Not\s+Met[^$]{0,40}\$\s*([\d,]+)", "USD"),
     ]
 
-    for pattern, currency in high_bid_patterns:
+    def match_text(text):
+        for pattern, currency in sale_patterns:
+            m = re.search(pattern, text, re.IGNORECASE)
+            if m:
+                price = clean_price(m.group(1), currency)
+                if price:
+                    print(f"   💰 Found: {currency} {price:,} (sold)")
+                    return price, "sold", currency
+        for pattern, currency in high_bid_patterns:
+            m = re.search(pattern, text, re.IGNORECASE)
+            if m:
+                price = clean_price(m.group(1), currency)
+                if price:
+                    print(f"   ⚠️ Found: {currency} {price:,} (reserve not met)")
+                    return price, "no_sale", currency
+        return None
+
+    # Pass 1: raw HTML text.
+    result = match_text(html_content)
+    if result:
+        return result
+
+    # Pass 2: strip tags and retry. This must run BEFORE the bare <strong>
+    # fallback: BaT wraps the result amount in a tag ("Bid to <strong>EUR
+    # €7,000</strong>"), so only the stripped text reveals whether the amount
+    # is a sale price or a reserve-not-met high bid.
+    stripped = re.sub(r"\s{2,}", " ", re.sub(r"<[^>]+>", " ", html_content))
+    result = match_text(stripped)
+    if result:
+        return result
+
+    # Pass 3: bare <strong>-wrapped amount. Ambiguous on its own — the same
+    # markup carries both sale prices and high bids — so check the text right
+    # before the tag and only report "sold" when nothing marks it as a bid.
+    strong_patterns = [
+        (r"<strong>\s*(?:USD\s+)?\$\s*([\d,]+)\s*</strong>", "USD"),
+        (r"<strong>\s*EUR\s*€?\s*([\d,\.]+)\s*</strong>", "EUR"),
+        (r"<strong>\s*GBP\s*£?\s*([\d,]+)\s*</strong>", "GBP"),
+    ]
+    for pattern, currency in strong_patterns:
         m = re.search(pattern, html_content, re.IGNORECASE)
         if m:
             price = clean_price(m.group(1), currency)
-            if price:
-                print(f"   ⚠️ Found: {currency} {price:,} (reserve not met)")
+            if not price:
+                continue
+            context = re.sub(r"<[^>]+>", " ", html_content[max(0, m.start() - 300):m.start()])
+            context = re.sub(r"\s{2,}", " ", context)[-80:]
+            if re.search(r"(?:bid\s+to|high\s+bid|current\s+bid|reserve\s+not\s+met)[\s:]*$", context, re.IGNORECASE):
+                print(f"   ⚠️ Found: {currency} {price:,} (reserve not met, via <strong>)")
                 return price, "no_sale", currency
+            print(f"   💰 Found: {currency} {price:,} (sold, via <strong>)")
+            return price, "sold", currency
 
     return None, None, None
 
@@ -193,6 +226,7 @@ def get_auctions_to_finalize():
     params = {
         "select": "*",
         "final_price": "is.null",
+        "reserve_not_met": "is.false",  # Skip confirmed reserve-not-met auctions
         "timestamp_end": f"lt.{cutoff_epoch}",
         "limit": "100",
         "order": "timestamp_end.desc",  # Process most recent first
@@ -247,10 +281,12 @@ def update_auction_price(auction_id: str, final_price: int, currency: str = "USD
         return False
 
 
-def update_high_bid(auction_id: str, high_bid: int) -> bool:
+def mark_reserve_not_met(auction_id: str, high_bid: int | None) -> bool:
     """
-    Update the current_bid for a reserve-not-met auction.
-    Leave final_price as NULL so the 25% penalty is applied in scoring.
+    Flag a reserve-not-met auction: set reserve_not_met = true so the admin
+    panel shows it (and the finalizer stops re-scraping it), record the high
+    bid when we have one, and leave final_price NULL so the 25% penalty is
+    applied in scoring.
     """
     url = f"{SUPABASE_URL}/rest/v1/auctions"
     params = {"auction_id": f"eq.{auction_id}"}
@@ -260,16 +296,19 @@ def update_high_bid(auction_id: str, high_bid: int) -> bool:
         "Content-Type": "application/json",
         "Prefer": "return=minimal",
     }
-    data = {"current_bid": high_bid}
+    data = {"reserve_not_met": True}
+    if high_bid:
+        data["current_bid"] = high_bid
 
     try:
         resp = requests.patch(url, headers=headers, params=params, json=data, timeout=20)
         if resp.status_code in (200, 204):
-            print(f"   ⚠️ Updated high bid: ${high_bid:,} (reserve not met)")
+            bid_note = f" — high bid ${high_bid:,}" if high_bid else ""
+            print(f"   ⚠️ Marked reserve not met{bid_note}")
             return True
         return False
     except Exception as e:
-        print(f"   ❌ Error updating high bid: {str(e)}")
+        print(f"   ❌ Error marking reserve not met: {str(e)}")
         return False
 
 
@@ -318,10 +357,10 @@ def lambda_handler(event, context):
             else:
                 stats["failed"] += 1
                 errors.append(f"{title}: DB update failed")
-        elif status == "no_sale" and price:
-            # Reserve not met - update current_bid with high bid
+        elif status == "no_sale":
+            # Reserve not met - flag it (with the high bid when found).
             # Leave final_price NULL so 25% penalty applies in scoring
-            update_high_bid(auction_id, price)
+            mark_reserve_not_met(auction_id, price)
             stats["no_sale"] += 1
         else:
             stats["failed"] += 1
@@ -366,6 +405,10 @@ if __name__ == "__main__":
         '<span>High Bid $15,000 (Reserve Not Met)</span>',
         '<span>Sold for CAD $35,000</span>',
         '<span>Bid to CHF 89\'000</span>',
+        # Regression: tag-wrapped amount next to "Bid to" must be no_sale, not
+        # sold — this exact markup got a €7,000 RNM Beetle recorded as sold.
+        '<span>Bid to <strong>EUR €7,000</strong> on 7/5/26</span>',
+        '<span>Bid to <strong>USD $10,000</strong> on 7/5/26</span>',
     ]
 
     print("Testing parser patterns:")
