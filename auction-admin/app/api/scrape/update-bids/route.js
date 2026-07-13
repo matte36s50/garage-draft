@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyAuth, getSupabaseClient } from '../lib';
+import { toCanonicalItem, canonicalUpsertListings } from '@/lib/canonicalStore';
 
 /**
  * POST /api/scrape/update-bids
@@ -107,10 +108,17 @@ export async function POST(request) {
       }
     }
 
+    // Phase 2 dual-write; no-op unless configured. `data` rows are the full
+    // post-update records, so the mirror carries current state, not deltas.
+    const canonical = await canonicalUpsertListings(
+      results.updated.map((row) => toCanonicalItem(row, { enteredBy: 'manual' }))
+    );
+
     return NextResponse.json({
       success: true,
       updated: results.updated.length,
       failed: results.failed.length,
+      canonicalMirror: canonical,
       results: {
         updated: results.updated.slice(0, 50),
         failed: results.failed.slice(0, 50),

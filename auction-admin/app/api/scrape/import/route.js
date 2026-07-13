@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyAuth, getSupabaseClient, generateManualAuctionId } from '../lib';
+import { toCanonicalItem, canonicalUpsertListings } from '@/lib/canonicalStore';
 
 /**
  * POST /api/scrape/ingest
@@ -81,6 +82,7 @@ export async function POST(request) {
     }
 
     const results = { imported: [], updated: [], failed: [] };
+    const canonicalItems = []; // Phase 2 dual-write; no-op unless configured
 
     for (const auction of auctions) {
       try {
@@ -146,6 +148,7 @@ export async function POST(request) {
 
           if (error) throw error;
           results.updated.push(data);
+          canonicalItems.push(toCanonicalItem(data, { enteredBy: 'manual' }));
         } else {
           // Insert new
           const { data, error } = await supabase
@@ -156,6 +159,7 @@ export async function POST(request) {
 
           if (error) throw error;
           results.imported.push(data);
+          canonicalItems.push(toCanonicalItem(data, { enteredBy: 'manual' }));
         }
 
         // Link to league if league_id is provided
@@ -176,11 +180,14 @@ export async function POST(request) {
       }
     }
 
+    const canonical = await canonicalUpsertListings(canonicalItems);
+
     return NextResponse.json({
       success: true,
       imported: results.imported.length,
       updated: results.updated.length,
       failed: results.failed.length,
+      canonicalMirror: canonical,
       results: {
         imported: results.imported.slice(0, 50),
         updated: results.updated.slice(0, 50),
