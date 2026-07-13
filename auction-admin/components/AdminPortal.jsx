@@ -1429,9 +1429,14 @@ const AdminPortal = () => {
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-7xl mx-auto">
         {/* HEADER */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">🏁 Admin Portal</h1>
-          <p className="text-slate-400">Manage auctions, users, leagues, and garages</p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-4xl font-bold mb-2">🏁 Admin Portal</h1>
+            <p className="text-slate-400">Manage auctions, users, leagues, and garages</p>
+          </div>
+          <a href="/store" className="text-sm text-blue-400 hover:text-blue-300 mt-2">
+            Canonical Auction Store →
+          </a>
         </div>
 
         {/* STATS CARDS */}
