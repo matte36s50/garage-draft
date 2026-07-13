@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { toCanonicalItem, canonicalUpsertListings } from '@/lib/canonicalStore';
 
 /**
  * AUCTION FINALIZER CRON JOB
@@ -487,6 +488,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
     console.log(`📋 Found ${auctions.length} BaT auctions to process`);
 
     const results = { successful: [], noSale: [], pending: [], skipped: [] };
+    const canonicalItems = []; // Phase 2 dual-write; no-op unless configured
 
     for (let i = 0; i < auctions.length; i++) {
       const auction = auctions[i];
@@ -526,6 +528,10 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
         } else {
           console.log(`   ✅ Sold: ${currency || 'USD'} ${price.toLocaleString()}`);
           results.successful.push({ id: auction.auction_id, title: auction.title, finalPrice: price, currency: currency || 'USD' });
+          canonicalItems.push(toCanonicalItem({
+            ...auction, ...makeModelUpdate,
+            final_price: price, reserve_not_met: false, currency: currency || 'USD',
+          }));
         }
         continue;
       }
@@ -544,6 +550,11 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
         await eqAuction(supabase.from('auctions').update(updateData), auction);
         console.log(`   ⚠️ Reserve not met${price ? ` — high bid ${price.toLocaleString()}` : ''}`);
         results.noSale.push({ id: auction.auction_id, title: auction.title, highBid: price || null });
+        canonicalItems.push(toCanonicalItem({
+          ...auction, ...makeModelUpdate,
+          final_price: null, reserve_not_met: true,
+          current_bid: price ?? auction.current_bid, currency: currency || undefined,
+        }));
         continue;
       }
 
@@ -556,6 +567,8 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       console.log(`   🔄 Pending: ${error || 'no price found yet'}`);
       results.pending.push({ id: auction.auction_id, title: auction.title, error: error || 'no price found' });
     }
+
+    const canonical = await canonicalUpsertListings(canonicalItems);
 
     const successCount = results.successful.length;
     const noSaleCount = results.noSale.length;
@@ -580,6 +593,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       processed: total,
       stats: { sold: successCount, noSale: noSaleCount, pending: pendingCount, skipped: skipCount },
       successRate,
+      canonicalMirror: canonical,
       results: {
         successful: results.successful.slice(0, 10),
         noSale: results.noSale.slice(0, 10),
