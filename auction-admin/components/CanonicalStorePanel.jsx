@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   RefreshCw, Download, Search, Plus, CheckCircle, XCircle, ExternalLink,
-  Gavel, ListChecks, Rows3, FolderTree, Radio,
+  Gavel, ListChecks, Rows3, FolderTree, Radio, Sparkles,
 } from 'lucide-react';
 
 /**
@@ -205,11 +205,24 @@ function Results() {
 function LiveEntry() {
   const [event, setEvent] = useState({ event_name: '', event_house: '', event_location: '', buyer_premium_pct: '' });
   const [events, setEvents] = useState([]);
-  const [lot, setLot] = useState({ lot: '', year: '', make: '', model: '', trim: '', price: '', outcome: 'sold' });
+  const [mode, setMode] = useState('estimate'); // 'estimate' (pre-auction) | 'result'
+  const [lot, setLot] = useState({ lot: '', year: '', make: '', model: '', trim: '', price: '', estimate_low: '', estimate_high: '', outcome: 'sold' });
   const [entered, setEntered] = useState([]);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const firstFieldRef = useRef(null);
+
+  // Event lots (the "go back and update with results" pass)
+  const [eventLots, setEventLots] = useState(null);
+  const [lotEdits, setLotEdits] = useState({});
+  const [savingLot, setSavingLot] = useState(null);
+
+  // AI import
+  const [aiInput, setAiInput] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [staged, setStaged] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importedCount, setImportedCount] = useState(0);
 
   useEffect(() => {
     api('/api/store/events').then((d) => setEvents(d.rows || [])).catch(() => {});
@@ -220,23 +233,111 @@ function LiveEntry() {
     if (saving) return;
     setError(null); setSaving(true);
     try {
-      const body = { ...event, ...lot };
-      if (event.buyer_premium_pct !== '' && lot.outcome === 'sold') body.buyer_premium_pct = event.buyer_premium_pct;
+      const body = { ...event, ...lot, mode };
+      if (mode === 'result' && event.buyer_premium_pct !== '' && lot.outcome === 'sold') {
+        body.buyer_premium_pct = event.buyer_premium_pct;
+      }
       const data = await api('/api/store/entry', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       setEntered((prev) => [{ ...body, id: data.source_listing_id, all_in: data.payload.price_all_in }, ...prev]);
-      setLot({ lot: lot.lot ? String(Number(lot.lot) + 1 || '') : '', year: '', make: '', model: '', trim: '', price: '', outcome: 'sold' });
+      setLot({ lot: lot.lot ? String(Number(lot.lot) + 1 || '') : '', year: '', make: '', model: '', trim: '', price: '', estimate_low: '', estimate_high: '', outcome: 'sold' });
       firstFieldRef.current?.focus();
     } catch (err) { setError(err.message); }
     setSaving(false);
   };
 
+  const loadEventLots = async () => {
+    if (!event.event_name) { setError('Enter an event name first'); return; }
+    setError(null);
+    try {
+      const data = await api(`/api/store/entry?event=${encodeURIComponent(event.event_name)}`);
+      setEventLots(data.rows);
+      if (data.event) {
+        setEvent((ev) => ({ ...ev, event_house: ev.event_house || data.event.house || '', event_location: ev.event_location || data.event.location || '' }));
+      }
+    } catch (e) { setError(e.message); }
+  };
+
+  const saveLotResult = async (row) => {
+    const edit = lotEdits[row.id] || {};
+    setSavingLot(row.id); setError(null);
+    try {
+      await api('/api/store/entry', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'result',
+          source_listing_id: row.source_listing_id,
+          make: row.make, model: row.model, trim: row.trim, year: row.year,
+          event_name: event.event_name,
+          outcome: edit.outcome || 'sold',
+          price: edit.price,
+          buyer_premium_pct: event.buyer_premium_pct !== '' ? event.buyer_premium_pct : undefined,
+        }),
+      });
+      await loadEventLots();
+    } catch (e) { setError(e.message); }
+    setSavingLot(null);
+  };
+
+  const runExtract = async () => {
+    setAiBusy(true); setError(null); setStaged(null); setImportedCount(0);
+    try {
+      const isUrl = /^https?:\/\//i.test(aiInput.trim());
+      const data = await api('/api/store/extract', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, [isUrl ? 'url' : 'text']: aiInput.trim() }),
+      });
+      setStaged(data.lots.map((l) => ({ ...l, _include: true })));
+      const ev = data.event || {};
+      setEvent((prev) => ({
+        event_name: prev.event_name || ev.name || '',
+        event_house: prev.event_house || ev.house || '',
+        event_location: prev.event_location || ev.location || '',
+        buyer_premium_pct: prev.buyer_premium_pct || (ev.buyer_premium_pct ?? ''),
+      }));
+    } catch (e) { setError(e.message); }
+    setAiBusy(false);
+  };
+
+  const importStaged = async () => {
+    if (!staged) return;
+    setImporting(true); setError(null);
+    let ok = 0;
+    for (const l of staged) {
+      if (!l._include || !l.make || !l.model) continue;
+      try {
+        await api('/api/store/entry', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: l.outcome ? 'result' : mode,
+            ...event,
+            lot: l.lot, year: l.year, make: l.make, model: l.model, trim: l.trim,
+            estimate_low: l.estimate_low, estimate_high: l.estimate_high,
+            price: l.price, outcome: l.outcome || undefined,
+            currency: l.currency || undefined,
+            buyer_premium_pct: event.buyer_premium_pct !== '' ? event.buyer_premium_pct : undefined,
+          }),
+        });
+        ok += 1;
+        setImportedCount(ok);
+      } catch (e) {
+        setError(`Import stopped at lot ${l.lot || '?'}: ${e.message}`);
+        break;
+      }
+    }
+    setImporting(false);
+  };
+
+  const setStagedField = (i, field, value) => {
+    setStaged((prev) => prev.map((l, idx) => (idx === i ? { ...l, [field]: value } : l)));
+  };
+
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-6xl">
       <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 mb-4">
         <h3 className="text-slate-300 text-sm font-semibold mb-2 uppercase tracking-wide">Event</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           <input className={inputCls} list="store-events" placeholder="Event name *" value={event.event_name}
             onChange={(e) => setEvent({ ...event, event_name: e.target.value })} />
           <datalist id="store-events">{events.map((ev) => <option key={ev.id} value={ev.name} />)}</datalist>
@@ -244,16 +345,30 @@ function LiveEntry() {
             onChange={(e) => setEvent({ ...event, event_house: e.target.value })} />
           <input className={inputCls} placeholder="Location" value={event.event_location}
             onChange={(e) => setEvent({ ...event, event_location: e.target.value })} />
-          <input className={inputCls} type="number" step="0.5" placeholder="Buyer premium % (default)" value={event.buyer_premium_pct}
+          <input className={inputCls} type="number" step="0.5" placeholder="Buyer premium %" value={event.buyer_premium_pct}
             onChange={(e) => setEvent({ ...event, buyer_premium_pct: e.target.value })} />
+          <button onClick={loadEventLots} className="bg-slate-700 hover:bg-slate-600 text-white text-sm px-3 py-2 rounded">
+            Load event lots
+          </button>
         </div>
       </div>
 
+      <div className="flex gap-1 mb-4">
+        {[['estimate', 'Pre-auction (estimates)'], ['result', 'Results']].map(([id, label]) => (
+          <button key={id} onClick={() => setMode(id)}
+            className={`px-4 py-2 text-sm font-medium rounded ${mode === id ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {error && <ErrorNote error={error} />}
+
       <form onSubmit={submit} className="bg-slate-800 rounded-lg border border-slate-700 p-4">
         <h3 className="text-slate-300 text-sm font-semibold mb-2 uppercase tracking-wide">
-          Lot entry <span className="normal-case font-normal text-slate-500">— Enter submits, focus returns to Lot #</span>
+          {mode === 'estimate' ? 'Lot entry — before the sale' : 'Lot entry — results'}
+          <span className="normal-case font-normal text-slate-500"> — Enter submits, lot # auto-increments</span>
         </h3>
-        <div className="grid grid-cols-3 md:grid-cols-8 gap-2">
+        <div className="grid grid-cols-3 md:grid-cols-9 gap-2">
           <input ref={firstFieldRef} className={inputCls} placeholder="Lot #" value={lot.lot}
             onChange={(e) => setLot({ ...lot, lot: e.target.value })} />
           <input className={inputCls} placeholder="Year" inputMode="numeric" value={lot.year}
@@ -264,20 +379,32 @@ function LiveEntry() {
             onChange={(e) => setLot({ ...lot, model: e.target.value })} />
           <input className={inputCls} placeholder="Trim" value={lot.trim}
             onChange={(e) => setLot({ ...lot, trim: e.target.value })} />
-          <input className={inputCls} placeholder={lot.outcome === 'sold' ? 'Hammer $ *' : 'High bid $'} inputMode="numeric" value={lot.price}
-            onChange={(e) => setLot({ ...lot, price: e.target.value.replace(/[^\d.]/g, '') })} />
-          <select className={inputCls} value={lot.outcome} onChange={(e) => setLot({ ...lot, outcome: e.target.value })}>
-            <option value="sold">Sold</option>
-            <option value="reserve_not_met">RNM</option>
-            <option value="withdrawn">Withdrawn</option>
-          </select>
+          {mode === 'estimate' ? (
+            <>
+              <input className={inputCls} placeholder="Est. low $" inputMode="numeric" value={lot.estimate_low}
+                onChange={(e) => setLot({ ...lot, estimate_low: e.target.value.replace(/[^\d.]/g, '') })} />
+              <input className={inputCls} placeholder="Est. high $" inputMode="numeric" value={lot.estimate_high}
+                onChange={(e) => setLot({ ...lot, estimate_high: e.target.value.replace(/[^\d.]/g, '') })} />
+              <div />
+            </>
+          ) : (
+            <>
+              <input className={inputCls} placeholder={lot.outcome === 'sold' ? 'Hammer $ *' : 'High bid $'} inputMode="numeric" value={lot.price}
+                onChange={(e) => setLot({ ...lot, price: e.target.value.replace(/[^\d.]/g, '') })} />
+              <select className={inputCls} value={lot.outcome} onChange={(e) => setLot({ ...lot, outcome: e.target.value })}>
+                <option value="sold">Sold</option>
+                <option value="reserve_not_met">RNM</option>
+                <option value="withdrawn">Withdrawn</option>
+              </select>
+              <div />
+            </>
+          )}
         </div>
         <div className="flex items-center gap-3 mt-3">
           <button type="submit" disabled={saving}
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded font-medium disabled:opacity-50">
-            <Plus size={16} /> {saving ? 'Saving…' : 'Add lot (Enter)'}
+            <Plus size={16} /> {saving ? 'Saving…' : mode === 'estimate' ? 'Add lot with estimate (Enter)' : 'Add result (Enter)'}
           </button>
-          {error && <span className="text-red-400 text-sm">{error}</span>}
         </div>
       </form>
 
@@ -290,17 +417,138 @@ function LiveEntry() {
                 <CheckCircle size={14} className="text-emerald-400 shrink-0" />
                 <span className="text-slate-500">{l.lot ? `Lot ${l.lot}` : l.id}</span>
                 <span>{[l.year, l.make, l.model, l.trim].filter(Boolean).join(' ')}</span>
-                <Badge className={OUTCOME_BADGE[l.outcome]}>{l.outcome}</Badge>
-                <span>{fmtMoney(l.price)}</span>
-                {l.all_in && <span className="text-slate-500">all-in {fmtMoney(l.all_in)}</span>}
+                {l.mode === 'estimate'
+                  ? <span className="text-sky-300">est. {fmtMoney(l.estimate_low)}–{fmtMoney(l.estimate_high)}</span>
+                  : (<><Badge className={OUTCOME_BADGE[l.outcome]}>{l.outcome}</Badge><span>{fmtMoney(l.price)}</span>
+                      {l.all_in && <span className="text-slate-500">all-in {fmtMoney(l.all_in)}</span>}</>)}
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {eventLots && (
+        <div className="mt-6">
+          <h3 className="text-slate-300 text-sm font-semibold mb-2 uppercase tracking-wide">
+            {event.event_name} — {eventLots.length} lot(s)
+            <span className="normal-case font-normal text-slate-500"> — fill in results for upcoming lots after the sale</span>
+          </h3>
+          <div className="overflow-x-auto rounded-lg border border-slate-700">
+            <table className="w-full bg-slate-800">
+              <thead className="bg-slate-800/80 border-b border-slate-700">
+                <tr><Th>Lot</Th><Th>Vehicle</Th><Th>Estimate</Th><Th>Status</Th><Th>Result</Th><Th></Th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/60">
+                {eventLots.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-700/40">
+                    <Td className="text-slate-500 whitespace-nowrap">{r.source_listing_id.split('-lot-')[1] || '—'}</Td>
+                    <Td>{r.raw_title || [r.year, r.make, r.model].filter(Boolean).join(' ')}</Td>
+                    <Td className="whitespace-nowrap">
+                      {r.estimate_low || r.estimate_high
+                        ? `${fmtMoney(r.estimate_low, r.currency)}–${fmtMoney(r.estimate_high, r.currency)}` : '—'}
+                    </Td>
+                    <Td><Badge className={r.status === 'ended' ? (OUTCOME_BADGE[r.outcome] || OUTCOME_BADGE.unknown) : 'bg-sky-900/40 text-sky-300'}>
+                      {r.status === 'ended' ? r.outcome : r.status}</Badge></Td>
+                    {r.status === 'ended' ? (
+                      <>
+                        <Td>{fmtMoney(r.price, r.currency)}{r.price_all_in ? <span className="text-slate-500"> · all-in {fmtMoney(r.price_all_in, r.currency)}</span> : null}</Td>
+                        <Td></Td>
+                      </>
+                    ) : (
+                      <>
+                        <Td>
+                          <div className="flex gap-1.5">
+                            <input className={`${inputCls} w-28 py-1`} placeholder="Price $" inputMode="numeric"
+                              value={lotEdits[r.id]?.price ?? ''}
+                              onChange={(e) => setLotEdits({ ...lotEdits, [r.id]: { ...lotEdits[r.id], price: e.target.value.replace(/[^\d.]/g, '') } })} />
+                            <select className={`${inputCls} py-1`} value={lotEdits[r.id]?.outcome ?? 'sold'}
+                              onChange={(e) => setLotEdits({ ...lotEdits, [r.id]: { ...lotEdits[r.id], outcome: e.target.value } })}>
+                              <option value="sold">Sold</option>
+                              <option value="reserve_not_met">RNM</option>
+                              <option value="withdrawn">Withdrawn</option>
+                            </select>
+                          </div>
+                        </Td>
+                        <Td>
+                          <button disabled={savingLot === r.id}
+                            onClick={() => saveLotResult(r)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1.5 rounded disabled:opacity-50">
+                            {savingLot === r.id ? 'Saving…' : 'Save result'}
+                          </button>
+                        </Td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-6 bg-slate-800 rounded-lg border border-slate-700 p-4">
+        <h3 className="text-slate-300 text-sm font-semibold mb-1 uppercase tracking-wide flex items-center gap-2">
+          <Sparkles size={15} className="text-amber-300" /> AI import
+        </h3>
+        <p className="text-slate-500 text-xs mb-2">
+          Paste an auction-house {mode === 'estimate' ? 'catalog' : 'results'} page URL or its text.
+          Claude extracts the lots for review; nothing is saved until you import.
+        </p>
+        <textarea className={`${inputCls} w-full h-24 font-mono text-xs`}
+          placeholder={'https://…  — or paste the page text here'}
+          value={aiInput} onChange={(e) => setAiInput(e.target.value)} />
+        <div className="flex items-center gap-3 mt-2">
+          <button onClick={runExtract} disabled={aiBusy || !aiInput.trim()}
+            className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white text-sm px-4 py-2 rounded disabled:opacity-50">
+            <Sparkles size={14} /> {aiBusy ? 'Extracting…' : `Extract ${mode === 'estimate' ? 'catalog' : 'results'}`}
+          </button>
+          {staged && (
+            <button onClick={importStaged} disabled={importing}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-4 py-2 rounded disabled:opacity-50">
+              <Plus size={14} /> {importing ? `Importing… ${importedCount}` : `Import ${staged.filter((l) => l._include).length} lot(s)`}
+            </button>
+          )}
+          {importedCount > 0 && !importing && (
+            <span className="text-emerald-400 text-sm">{importedCount} imported ✓</span>
+          )}
+        </div>
+
+        {staged && (
+          <div className="overflow-x-auto rounded-lg border border-slate-700 mt-3">
+            <table className="w-full bg-slate-800/60">
+              <thead className="bg-slate-800/80 border-b border-slate-700">
+                <tr><Th></Th><Th>Lot</Th><Th>Year</Th><Th>Make</Th><Th>Model</Th><Th>Est. low</Th><Th>Est. high</Th><Th>Price</Th><Th>Outcome</Th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/60">
+                {staged.map((l, i) => (
+                  <tr key={i} className={l._include ? '' : 'opacity-40'}>
+                    <Td><input type="checkbox" checked={l._include} onChange={(e) => setStagedField(i, '_include', e.target.checked)} /></Td>
+                    <Td><input className={`${inputCls} w-16 py-1`} value={l.lot ?? ''} onChange={(e) => setStagedField(i, 'lot', e.target.value)} /></Td>
+                    <Td><input className={`${inputCls} w-16 py-1`} value={l.year ?? ''} onChange={(e) => setStagedField(i, 'year', e.target.value)} /></Td>
+                    <Td><input className={`${inputCls} w-28 py-1`} value={l.make ?? ''} onChange={(e) => setStagedField(i, 'make', e.target.value)} /></Td>
+                    <Td><input className={`${inputCls} w-40 py-1`} value={l.model ?? ''} onChange={(e) => setStagedField(i, 'model', e.target.value)} /></Td>
+                    <Td><input className={`${inputCls} w-24 py-1`} value={l.estimate_low ?? ''} onChange={(e) => setStagedField(i, 'estimate_low', e.target.value)} /></Td>
+                    <Td><input className={`${inputCls} w-24 py-1`} value={l.estimate_high ?? ''} onChange={(e) => setStagedField(i, 'estimate_high', e.target.value)} /></Td>
+                    <Td><input className={`${inputCls} w-24 py-1`} value={l.price ?? ''} onChange={(e) => setStagedField(i, 'price', e.target.value)} /></Td>
+                    <Td>
+                      <select className={`${inputCls} py-1`} value={l.outcome ?? ''} onChange={(e) => setStagedField(i, 'outcome', e.target.value || null)}>
+                        <option value="">not run yet</option>
+                        <option value="sold">sold</option>
+                        <option value="reserve_not_met">RNM</option>
+                        <option value="withdrawn">withdrawn</option>
+                      </select>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
 
 // -------------------------------------------------------------- Review queue
 function ReviewQueue() {
