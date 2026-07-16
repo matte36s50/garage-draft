@@ -2778,7 +2778,7 @@ export default function BidPrixApp() {
   function LeaderboardScreen({ onNavigate, currentScreen }) {
     const [standings, setStandings] = useState([])
     const [loading, setLoading] = useState(true)
-    const [sortBy, setSortBy] = useState('total_percent')
+    const [sortBy, setSortBy] = useState('total_value')
     const [, setBonusWinner] = useState(null)
     const [showConfetti, setShowConfetti] = useState(false)
     const [confettiDone, setConfettiDone] = useState(false)
@@ -3162,9 +3162,18 @@ export default function BidPrixApp() {
       setStandings(sortStandings(standings, newSort))
     }
 
+    // The official standing — who wins, everyone's rank, and the gap to the
+    // leader — is ALWAYS decided by total dollar value (money) with complete
+    // rosters ranked first. The sort tabs only reorder the display list below;
+    // they must never change who the champion is. (Previously the champion was
+    // just standings[0] of the active sort, so sorting by AVG %/NET crowned the
+    // wrong player — the leader on that metric rather than the one with the most
+    // money.)
+    const rankedByValue = sortStandings(standings, 'total_value')
+    const champion = rankedByValue[0]
     const me = standings.find(p => p.userId === user?.id)
-    const myRank = me ? standings.indexOf(me) + 1 : null
-    const p1 = standings[0]
+    const myRank = me ? rankedByValue.findIndex(p => p.userId === me.userId) + 1 : null
+    const p1 = champion
     const gapToP1 = me && p1 ? me.totalScore - p1.totalScore : null
     const sortTabs = [
       { key: 'total_value', label: 'VALUE' },
@@ -3202,21 +3211,21 @@ export default function BidPrixApp() {
         </div>
 
         {/* Champion hero + podium (final only) */}
-        {isFinal && !loading && p1 && (
+        {isFinal && !loading && champion && (
           <>
             <div style={{ margin: '4px 18px 10px', background: `${C.amber}12`, border: `1px solid ${C.amber}`, borderLeft: `4px solid ${C.amber}`, padding: '14px 16px' }}>
               <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1.6, color: C.amber, fontWeight: 800 }}>🏆 CHAMPION</div>
               <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.6, marginTop: 4 }}>
-                {p1.username}{p1.userId === user?.id ? ' · YOU' : ''}
+                {champion.username}{champion.userId === user?.id ? ' · YOU' : ''}
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 6, fontFamily: mono, fontVariantNumeric: 'tabular-nums' }}>
-                <span style={{ fontSize: 22, fontWeight: 800 }}>${Math.round(p1.totalScore || 0).toLocaleString()}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: p1.totalDollarGain >= 0 ? C.pos : C.neg }}>
-                  {p1.totalDollarGain >= 0 ? '+' : ''}${Math.round(p1.totalDollarGain || 0).toLocaleString()} net
+                <span style={{ fontSize: 22, fontWeight: 800 }}>${Math.round(champion.totalScore || 0).toLocaleString()}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: champion.totalDollarGain >= 0 ? C.pos : C.neg }}>
+                  {champion.totalDollarGain >= 0 ? '+' : ''}${Math.round(champion.totalDollarGain || 0).toLocaleString()} net
                 </span>
               </div>
             </div>
-            <PodiumFinish standings={standings} meId={user?.id} />
+            <PodiumFinish standings={rankedByValue} meId={user?.id} />
           </>
         )}
 
