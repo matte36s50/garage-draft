@@ -130,3 +130,62 @@ export async function canonicalUpsertListings(items) {
     return { ok: false, error: error.message };
   }
 }
+
+/* ------------------------------------------------------------------------ *
+ * Read/RPC helpers for the unified admin panel (/store). Server-side only —
+ * these use the service key and must never be imported by client components.
+ * Unlike the mirror above, callers here WANT errors surfaced, so failures
+ * return { ok: false, status, error } for the route to translate.
+ * ------------------------------------------------------------------------ */
+
+function canonicalBase() {
+  return {
+    url: process.env.CANONICAL_SUPABASE_URL?.replace(/\/+$/, ''),
+    key: process.env.CANONICAL_SUPABASE_SERVICE_ROLE_KEY,
+  };
+}
+
+/** GET a PostgREST path (e.g. 'auction_listings_all?status=eq.live&limit=50'). */
+export async function canonicalGet(pathAndQuery, { count = false } = {}) {
+  if (!canonicalConfigured()) {
+    return { ok: false, status: 503, error: 'Canonical store not configured (set CANONICAL_SUPABASE_URL and CANONICAL_SUPABASE_SERVICE_ROLE_KEY)' };
+  }
+  const { url, key } = canonicalBase();
+  const headers = { apikey: key, Authorization: `Bearer ${key}` };
+  if (count) headers.Prefer = 'count=exact';
+  try {
+    const resp = await fetch(`${url}/rest/v1/${pathAndQuery}`, {
+      headers, signal: AbortSignal.timeout(30000),
+    });
+    if (!resp.ok) {
+      return { ok: false, status: resp.status, error: (await resp.text()).slice(0, 300) };
+    }
+    const rows = await resp.json();
+    const range = resp.headers.get('content-range'); // "0-49/1234"
+    const total = range?.includes('/') ? Number(range.split('/')[1]) : undefined;
+    return { ok: true, rows, total: Number.isFinite(total) ? total : undefined };
+  } catch (error) {
+    return { ok: false, status: 502, error: error.message };
+  }
+}
+
+/** Call a public.auction_* RPC with named args. */
+export async function canonicalRpc(fn, args) {
+  if (!canonicalConfigured()) {
+    return { ok: false, status: 503, error: 'Canonical store not configured (set CANONICAL_SUPABASE_URL and CANONICAL_SUPABASE_SERVICE_ROLE_KEY)' };
+  }
+  const { url, key } = canonicalBase();
+  try {
+    const resp = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args || {}),
+      signal: AbortSignal.timeout(30000),
+    });
+    const text = await resp.text();
+    if (!resp.ok) return { ok: false, status: resp.status, error: text.slice(0, 300) };
+    return { ok: true, data: text ? JSON.parse(text) : null };
+  } catch (error) {
+    return { ok: false, status: 502, error: error.message };
+  }
+}
