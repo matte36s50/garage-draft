@@ -2661,6 +2661,17 @@ export default function BidPrixApp() {
 
     function gainColor(g) { return g > 0 ? C.pos : g < 0 ? C.neg : C.muted }
 
+    // Per-lot auction state, so it's obvious at a glance whether a car has
+    // settled. A lot only "ends" once the finalizer writes a result:
+    //   SOLD            → final_price > 0
+    //   RESERVE NOT MET → auction ended with no sale price (scored at 25%)
+    //   LIVE            → auction still running (still marked to its current bid)
+    function carStatus(car) {
+      if (car.finalPrice != null && car.finalPrice > 0) return { label: 'SOLD', color: C.pos }
+      if (car.reserveNotMet || car.auctionEnded) return { label: 'RESERVE NOT MET', color: C.amber }
+      return { label: car.timeLeft && car.timeLeft !== 'N/A' ? `LIVE · ${car.timeLeft}` : 'LIVE', color: '#3a8aef' }
+    }
+
     return (
       <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', paddingBottom: 96 }}>
         {/* Header */}
@@ -2717,9 +2728,17 @@ export default function BidPrixApp() {
               const carTitle = car.title && car.title.replace(`${car.year} `, '')
               return (
                 <div key={car.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10, position: 'relative' }}>
-                  <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 0.8, marginBottom: 5, position: 'absolute', top: 8, right: 8 }}>
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 0.8, marginBottom: 5, position: 'absolute', top: 8, right: 8, zIndex: 1 }}>
                     LOT {String(i + 1).padStart(2, '0')}
                   </div>
+                  {(() => {
+                    const st = carStatus(car)
+                    return (
+                      <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 1, fontFamily: mono, fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, color: st.color, background: `${C.bg}e0`, border: `1px solid ${st.color}`, padding: '2px 5px', borderRadius: 2 }}>
+                        {st.label}
+                      </div>
+                    )
+                  })()}
                   {hasAuctionLink ? (
                     <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
                       <CarImg car={car} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 360 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={2} />
