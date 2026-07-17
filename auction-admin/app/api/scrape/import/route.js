@@ -41,6 +41,11 @@ import { toCanonicalItem, canonicalUpsertListings } from '@/lib/canonicalStore';
  *   - timestamp_end (number): Unix timestamp (seconds) when auction ends
  *   - final_price (number): Final sale price (null if still active)
  *   - auction_id (string): Optional custom ID; auto-generated as manual_<slug> if omitted
+ *   - bid_count (number): Number of bids, when the source page shows it
+ *   - views (number): Page views, when the source page shows it
+ *   - watchers (number): Watchers/watchlist adds, when the source page shows it
+ *   - comments (number): Comment count, when the source page shows it
+ *     (engagement fields require supabase_migration_engagement_stats.sql)
  *
  * NOTES:
  *   - IDs are auto-prefixed with "manual_" if not already
@@ -118,6 +123,14 @@ export async function POST(request) {
           current_bid: auction.current_bid != null ? parseFloat(auction.current_bid) : null,
           timestamp_end: auction.timestamp_end != null ? parseInt(auction.timestamp_end, 10) : null,
         };
+
+        // Engagement stats (MII components) — only set when provided, so
+        // payloads without them keep working even before the migration runs
+        for (const field of ['bid_count', 'views', 'watchers', 'comments']) {
+          if (auction[field] != null) {
+            record[field] = parseInt(auction[field], 10);
+          }
+        }
 
         // Only set price_at_48h if provided
         if (auction.price_at_48h != null) {
