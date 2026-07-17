@@ -34,6 +34,8 @@ import { toCanonicalItem, canonicalUpsertListings } from '@/lib/canonicalStore';
  *   - title (string): Updated title
  *   - timestamp_end (number): Updated end time
  *   - url (string): Updated source URL
+ *   - bid_count / views / watchers / comments (numbers): Engagement stats,
+ *     when the source page shows them
  *
  * RESPONSE:
  *   {
@@ -71,6 +73,8 @@ export async function POST(request) {
       'current_bid', 'price_at_48h', 'final_price',
       'image_url', 'title', 'timestamp_end', 'url',
       'make', 'model', 'year',
+      // Engagement stats (MII components); require supabase_migration_engagement_stats.sql
+      'bid_count', 'views', 'watchers', 'comments',
     ];
 
     const results = { updated: [], failed: [] };

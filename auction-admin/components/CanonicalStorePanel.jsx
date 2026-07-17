@@ -15,6 +15,7 @@ import {
 const fmtMoney = (v, cur = 'USD') =>
   v == null ? '—' : `${cur === 'USD' ? '$' : `${cur} `}${Number(v).toLocaleString()}`;
 const fmtDate = (v) => (v ? String(v).slice(0, 10) : '—');
+const fmtNum = (v) => (v == null ? '—' : Number(v).toLocaleString());
 const OUTCOME_BADGE = {
   sold: 'bg-emerald-900/40 text-emerald-300',
   reserve_not_met: 'bg-amber-900/40 text-amber-300',
@@ -45,6 +46,8 @@ const inputCls = 'p-2 rounded bg-slate-700 text-white border border-slate-600 fo
 function LiveBoard() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState(null);
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
@@ -57,19 +60,39 @@ function LiveBoard() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  const syncFromGame = async () => {
+    setSyncing(true); setError(null); setSyncNote(null);
+    try {
+      const data = await api('/api/store/sync-live', { method: 'POST' });
+      setSyncNote(data.synced > 0 ? `${data.synced} live listing(s) synced from the game` : (data.message || 'Nothing to sync'));
+      await load();
+    } catch (e) { setError(e.message); }
+    setSyncing(false);
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-slate-400 text-sm">Upcoming + live listings across all sources, soonest ending first.</p>
-        <button onClick={load} className="flex items-center gap-2 text-sm bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <p className="text-slate-400 text-sm">
+          Upcoming + live listings across all sources, soonest ending first.
+          {' '}Live game auctions only appear after a sync — use “Sync from game” or schedule <code>/api/store/sync-live</code>.
+        </p>
+        <div className="flex items-center gap-2">
+          {syncNote && <span className="text-emerald-400 text-sm">{syncNote}</span>}
+          <button onClick={syncFromGame} disabled={syncing}
+            className="flex items-center gap-2 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded disabled:opacity-50">
+            <Radio size={14} /> {syncing ? 'Syncing…' : 'Sync from game'}
+          </button>
+          <button onClick={load} className="flex items-center gap-2 text-sm bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
       {error && <ErrorNote error={error} />}
       <div className="overflow-x-auto rounded-lg border border-slate-700">
         <table className="w-full bg-slate-800">
           <thead className="bg-slate-800/80 border-b border-slate-700">
-            <tr><Th>Ends</Th><Th>Title</Th><Th>Source</Th><Th>Current bid</Th><Th>Status</Th><Th>Link</Th></tr>
+            <tr><Th>Ends</Th><Th>Title</Th><Th>Source</Th><Th>Current bid</Th><Th>Bids</Th><Th>Watchers</Th><Th>Comments</Th><Th>Status</Th><Th>Link</Th></tr>
           </thead>
           <tbody className="divide-y divide-slate-700/60">
             {rows.map((r) => (
@@ -78,12 +101,15 @@ function LiveBoard() {
                 <Td>{r.raw_title || `${r.year ?? ''} ${r.make ?? ''} ${r.model ?? ''}`}</Td>
                 <Td><Badge>{r.source_id}</Badge></Td>
                 <Td>{fmtMoney(r.current_bid, r.currency)}</Td>
+                <Td>{fmtNum(r.bid_count)}</Td>
+                <Td>{fmtNum(r.watchers)}</Td>
+                <Td>{fmtNum(r.comments)}</Td>
                 <Td><Badge className={r.status === 'live' ? 'bg-emerald-900/40 text-emerald-300' : 'bg-sky-900/40 text-sky-300'}>{r.status}</Badge></Td>
                 <Td>{r.url && <a href={r.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300"><ExternalLink size={14} /></a>}</Td>
               </tr>
             ))}
             {!loading && rows.length === 0 && (
-              <tr><Td className="text-slate-500 py-6 text-center" colSpan={6}>No live or upcoming listings in the store yet.</Td></tr>
+              <tr><Td className="text-slate-500 py-6 text-center" colSpan={9}>No live or upcoming listings in the store yet — try “Sync from game”.</Td></tr>
             )}
           </tbody>
         </table>
@@ -123,7 +149,7 @@ function Results() {
   const page = (delta) => { const o = Math.max(0, offset + delta); setOffset(o); load(filters, o); };
 
   const exportCsv = () => {
-    const cols = ['source_id','source_listing_id','raw_title','year','make','model','outcome','price','price_all_in','currency','bid_count','views','comments','ended_at','url'];
+    const cols = ['source_id','source_listing_id','raw_title','year','make','model','outcome','price','price_all_in','currency','bid_count','views','watchers','comments','ended_at','url'];
     const esc = (v) => v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
     const csv = [cols.join(','), ...rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n');
     const a = document.createElement('a');
@@ -167,7 +193,7 @@ function Results() {
       <div className="overflow-x-auto rounded-lg border border-slate-700">
         <table className="w-full bg-slate-800">
           <thead className="bg-slate-800/80 border-b border-slate-700">
-            <tr><Th>Ended</Th><Th>Title</Th><Th>Source</Th><Th>Outcome</Th><Th>Price</Th><Th>All-in</Th><Th>Bids</Th><Th>Views</Th><Th>Link</Th></tr>
+            <tr><Th>Ended</Th><Th>Title</Th><Th>Source</Th><Th>Outcome</Th><Th>Price</Th><Th>All-in</Th><Th>Bids</Th><Th>Views</Th><Th>Watchers</Th><Th>Comments</Th><Th>Link</Th></tr>
           </thead>
           <tbody className="divide-y divide-slate-700/60">
             {rows.map((r) => (
@@ -181,13 +207,15 @@ function Results() {
                 <Td><Badge className={OUTCOME_BADGE[r.outcome] || OUTCOME_BADGE.unknown}>{r.outcome || '—'}</Badge></Td>
                 <Td>{fmtMoney(r.price, r.currency)}</Td>
                 <Td>{fmtMoney(r.price_all_in, r.currency)}</Td>
-                <Td>{r.bid_count ?? '—'}</Td>
-                <Td>{r.views != null ? Number(r.views).toLocaleString() : '—'}</Td>
+                <Td>{fmtNum(r.bid_count)}</Td>
+                <Td>{fmtNum(r.views)}</Td>
+                <Td>{fmtNum(r.watchers)}</Td>
+                <Td>{fmtNum(r.comments)}</Td>
                 <Td>{r.url && <a href={r.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300"><ExternalLink size={14} /></a>}</Td>
               </tr>
             ))}
             {!loading && rows.length === 0 && (
-              <tr><Td className="text-slate-500 py-6 text-center" colSpan={9}>No results match.</Td></tr>
+              <tr><Td className="text-slate-500 py-6 text-center" colSpan={11}>No results match.</Td></tr>
             )}
           </tbody>
         </table>
@@ -679,6 +707,14 @@ function Buckets() {
 
   return (
     <div className="max-w-4xl">
+      <p className="text-slate-400 text-sm mb-4">
+        A <span className="text-slate-200">bucket</span> is one canonical vehicle — a make + model (optionally a
+        generation and year range), e.g. “Porsche 911 (964)”. Auction sites describe the same car dozens of ways
+        (“Porsche 997 911 Turbo”, “2011 Porsche 911 Turbo S”…), so listings are grouped into buckets to build one
+        comparable price history per vehicle. Assigning a listing to a bucket (here or in the Review Queue) also
+        saves that raw make/model string as an alias, so future listings with the same string match automatically.
+        “Listings” is how many auctions are in the bucket; “Aliases” is how many raw name variants map to it.
+      </p>
       <form onSubmit={create} className="flex flex-wrap gap-2 mb-4 items-center bg-slate-800 border border-slate-700 rounded-lg p-3">
         <input className={inputCls} placeholder="Make *" required value={form.make} onChange={(e) => setForm({ ...form, make: e.target.value })} />
         <input className={inputCls} placeholder="Model *" required value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />

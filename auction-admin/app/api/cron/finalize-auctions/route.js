@@ -308,6 +308,44 @@ function extractMakeModelFromNextData(html) {
 }
 
 /**
+ * Extract engagement stats (MII components) from a BaT listing page:
+ * bid_count, views, watchers, comments. Tries __NEXT_DATA__ first, then the
+ * visible listing-stats text ("12,345 views", "678 watchers", "18 bids",
+ * "203 comments"). Returns only the fields actually found — possibly {}.
+ */
+function extractEngagementStats(html) {
+  const pick = (...vals) => {
+    for (const v of vals) {
+      const n = Number(v);
+      if (v != null && Number.isFinite(n) && n >= 0) return Math.floor(n);
+    }
+    return null;
+  };
+
+  const stats = {};
+  const listing = parseNextDataListing(html);
+  if (listing) {
+    stats.views = pick(listing.views, listing.view_count, listing.stats?.views);
+    stats.watchers = pick(listing.watchers, listing.watcher_count, listing.stats?.watchers);
+    stats.bid_count = pick(listing.bid_count, listing.num_bids, listing.bids_count);
+    stats.comments = pick(listing.comments_count, listing.comment_count, listing.num_comments);
+  }
+
+  const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ');
+  const grab = (re) => {
+    const m = stripped.match(re);
+    return m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+  };
+  if (stats.views == null) stats.views = grab(/([\d,]+)\s+views/i);
+  if (stats.watchers == null) stats.watchers = grab(/([\d,]+)\s+watchers/i);
+  if (stats.bid_count == null) stats.bid_count = grab(/([\d,]+)\s+bids\b/i);
+  if (stats.comments == null) stats.comments = grab(/([\d,]+)\s+comments\b/i);
+
+  Object.keys(stats).forEach((k) => stats[k] == null && delete stats[k]);
+  return stats;
+}
+
+/**
  * Fetch a BaT listing page and return { price, status, currency, error }.
  * status is 'sold', 'no_sale', or null (= inconclusive, retry next run).
  */
@@ -352,14 +390,15 @@ async function scrapeAuctionPrice(url) {
 
     // Pass 0: __NEXT_DATA__ JSON (most reliable)
     const nextDataResult = extractPriceFromNextData(html);
-    // Always try to extract make/model from __NEXT_DATA__ regardless of price result
+    // Always try to extract make/model + engagement stats regardless of price result
     const makeModel = extractMakeModelFromNextData(html);
-    if (nextDataResult) return { ...nextDataResult, makeModel, error: null };
+    const engagement = extractEngagementStats(html);
+    if (nextDataResult) return { ...nextDataResult, makeModel, engagement, error: null };
 
     // Passes 1-4: regex-based HTML extraction
     const { price, status, currency } = extractPriceFromHtml(html);
     if (price || status === 'no_sale') {
-      return { price, status, currency, makeModel, error: null };
+      return { price, status, currency, makeModel, engagement, error: null };
     }
 
     // Nothing found — log debug info and retry next run
@@ -373,7 +412,7 @@ async function scrapeAuctionPrice(url) {
     console.log(`      Sample amounts: ${amountMatches?.join(', ') || 'none'}`);
     console.log(`      HTML length: ${html.length} chars`);
 
-    return { price: null, status: null, currency: null, makeModel, error: 'No price found' };
+    return { price: null, status: null, currency: null, makeModel, engagement, error: 'No price found' };
 
   } catch (error) {
     if (error.name === 'TimeoutError') {
@@ -501,7 +540,21 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
         continue;
       }
 
-      const { price, status, currency, makeModel, error } = await scrapeAuctionPrice(auction.url);
+      const { price, status, currency, makeModel, engagement = {}, error } = await scrapeAuctionPrice(auction.url);
+
+      // Persist engagement stats (bids/views/watchers/comments) in a separate
+      // update so a missing column (migration not run yet) can never block
+      // price finalization.
+      if (Object.keys(engagement).length > 0) {
+        const { error: statsError } = await eqAuction(
+          supabase.from('auctions').update(engagement), auction
+        );
+        if (statsError) {
+          console.log(`   ⚠️ Engagement stats not saved (${statsError.message}) — run supabase_migration_engagement_stats.sql`);
+        } else {
+          console.log(`   📊 Stats: ${engagement.bid_count ?? '—'} bids · ${engagement.views ?? '—'} views · ${engagement.watchers ?? '—'} watchers · ${engagement.comments ?? '—'} comments`);
+        }
+      }
 
       // Build opportunistic make/model/year fields — only fill nulls, never overwrite existing data
       const makeModelUpdate = {};
@@ -529,7 +582,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
           console.log(`   ✅ Sold: ${currency || 'USD'} ${price.toLocaleString()}`);
           results.successful.push({ id: auction.auction_id, title: auction.title, finalPrice: price, currency: currency || 'USD' });
           canonicalItems.push(toCanonicalItem({
-            ...auction, ...makeModelUpdate,
+            ...auction, ...makeModelUpdate, ...engagement,
             final_price: price, reserve_not_met: false, currency: currency || 'USD',
           }));
         }
@@ -551,7 +604,7 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
         console.log(`   ⚠️ Reserve not met${price ? ` — high bid ${price.toLocaleString()}` : ''}`);
         results.noSale.push({ id: auction.auction_id, title: auction.title, highBid: price || null });
         canonicalItems.push(toCanonicalItem({
-          ...auction, ...makeModelUpdate,
+          ...auction, ...makeModelUpdate, ...engagement,
           final_price: null, reserve_not_met: true,
           current_bid: price ?? auction.current_bid, currency: currency || undefined,
         }));

@@ -68,6 +68,13 @@ export function toCanonicalItem(auction, { enteredBy } = {}) {
   }
   const ended = outcome !== null || (tsEnd !== null && tsEnd < nowSec);
 
+  // Engagement stats (MII components) — only mirrored when the source row has
+  // them; most rows won't, and the store renders missing values as "—".
+  const count = (v) => {
+    const n = Number(v);
+    return v != null && v !== '' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined;
+  };
+
   const payload = {
     url: url || undefined,
     raw_title: auction.title || undefined,
@@ -76,6 +83,10 @@ export function toCanonicalItem(auction, { enteredBy } = {}) {
     year: auction.year != null ? Number(auction.year) : undefined,
     image_url: auction.image_url || undefined,
     current_bid: auction.current_bid != null ? Number(auction.current_bid) : undefined,
+    bid_count: count(auction.bid_count ?? auction.bids),
+    views: count(auction.views),
+    watchers: count(auction.watchers),
+    comments: count(auction.comments ?? auction.comment_count),
     status: ended ? 'ended' : 'live',
     outcome: outcome || undefined,
     price: price != null ? price : undefined,
