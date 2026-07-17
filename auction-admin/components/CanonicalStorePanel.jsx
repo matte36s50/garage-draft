@@ -589,6 +589,12 @@ function ReviewQueue() {
   const [newBucket, setNewBucket] = useState({ make: '', model: '', generation: '' });
   const [choice, setChoice] = useState({}); // listing id -> bucket id
 
+  // AI first pass
+  const [ai, setAi] = useState(null); // { groups, buckets_to_create }
+  const [aiBusy, setAiBusy] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyResult, setApplyResult] = useState(null);
+
   const load = useCallback(async () => {
     setError(null);
     try {
@@ -608,13 +614,144 @@ function ReviewQueue() {
     setBusyId(null);
   };
 
+  const runSuggest = async () => {
+    setAiBusy(true); setError(null); setAi(null); setApplyResult(null);
+    try {
+      const data = await api('/api/store/review/suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      setAi({
+        groups: (data.groups || []).map((g) => ({ ...g, _include: g.action !== 'skip' && g.confidence !== 'low' })),
+        buckets_to_create: data.buckets_to_create || [],
+      });
+    } catch (e) { setError(e.message); }
+    setAiBusy(false);
+  };
+
+  const setAiBucketField = (i, field, value) => {
+    setAi((prev) => ({
+      ...prev,
+      buckets_to_create: prev.buckets_to_create.map((b, idx) => (idx === i ? { ...b, [field]: value } : b)),
+    }));
+  };
+
+  const applySuggestions = async () => {
+    if (!ai) return;
+    setApplying(true); setError(null);
+    try {
+      const picked = ai.groups.filter((g) => g._include && g.action !== 'skip');
+      const usedKeys = new Set(picked.filter((g) => g.new_bucket_key).map((g) => g.new_bucket_key));
+      const data = await api('/api/store/review/suggest', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apply: true,
+          buckets: ai.buckets_to_create.filter((b) => usedKeys.has(b.key)),
+          assignments: picked.map((g) => ({
+            make: g.make, model: g.model, trim: g.trim,
+            bucket_id: g.bucket_id, new_bucket_key: g.new_bucket_key,
+          })),
+        }),
+      });
+      setApplyResult(data);
+      setAi(null);
+      await load();
+    } catch (e) { setError(e.message); }
+    setApplying(false);
+  };
+
+  const bucketName = (id) => {
+    const b = buckets.find((x) => x.id === id);
+    return b ? `${b.make} ${b.model}${b.generation ? ` (${b.generation})` : ''}` : id;
+  };
+  const newBucketLabel = (key) => {
+    const b = ai?.buckets_to_create.find((x) => x.key === key);
+    return b ? `NEW: ${b.make} ${b.model}${b.generation ? ` (${b.generation})` : ''} ${b.year_min ?? '?'}–${b.year_max ?? 'now'}` : key;
+  };
+  const CONF_BADGE = {
+    high: 'bg-emerald-900/40 text-emerald-300',
+    medium: 'bg-amber-900/40 text-amber-300',
+    low: 'bg-red-900/40 text-red-300',
+  };
+
   return (
     <div className="max-w-5xl">
-      <p className="text-slate-400 text-sm mb-3">
-        {total.toLocaleString()} listing(s) need review. Assigning a bucket also registers the alias, so the
-        same make/model string never comes back.
-      </p>
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <p className="text-slate-400 text-sm">
+          {total.toLocaleString()} listing(s) need review. Assigning a bucket also registers the alias, so the
+          same make/model string never comes back.
+        </p>
+        <button onClick={runSuggest} disabled={aiBusy || rows.length === 0}
+          className="flex items-center gap-2 shrink-0 bg-amber-600 hover:bg-amber-700 text-white text-sm px-4 py-2 rounded disabled:opacity-50">
+          <Sparkles size={14} /> {aiBusy ? 'Suggesting…' : 'AI suggest'}
+        </button>
+      </div>
       {error && <ErrorNote error={error} />}
+      {applyResult && (
+        <div className="bg-emerald-900/30 border border-emerald-800 text-emerald-300 text-sm rounded-lg p-3 mb-3">
+          Applied: {applyResult.buckets_created} bucket(s) created, {applyResult.aliases_registered} alias(es) registered,
+          {' '}{applyResult.listings_claimed} listing(s) claimed.
+          {applyResult.errors?.length > 0 && ` Errors: ${applyResult.errors.join('; ')}`}
+        </div>
+      )}
+
+      {ai && (
+        <div className="bg-slate-800 border border-amber-700/50 rounded-lg p-4 mb-4">
+          <h3 className="text-slate-200 text-sm font-semibold mb-1 flex items-center gap-2">
+            <Sparkles size={14} className="text-amber-300" /> AI first pass — nothing is saved until you apply
+          </h3>
+          <p className="text-slate-500 text-xs mb-3">
+            Uncheck anything that looks wrong (low-confidence rows start unchecked). Production years on new
+            buckets are editable below.
+          </p>
+
+          {ai.buckets_to_create.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-1.5">New buckets to create</h4>
+              <div className="space-y-1.5">
+                {ai.buckets_to_create.map((b, i) => (
+                  <div key={b.key} className="flex flex-wrap items-center gap-1.5">
+                    <input className={`${inputCls} w-32 py-1`} value={b.make} onChange={(e) => setAiBucketField(i, 'make', e.target.value)} />
+                    <input className={`${inputCls} w-40 py-1`} value={b.model} onChange={(e) => setAiBucketField(i, 'model', e.target.value)} />
+                    <input className={`${inputCls} w-24 py-1`} placeholder="Gen" value={b.generation ?? ''} onChange={(e) => setAiBucketField(i, 'generation', e.target.value || null)} />
+                    <input className={`${inputCls} w-20 py-1`} placeholder="Yr min" inputMode="numeric" value={b.year_min ?? ''} onChange={(e) => setAiBucketField(i, 'year_min', e.target.value.replace(/\D/g, '') || null)} />
+                    <span className="text-slate-600">–</span>
+                    <input className={`${inputCls} w-20 py-1`} placeholder="Yr max" inputMode="numeric" value={b.year_max ?? ''} onChange={(e) => setAiBucketField(i, 'year_max', e.target.value.replace(/\D/g, '') || null)} />
+                    <span className="text-slate-500 text-xs">
+                      ← {ai.groups.filter((g) => g.new_bucket_key === b.key && g._include).length} string(s)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <h4 className="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-1.5">Assignments</h4>
+          <div className="space-y-1">
+            {ai.groups.map((g, i) => (
+              <div key={i} className={`flex flex-wrap items-center gap-2 text-sm rounded px-2 py-1 ${g._include ? 'bg-slate-700/40' : 'opacity-50'}`}>
+                <input type="checkbox" checked={g._include} disabled={g.action === 'skip'}
+                  onChange={(e) => setAi((prev) => ({ ...prev, groups: prev.groups.map((x, idx) => (idx === i ? { ...x, _include: e.target.checked } : x)) }))} />
+                <span className="text-slate-300">{[g.make, g.model, g.trim].filter(Boolean).join(' / ')}</span>
+                <span className="text-slate-600">({g.listing_count})</span>
+                <span className="text-slate-500">→</span>
+                <span className="text-slate-200">
+                  {g.action === 'skip' ? <span className="text-slate-500">skip</span>
+                    : g.bucket_id ? bucketName(g.bucket_id)
+                    : newBucketLabel(g.new_bucket_key)}
+                </span>
+                <Badge className={CONF_BADGE[g.confidence]}>{g.confidence}</Badge>
+                {g.note && <span className="text-slate-500 text-xs italic">{g.note}</span>}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3 mt-3">
+            <button onClick={applySuggestions} disabled={applying || ai.groups.every((g) => !g._include)}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-4 py-2 rounded disabled:opacity-50">
+              <CheckCircle size={14} /> {applying ? 'Applying…' : `Apply ${ai.groups.filter((g) => g._include).length} assignment(s)`}
+            </button>
+            <button onClick={() => setAi(null)} className="text-slate-400 hover:text-slate-200 text-sm">Discard</button>
+          </div>
+        </div>
+      )}
       <div className="space-y-2">
         {rows.map((r) => (
           <div key={r.id} className="bg-slate-800 border border-slate-700 rounded-lg p-3">
