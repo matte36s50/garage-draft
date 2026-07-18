@@ -103,30 +103,51 @@ function extractPriceFromHtml(html) {
   ];
 
   function matchText(text) {
-    for (const { pattern, currency } of saleTextPatterns) {
-      const match = text.match(pattern);
-      if (match) {
+    // The EARLIEST match in the text wins, regardless of which pattern group
+    // it came from. The result banner ("Sold for…" / "Bid to…") is the first
+    // result-shaped string on a BaT page; anything later is prose — the
+    // seller's description, a comment, or a related-listing tile. Checking
+    // all sold patterns before all bid-to patterns (the old behavior) let a
+    // description mention like "one sold for $800,000" beat the page's actual
+    // "Bid to $58,500" reserve-not-met banner.
+    let best = null;
+    const consider = (patterns, status) => {
+      for (const { pattern, currency } of patterns) {
+        const match = text.match(pattern);
+        if (!match) continue;
         const price = parsePrice(match[1], currency);
-        if (price) {
-          console.log(`   💰 Found: ${currency} ${price.toLocaleString()} (sold)`);
-          return { price, status: 'sold', currency };
+        if (!price) continue;
+        if (!best || match.index < best.index) {
+          best = { index: match.index, price, status, currency };
         }
       }
-    }
-    for (const { pattern, currency } of highBidTextPatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        const price = parsePrice(match[1], currency);
-        if (price) {
-          console.log(`   ⚠️ Found: ${currency} ${price.toLocaleString()} (reserve not met)`);
-          return { price, status: 'no_sale', currency };
-        }
-      }
+    };
+    consider(saleTextPatterns, 'sold');
+    consider(highBidTextPatterns, 'no_sale');
+    if (best) {
+      const label = best.status === 'sold' ? '💰' : '⚠️';
+      const kind = best.status === 'sold' ? 'sold' : 'reserve not met';
+      console.log(`   ${label} Found: ${best.currency} ${best.price.toLocaleString()} (${kind})`);
+      return { price: best.price, status: best.status, currency: best.currency };
     }
     return null;
   }
 
-  // Pass 1: meta description / og:description (plain text, most reliable)
+  // Pass 1: the result banner element itself — the same
+  // span.info-value.noborder-tiny the python scraper reads. Most
+  // authoritative: it can only contain the listing's own result, never a
+  // price mentioned in the description or comments.
+  const banner = html.match(
+    /<span[^>]*class="[^"]*\binfo-value\b[^"]*noborder-tiny[^"]*"[^>]*>([\s\S]{0,400}?)<\/span>/i
+  );
+  if (banner) {
+    const bannerText = banner[1].replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ');
+    const result = matchText(bannerText);
+    if (result) { console.log('   (matched via result banner)'); return result; }
+  }
+
+  // Pass 2: meta description / og:description (plain text; derived from the
+  // listing description, so only trustworthy when the banner pass found nothing)
   const metaRegexes = [
     /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)/i,
     /<meta[^>]+content=["']([^"']+)[^>]+property=["']og:description["']/i,
@@ -143,11 +164,11 @@ function extractPriceFromHtml(html) {
     }
   }
 
-  // Pass 2: raw HTML text patterns
+  // Pass 3: raw HTML text patterns
   const rawResult = matchText(html);
   if (rawResult) return rawResult;
 
-  // Pass 3: strip all HTML tags, retry (handles price split across elements).
+  // Pass 4: strip all HTML tags, retry (handles price split across elements).
   // This MUST run before the bare <strong> fallback: BaT wraps the result
   // amount in a tag ("Bid to <strong>EUR €7,000</strong>"), so only the
   // stripped text reveals whether the amount is a sale price or a
@@ -156,7 +177,7 @@ function extractPriceFromHtml(html) {
   const strippedResult = matchText(stripped);
   if (strippedResult) { console.log('   (matched after stripping HTML tags)'); return strippedResult; }
 
-  // Pass 4: bare <strong>-wrapped amount. Ambiguous on its own — the same
+  // Pass 5: bare <strong>-wrapped amount. Ambiguous on its own — the same
   // markup carries both sale prices and reserve-not-met high bids — so check
   // the text immediately before the tag and only report 'sold' when nothing
   // marks the amount as a bid.
@@ -186,7 +207,7 @@ function extractPriceFromHtml(html) {
     }
   }
 
-  // Pass 5: reserve not met with no extractable price
+  // Pass 6: reserve not met with no extractable price
   if (/reserve\s+not\s+met/i.test(stripped)) {
     console.log('   ⚠️ Detected: Reserve Not Met (no price found)');
     return { price: null, status: 'no_sale', currency: null };
@@ -395,7 +416,7 @@ async function scrapeAuctionPrice(url) {
     const engagement = extractEngagementStats(html);
     if (nextDataResult) return { ...nextDataResult, makeModel, engagement, error: null };
 
-    // Passes 1-4: regex-based HTML extraction
+    // Passes 1-6: regex-based HTML extraction (result banner first)
     const { price, status, currency } = extractPriceFromHtml(html);
     if (price || status === 'no_sale') {
       return { price, status, currency, makeModel, engagement, error: null };
@@ -439,12 +460,21 @@ export async function GET(request) {
   return runFinalizer();
 }
 
-// POST doesn't require auth - called from admin UI which is already protected
+// POST doesn't require auth - called from admin UI which is already protected.
+// Optional JSON body { "urls": [...] } forces a re-finalize of those BaT
+// listings even when they already have a final_price — the repair path for
+// results BaT changed after the fact (or that an older extraction bug
+// misread), e.g. a reserve-not-met auction recorded as sold.
 export async function POST(request) {
-  return runFinalizer({ minAgeMinutes: 5 });
+  let body = {};
+  try { body = await request.json(); } catch { /* no body — normal run */ }
+  const forceUrls = Array.isArray(body.urls)
+    ? body.urls.filter((u) => typeof u === 'string' && u.includes('bringatrailer.com'))
+    : [];
+  return runFinalizer({ minAgeMinutes: 5, forceUrls });
 }
 
-async function runFinalizer({ minAgeMinutes = 120 } = {}) {
+async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
   const supabase = getSupabaseClient();
 
   console.log('='.repeat(50));
@@ -507,9 +537,22 @@ async function runFinalizer({ minAgeMinutes = 120 } = {}) {
       .order('timestamp_end', { ascending: false })
       .limit(20);
 
+    // Explicitly requested re-finalizes (POST body urls) — no final_price /
+    // reserve_not_met filters, these override whatever is stored.
+    let forced = [];
+    if (forceUrls.length > 0) {
+      const { data } = await supabase
+        .from('auctions')
+        .select('auction_id, title, url, current_bid, timestamp_end, make, model, year')
+        .in('url', forceUrls)
+        .limit(50);
+      forced = data || [];
+      console.log(`🔧 Force re-finalize: ${forced.length}/${forceUrls.length} URL(s) matched`);
+    }
+
     const seen = new Set();
     const auctions = [];
-    for (const a of [...(unfinalized || []), ...(recheck || []), ...(suspiciousWithdrawn || [])]) {
+    for (const a of [...forced, ...(unfinalized || []), ...(recheck || []), ...(suspiciousWithdrawn || [])]) {
       // Key by url when auction_id is null so distinct legacy rows aren't
       // collapsed into one by a shared null key.
       const key = a.auction_id ?? a.url;
