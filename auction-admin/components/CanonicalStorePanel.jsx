@@ -149,7 +149,7 @@ function Results() {
   const page = (delta) => { const o = Math.max(0, offset + delta); setOffset(o); load(filters, o); };
 
   const exportCsv = () => {
-    const cols = ['source_id','source_listing_id','raw_title','year','make','model','outcome','price','price_all_in','currency','bid_count','views','watchers','comments','ended_at','url'];
+    const cols = ['source_id','source_listing_id','raw_title','year','make','model','outcome','price','price_all_in','current_bid','currency','bid_count','views','watchers','comments','ended_at','url'];
     const esc = (v) => v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
     const csv = [cols.join(','), ...rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n');
     const a = document.createElement('a');
@@ -205,7 +205,14 @@ function Results() {
                 </Td>
                 <Td><Badge>{r.source_id}</Badge></Td>
                 <Td><Badge className={OUTCOME_BADGE[r.outcome] || OUTCOME_BADGE.unknown}>{r.outcome || '—'}</Badge></Td>
-                <Td>{fmtMoney(r.price, r.currency)}</Td>
+                <Td>
+                  {r.price != null ? fmtMoney(r.price, r.currency)
+                    : r.outcome === 'reserve_not_met' && r.current_bid != null
+                      ? <span className="text-amber-300/90" title="High bid — reserve not met">
+                          {fmtMoney(r.current_bid, r.currency)}<span className="text-xs text-slate-500"> bid</span>
+                        </span>
+                      : '—'}
+                </Td>
                 <Td>{fmtMoney(r.price_all_in, r.currency)}</Td>
                 <Td>{fmtNum(r.bid_count)}</Td>
                 <Td>{fmtNum(r.views)}</Td>
