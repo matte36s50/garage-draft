@@ -81,8 +81,25 @@ function blockedUrl(raw) {
   return null;
 }
 
+function looksLikeHtml(s) {
+  const head = s.slice(0, 5000);
+  if (/^\s*(<!doctype\s|<html[\s>])/i.test(head)) return true;
+  const tags = head.match(/<[a-z][a-z0-9-]*[\s/>]/gi);
+  return tags !== null && tags.length >= 5;
+}
+
 function htmlToText(html) {
-  return html
+  // Client-rendered catalogs (RM Sotheby's, other Next.js sites) carry the lot
+  // data in JSON data islands rather than markup. Pull those out before the
+  // <script> strip below, and append them after the visible text so real
+  // markup wins the MAX_INPUT_CHARS truncation when both are present.
+  const dataBlobs = [];
+  const jsonScriptRe = /<script\b[^>]*(?:type=["']application\/(?:ld\+)?json["']|id=["']__NEXT_DATA__["'])[^>]*>([\s\S]*?)<\/script>/gi;
+  for (let m; (m = jsonScriptRe.exec(html)); ) {
+    const blob = m[1].trim();
+    if (blob.length > 2) dataBlobs.push(blob);
+  }
+  const text = html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<br\s*\/?>/gi, '\n')
@@ -93,6 +110,9 @@ function htmlToText(html) {
     .replace(/[ \t]+/g, ' ')
     .replace(/\n\s*\n\s*\n+/g, '\n\n')
     .trim();
+  return dataBlobs.length
+    ? `${text}\n\nEMBEDDED PAGE DATA (JSON):\n${dataBlobs.join('\n')}`
+    : text;
 }
 
 export async function POST(request) {
@@ -115,6 +135,9 @@ export async function POST(request) {
 
   const mode = body.mode === 'estimate' ? 'estimate' : 'result';
   let pageText = (body.text || '').trim();
+  if (pageText && looksLikeHtml(pageText)) {
+    pageText = htmlToText(pageText);
+  }
 
   if (!pageText && body.url) {
     const blocked = blockedUrl(body.url);
@@ -161,6 +184,9 @@ Rules:
   model "250 GT SWB", trim "Berlinetta" (trim only when clearly separable, else null).
 - Detect the event name, auction house, location, and stated buyer premium % when present.
 - If a value is not on the page, use null. Never guess amounts.
+- The text may end with an "EMBEDDED PAGE DATA (JSON)" section (the page's data payload).
+  Lots that appear only there count the same as lots in the visible text — but never
+  double-count a lot present in both.
 
 PAGE TEXT:
 ${pageText}`;

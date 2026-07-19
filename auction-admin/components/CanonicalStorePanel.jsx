@@ -324,6 +324,11 @@ function LiveEntry() {
         body: JSON.stringify({ mode, [isUrl ? 'url' : 'text']: aiInput.trim() }),
       });
       setStaged(data.lots.map((l) => ({ ...l, _include: true })));
+      if (data.lots.length === 0) {
+        setError('No lots found in that input. Many catalog pages load their lots with JavaScript, '
+          + 'so the URL fetch sees an empty shell — open the page in your browser, let the lots render, '
+          + 'then paste the page HTML (or select-all + copy the visible text) instead.');
+      }
       const ev = data.event || {};
       setEvent((prev) => ({
         event_name: prev.event_name || ev.name || '',
