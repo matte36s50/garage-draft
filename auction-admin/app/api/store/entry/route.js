@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '../../../../lib/adminAuth';
 import { canonicalGet, canonicalRpc } from '../../../../lib/canonicalStore';
+import { getUsdRate } from '../../../../lib/fx';
 
 /**
  * Manual live-auction lot entry (unified panel) — two-phase workflow:
@@ -81,7 +82,7 @@ export async function POST(request) {
     payload.status = 'upcoming';
     if (body.estimate_low != null && body.estimate_low !== '') payload.estimate_low = Number(body.estimate_low);
     if (body.estimate_high != null && body.estimate_high !== '') payload.estimate_high = Number(body.estimate_high);
-    if (body.ends_at) payload.ends_at = body.ends_at;
+    if (body.ends_at || body.sale_date) payload.ends_at = body.ends_at || body.sale_date;
   } else {
     const outcome = body.outcome || 'sold';
     if (!['sold', 'reserve_not_met', 'withdrawn'].includes(outcome)) {
@@ -92,7 +93,7 @@ export async function POST(request) {
     }
     payload.status = 'ended';
     payload.outcome = outcome;
-    payload.ended_at = body.ended_at || new Date().toISOString().slice(0, 10);
+    payload.ended_at = body.ended_at || body.sale_date || new Date().toISOString().slice(0, 10);
     if (outcome === 'sold') {
       payload.price = Number(body.price);
       if (body.buyer_premium_pct != null && body.buyer_premium_pct !== '') {
@@ -108,6 +109,30 @@ export async function POST(request) {
     if (body.estimate_low != null && body.estimate_low !== '') payload.estimate_low = Number(body.estimate_low);
     if (body.estimate_high != null && body.estimate_high !== '') payload.estimate_high = Number(body.estimate_high);
   }
+  // FX policy: the store holds USD. Non-USD amounts are converted at the ECB
+  // rate for the day of the auction (sale_date / ended_at; pre-auction
+  // estimates use the latest rate until the results pass re-enters them).
+  // The rate lands in fx_rate_usd and the original amounts survive under
+  // original_* in raw_payload.
+  if (payload.currency !== 'USD') {
+    const fxDate = mode === 'result' ? payload.ended_at : (body.sale_date || payload.ends_at);
+    let rate;
+    try {
+      rate = await getUsdRate(payload.currency, fxDate);
+    } catch (e) {
+      return NextResponse.json({ error: e.message }, { status: 502 });
+    }
+    payload.original_currency = payload.currency;
+    for (const field of ['price', 'current_bid', 'estimate_low', 'estimate_high', 'price_all_in']) {
+      if (payload[field] != null) {
+        payload[`original_${field}`] = payload[field];
+        payload[field] = Math.round(payload[field] * rate * 100) / 100;
+      }
+    }
+    payload.currency = 'USD';
+    payload.fx_rate_usd = rate;
+  }
+
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
   const res = await canonicalRpc('auction_upsert_listing', {

@@ -238,7 +238,7 @@ function Results() {
 
 // ---------------------------------------------------------------- Live entry
 function LiveEntry() {
-  const [event, setEvent] = useState({ event_name: '', event_house: '', event_location: '', buyer_premium_pct: '' });
+  const [event, setEvent] = useState({ event_name: '', event_house: '', event_location: '', buyer_premium_pct: '', sale_date: '', currency: '' });
   const [events, setEvents] = useState([]);
   const [mode, setMode] = useState('estimate'); // 'estimate' (pre-auction) | 'result'
   const [lot, setLot] = useState({ lot: '', year: '', make: '', model: '', trim: '', price: '', estimate_low: '', estimate_high: '', outcome: 'sold' });
@@ -307,6 +307,8 @@ function LiveEntry() {
           event_name: event.event_name,
           outcome: edit.outcome || 'sold',
           price: edit.price,
+          currency: event.currency || undefined,
+          sale_date: event.sale_date || undefined,
           buyer_premium_pct: event.buyer_premium_pct !== '' ? event.buyer_premium_pct : undefined,
         }),
       });
@@ -330,11 +332,14 @@ function LiveEntry() {
           + 'then paste the page HTML (or select-all + copy the visible text) instead.');
       }
       const ev = data.event || {};
+      const extractedCurrency = data.lots.find((l) => l.currency && l.currency !== 'USD')?.currency || '';
       setEvent((prev) => ({
+        ...prev,
         event_name: prev.event_name || ev.name || '',
         event_house: prev.event_house || ev.house || '',
         event_location: prev.event_location || ev.location || '',
         buyer_premium_pct: prev.buyer_premium_pct || (ev.buyer_premium_pct ?? ''),
+        currency: prev.currency || extractedCurrency,
       }));
     } catch (e) { setError(e.message); }
     setAiBusy(false);
@@ -355,7 +360,8 @@ function LiveEntry() {
             lot: l.lot, year: l.year, make: l.make, model: l.model, trim: l.trim,
             estimate_low: l.estimate_low, estimate_high: l.estimate_high,
             price: l.price, outcome: l.outcome || undefined,
-            currency: l.currency || undefined,
+            currency: l.currency || event.currency || undefined,
+            sale_date: event.sale_date || undefined,
             buyer_premium_pct: event.buyer_premium_pct !== '' ? event.buyer_premium_pct : undefined,
           }),
         });
@@ -377,7 +383,7 @@ function LiveEntry() {
     <div className="max-w-6xl">
       <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 mb-4">
         <h3 className="text-slate-300 text-sm font-semibold mb-2 uppercase tracking-wide">Event</h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-2">
           <input className={inputCls} list="store-events" placeholder="Event name *" value={event.event_name}
             onChange={(e) => setEvent({ ...event, event_name: e.target.value })} />
           <datalist id="store-events">{events.map((ev) => <option key={ev.id} value={ev.name} />)}</datalist>
@@ -385,12 +391,25 @@ function LiveEntry() {
             onChange={(e) => setEvent({ ...event, event_house: e.target.value })} />
           <input className={inputCls} placeholder="Location" value={event.event_location}
             onChange={(e) => setEvent({ ...event, event_location: e.target.value })} />
+          <input className={inputCls} type="date" title="Sale date — sets the FX conversion day for non-USD amounts" value={event.sale_date}
+            onChange={(e) => setEvent({ ...event, sale_date: e.target.value })} />
+          <select className={inputCls} title="Catalog currency — non-USD amounts are converted to USD at the sale-date ECB rate"
+            value={event.currency} onChange={(e) => setEvent({ ...event, currency: e.target.value })}>
+            <option value="">USD</option>
+            {['EUR', 'GBP', 'CHF', 'CAD', 'AUD', 'JPY'].map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
           <input className={inputCls} type="number" step="0.5" placeholder="Buyer premium %" value={event.buyer_premium_pct}
             onChange={(e) => setEvent({ ...event, buyer_premium_pct: e.target.value })} />
           <button onClick={loadEventLots} className="bg-slate-700 hover:bg-slate-600 text-white text-sm px-3 py-2 rounded">
             Load event lots
           </button>
         </div>
+        {event.currency && (
+          <p className="text-slate-500 text-xs mt-2">
+            {event.currency} amounts are converted to USD at the ECB rate for
+            {event.sale_date ? ` ${event.sale_date}` : ' the sale date (set it above, or today’s rate is used)'} when saved.
+          </p>
+        )}
       </div>
 
       <div className="flex gap-1 mb-4">
@@ -557,7 +576,7 @@ function LiveEntry() {
           <div className="overflow-x-auto rounded-lg border border-slate-700 mt-3">
             <table className="w-full bg-slate-800/60">
               <thead className="bg-slate-800/80 border-b border-slate-700">
-                <tr><Th></Th><Th>Lot</Th><Th>Year</Th><Th>Make</Th><Th>Model</Th><Th>Est. low</Th><Th>Est. high</Th><Th>Price</Th><Th>Outcome</Th></tr>
+                <tr><Th></Th><Th>Lot</Th><Th>Year</Th><Th>Make</Th><Th>Model</Th><Th>Est. low</Th><Th>Est. high</Th><Th>Price</Th><Th>Cur</Th><Th>Outcome</Th></tr>
               </thead>
               <tbody className="divide-y divide-slate-700/60">
                 {staged.map((l, i) => (
@@ -570,6 +589,7 @@ function LiveEntry() {
                     <Td><input className={`${inputCls} w-24 py-1`} value={l.estimate_low ?? ''} onChange={(e) => setStagedField(i, 'estimate_low', e.target.value)} /></Td>
                     <Td><input className={`${inputCls} w-24 py-1`} value={l.estimate_high ?? ''} onChange={(e) => setStagedField(i, 'estimate_high', e.target.value)} /></Td>
                     <Td><input className={`${inputCls} w-24 py-1`} value={l.price ?? ''} onChange={(e) => setStagedField(i, 'price', e.target.value)} /></Td>
+                    <Td><input className={`${inputCls} w-14 py-1`} placeholder="USD" value={l.currency ?? ''} onChange={(e) => setStagedField(i, 'currency', e.target.value.toUpperCase() || null)} /></Td>
                     <Td>
                       <select className={`${inputCls} py-1`} value={l.outcome ?? ''} onChange={(e) => setStagedField(i, 'outcome', e.target.value || null)}>
                         <option value="">not run yet</option>
