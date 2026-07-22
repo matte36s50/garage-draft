@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   RefreshCw, Download, Search, Plus, CheckCircle, XCircle, ExternalLink,
-  Gavel, ListChecks, Rows3, FolderTree, Radio, Sparkles,
+  Gavel, ListChecks, Rows3, FolderTree, Radio, Sparkles, Pencil,
 } from 'lucide-react';
 
 /**
@@ -128,6 +128,45 @@ function Results() {
   const [offset, setOffset] = useState(0);
   const limit = 100;
 
+  // Inline listing editor (manual correction of outcome / price / review flag).
+  const [editingId, setEditingId] = useState(null);
+  const [edit, setEdit] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState(null);
+
+  const openEditor = (r) => {
+    setEditError(null);
+    setEditingId(r.id);
+    setEdit({
+      outcome: r.outcome || 'unknown',
+      // Seed the amount field from whichever the row already carries.
+      amount: r.price != null ? String(r.price) : (r.current_bid != null ? String(r.current_bid) : ''),
+      needs_review: Boolean(r.needs_review),
+    });
+  };
+  const closeEditor = () => { setEditingId(null); setEdit({}); setEditError(null); };
+
+  const saveEdit = async (r) => {
+    setSavingEdit(true); setEditError(null);
+    try {
+      const body = {
+        source_id: r.source_id,
+        source_listing_id: r.source_listing_id,
+        outcome: edit.outcome,
+        needs_review: edit.needs_review,
+      };
+      // The amount means "sale price" for sold, "high bid" otherwise.
+      if (edit.outcome === 'sold') body.price = edit.amount;
+      else if (edit.outcome === 'reserve_not_met') body.current_bid = edit.amount;
+      await api('/api/store/edit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      closeEditor();
+      await load();
+    } catch (e) { setEditError(e.message); }
+    setSavingEdit(false);
+  };
+
   const load = useCallback(async (f = filters, o = offset) => {
     setLoading(true); setError(null);
     try {
@@ -193,11 +232,12 @@ function Results() {
       <div className="overflow-x-auto rounded-lg border border-slate-700">
         <table className="w-full bg-slate-800">
           <thead className="bg-slate-800/80 border-b border-slate-700">
-            <tr><Th>Ended</Th><Th>Title</Th><Th>Source</Th><Th>Outcome</Th><Th>Price</Th><Th>All-in</Th><Th>Bids</Th><Th>Views</Th><Th>Watchers</Th><Th>Comments</Th><Th>Link</Th></tr>
+            <tr><Th>Ended</Th><Th>Title</Th><Th>Source</Th><Th>Outcome</Th><Th>Price</Th><Th>All-in</Th><Th>Bids</Th><Th>Views</Th><Th>Watchers</Th><Th>Comments</Th><Th>Link</Th><Th>Edit</Th></tr>
           </thead>
           <tbody className="divide-y divide-slate-700/60">
             {rows.map((r) => (
-              <tr key={r.id} className="hover:bg-slate-700/40">
+              <React.Fragment key={r.id}>
+              <tr className="hover:bg-slate-700/40">
                 <Td className="whitespace-nowrap">{fmtDate(r.ended_at)}</Td>
                 <Td>
                   {r.raw_title || `${r.year ?? ''} ${r.make ?? ''} ${r.model ?? ''}`}
@@ -219,10 +259,62 @@ function Results() {
                 <Td>{fmtNum(r.watchers)}</Td>
                 <Td>{fmtNum(r.comments)}</Td>
                 <Td>{r.url && <a href={r.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300"><ExternalLink size={14} /></a>}</Td>
+                <Td>
+                  <button onClick={() => (editingId === r.id ? closeEditor() : openEditor(r))}
+                    className="text-slate-400 hover:text-blue-300" title="Correct outcome / price / review flag">
+                    <Pencil size={14} />
+                  </button>
+                </Td>
               </tr>
+              {editingId === r.id && (
+                <tr className="bg-slate-800/80">
+                  <Td className="!p-0" colSpan={12}>
+                    <div className="px-4 py-3 border-y border-blue-700/40 bg-slate-900/40">
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-slate-400">Outcome</label>
+                          <select className={`${inputCls} py-1`} value={edit.outcome}
+                            onChange={(e) => setEdit({ ...edit, outcome: e.target.value })}>
+                            <option value="sold">Sold</option>
+                            <option value="reserve_not_met">Reserve not met (Bid to)</option>
+                            <option value="withdrawn">Withdrawn</option>
+                            <option value="unknown">Unknown</option>
+                          </select>
+                        </div>
+                        {(edit.outcome === 'sold' || edit.outcome === 'reserve_not_met') && (
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs text-slate-400">
+                              {edit.outcome === 'sold' ? 'Sale price $' : 'High bid $ (reserve not met)'}
+                            </label>
+                            <input className={`${inputCls} py-1 w-36`} inputMode="numeric"
+                              placeholder={edit.outcome === 'sold' ? 'Price' : 'High bid'}
+                              value={edit.amount}
+                              onChange={(e) => setEdit({ ...edit, amount: e.target.value.replace(/[^\d.]/g, '') })} />
+                          </div>
+                        )}
+                        <label className="flex items-center gap-1.5 text-sm text-slate-300 pb-1.5">
+                          <input type="checkbox" checked={edit.needs_review}
+                            onChange={(e) => setEdit({ ...edit, needs_review: e.target.checked })} />
+                          needs review
+                        </label>
+                        <button onClick={() => saveEdit(r)} disabled={savingEdit}
+                          className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-3 py-1.5 rounded disabled:opacity-50">
+                          <CheckCircle size={14} /> {savingEdit ? 'Saving…' : 'Save correction'}
+                        </button>
+                        <button onClick={closeEditor} className="text-slate-400 hover:text-slate-200 text-sm px-2 py-1.5">Cancel</button>
+                      </div>
+                      {editError && <p className="text-red-300 text-sm mt-2">{editError}</p>}
+                      <p className="text-slate-500 text-xs mt-2">
+                        Manual corrections are protected — future scraper runs won’t overwrite the fields you change here.
+                      </p>
+                    </div>
+                  </Td>
+                </tr>
+              )}
+              </React.Fragment>
             ))}
             {!loading && rows.length === 0 && (
-              <tr><Td className="text-slate-500 py-6 text-center" colSpan={11}>No results match.</Td></tr>
+              <tr><Td className="text-slate-500 py-6 text-center" colSpan={12}>No results match.</Td></tr>
             )}
           </tbody>
         </table>
