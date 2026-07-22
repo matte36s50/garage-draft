@@ -50,6 +50,18 @@ function SourceCell({ row, eventsById }) {
   return <Badge>{row.source_id}</Badge>;
 }
 
+// Fetch the live-auction events once and return an { event_id: event } map, so
+// any tab can resolve a manual listing's event name for its Source cell.
+function useEventsById() {
+  const [eventsById, setEventsById] = useState({});
+  useEffect(() => {
+    api('/api/store/events')
+      .then((d) => setEventsById(Object.fromEntries((d.rows || []).map((e) => [e.id, e]))))
+      .catch(() => {});
+  }, []);
+  return eventsById;
+}
+
 async function api(path, opts) {
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
@@ -76,6 +88,7 @@ function LiveBoard() {
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState(null);
   const [error, setError] = useState(null);
+  const eventsById = useEventsById();
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -126,7 +139,7 @@ function LiveBoard() {
               <tr key={r.id} className="hover:bg-slate-700/40">
                 <Td className="whitespace-nowrap">{r.ends_at ? new Date(r.ends_at).toLocaleString() : '—'}</Td>
                 <Td>{r.raw_title || `${r.year ?? ''} ${r.make ?? ''} ${r.model ?? ''}`}</Td>
-                <Td><Badge>{r.source_id}</Badge></Td>
+                <Td><SourceCell row={r} eventsById={eventsById} /></Td>
                 <Td>{fmtMoney(r.current_bid, r.currency)}</Td>
                 <Td>{fmtNum(r.bid_count)}</Td>
                 <Td>{fmtNum(r.watchers)}</Td>
@@ -156,12 +169,7 @@ function Results() {
   const limit = 100;
 
   // Live-auction events, so manual rows can show their sale name in Source.
-  const [eventsById, setEventsById] = useState({});
-  useEffect(() => {
-    api('/api/store/events')
-      .then((d) => setEventsById(Object.fromEntries((d.rows || []).map((e) => [e.id, e]))))
-      .catch(() => {});
-  }, []);
+  const eventsById = useEventsById();
 
   // Inline listing editor (manual correction of outcome / price / review flag).
   const [editingId, setEditingId] = useState(null);
@@ -747,6 +755,7 @@ function ReviewQueue() {
   const [newBucketFor, setNewBucketFor] = useState(null); // listing id
   const [newBucket, setNewBucket] = useState({ make: '', model: '', generation: '' });
   const [choice, setChoice] = useState({}); // listing id -> bucket id
+  const eventsById = useEventsById();
 
   // AI first pass
   const [ai, setAi] = useState(null); // { groups, buckets_to_create }
@@ -919,7 +928,7 @@ function ReviewQueue() {
                 <div className="text-slate-200 text-sm truncate">{r.raw_title || '—'}</div>
                 <div className="text-slate-500 text-xs">
                   raw: <span className="text-slate-400">{[r.make, r.model, r.trim].filter(Boolean).join(' / ') || 'no make/model'}</span>
-                  {' · '}<Badge>{r.source_id}</Badge>
+                  {' · '}<SourceCell row={r} eventsById={eventsById} />
                   {r.currency !== 'USD' && <Badge className="ml-1 bg-purple-900/40 text-purple-300">{r.currency}</Badge>}
                   {' '}{fmtMoney(r.price ?? r.current_bid, r.currency)} · {fmtDate(r.ended_at)}
                 </div>
