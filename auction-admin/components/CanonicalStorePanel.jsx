@@ -23,6 +23,33 @@ const OUTCOME_BADGE = {
   unknown: 'bg-slate-700 text-slate-300',
 };
 
+// Human-readable label for a live-auction event (house + sale name), de-duped
+// so "RM Sotheby's" + "RM Sotheby's Amelia Island" doesn't repeat the house.
+function eventLabel(ev) {
+  if (!ev) return null;
+  const house = (ev.house || '').trim();
+  const name = (ev.name || '').trim();
+  if (house && name) {
+    if (name.toLowerCase() === house.toLowerCase()) return name;
+    if (name.toLowerCase().startsWith(house.toLowerCase())) return name;
+    return `${house} ${name}`;
+  }
+  return name || house || null;
+}
+
+// The Source cell: for manual/live rows show the auction event's name; for
+// scraped sources (bat, carsandbids) show the source id as before.
+function SourceCell({ row, eventsById }) {
+  const ev = row.event_id ? eventsById[row.event_id] : null;
+  const label = row.source_id === 'manual'
+    ? (eventLabel(ev) || eventLabel({ house: row.raw_payload?.event_house, name: row.raw_payload?.event_name }))
+    : null;
+  if (label) {
+    return <Badge className="bg-indigo-900/40 text-indigo-200" title={`Manual / live · ${label}`}>{label}</Badge>;
+  }
+  return <Badge>{row.source_id}</Badge>;
+}
+
 async function api(path, opts) {
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
@@ -127,6 +154,14 @@ function Results() {
   const [filters, setFilters] = useState({ q: '', source: '', outcome: '', from: '', to: '', needs_review: false });
   const [offset, setOffset] = useState(0);
   const limit = 100;
+
+  // Live-auction events, so manual rows can show their sale name in Source.
+  const [eventsById, setEventsById] = useState({});
+  useEffect(() => {
+    api('/api/store/events')
+      .then((d) => setEventsById(Object.fromEntries((d.rows || []).map((e) => [e.id, e]))))
+      .catch(() => {});
+  }, []);
 
   // Inline listing editor (manual correction of outcome / price / review flag).
   const [editingId, setEditingId] = useState(null);
@@ -243,7 +278,7 @@ function Results() {
                   {r.raw_title || `${r.year ?? ''} ${r.make ?? ''} ${r.model ?? ''}`}
                   {r.needs_review && <Badge className="ml-2 bg-amber-900/40 text-amber-300">review</Badge>}
                 </Td>
-                <Td><Badge>{r.source_id}</Badge></Td>
+                <Td><SourceCell row={r} eventsById={eventsById} /></Td>
                 <Td><Badge className={OUTCOME_BADGE[r.outcome] || OUTCOME_BADGE.unknown}>{r.outcome || '—'}</Badge></Td>
                 <Td>
                   {r.price != null ? fmtMoney(r.price, r.currency)
