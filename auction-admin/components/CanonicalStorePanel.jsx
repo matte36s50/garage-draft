@@ -176,11 +176,19 @@ function Results() {
   // Live-auction events, so manual rows can show their sale name in Source.
   const eventsById = useEventsById();
 
+  // Buckets, so a mis-bucketed listing can be moved from the row editor.
+  const [buckets, setBuckets] = useState([]);
+  useEffect(() => {
+    api('/api/store/buckets').then((d) => setBuckets(d.rows || [])).catch(() => {});
+  }, []);
+
   // Inline listing editor (manual correction of outcome / price / review flag).
   const [editingId, setEditingId] = useState(null);
   const [edit, setEdit] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState(null);
+  const [bucketSel, setBucketSel] = useState('');
+  const [movingBucket, setMovingBucket] = useState(false);
 
   const openEditor = (r) => {
     setEditError(null);
@@ -191,8 +199,29 @@ function Results() {
       amount: r.price != null ? String(r.price) : (r.current_bid != null ? String(r.current_bid) : ''),
       needs_review: Boolean(r.needs_review),
     });
+    setBucketSel(r.canonical_model_id || '');
   };
   const closeEditor = () => { setEditingId(null); setEdit({}); setEditError(null); };
+
+  const bucketLabel = (id) => {
+    const b = buckets.find((x) => x.id === id);
+    return b ? `${b.make} ${b.model}${b.generation ? ` (${b.generation})` : ''}` : 'none';
+  };
+
+  // Immediate action, separate from "Save correction": move the listing to
+  // another bucket, or back to the review queue ('' = none).
+  const moveBucket = async (r) => {
+    setMovingBucket(true); setEditError(null);
+    try {
+      await api('/api/store/reassign', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listing_id: r.id, canonical_model_id: bucketSel || null }),
+      });
+      closeEditor();
+      await load();
+    } catch (e) { setEditError(e.message); }
+    setMovingBucket(false);
+  };
 
   const saveEdit = async (r) => {
     setSavingEdit(true); setEditError(null);
@@ -350,6 +379,31 @@ function Results() {
                           <CheckCircle size={14} /> {savingEdit ? 'Saving…' : 'Save correction'}
                         </button>
                         <button onClick={closeEditor} className="text-slate-400 hover:text-slate-200 text-sm px-2 py-1.5">Cancel</button>
+                      </div>
+                      <div className="flex flex-wrap items-end gap-3 mt-3 pt-3 border-t border-slate-700/60">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-slate-400">
+                            Bucket <span className="text-slate-500">(currently: {bucketLabel(r.canonical_model_id)})</span>
+                          </label>
+                          <select className={`${inputCls} py-1 max-w-xs`} value={bucketSel}
+                            onChange={(e) => setBucketSel(e.target.value)}>
+                            <option value="">— none (back to review queue) —</option>
+                            {buckets.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.make} {b.model}{b.generation ? ` (${b.generation})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <button onClick={() => moveBucket(r)}
+                          disabled={movingBucket || bucketSel === (r.canonical_model_id || '')}
+                          className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1.5 rounded disabled:opacity-50">
+                          {movingBucket ? 'Moving…' : 'Move'}
+                        </button>
+                        <span className="text-slate-500 text-xs pb-1.5">
+                          Moves only this listing — e.g. a 190E Evo II out of the plain 190E bucket. Alias operations
+                          never override a manual move.
+                        </span>
                       </div>
                       {editError && <p className="text-red-300 text-sm mt-2">{editError}</p>}
                       <p className="text-slate-500 text-xs mt-2">
@@ -992,12 +1046,80 @@ function ReviewQueue() {
 }
 
 // ------------------------------------------------------------------- Buckets
+
+// One alias inside a bucket's expanded alias editor: repoint it to another
+// bucket (optionally taking its listings along) or delete it.
+function AliasRow({ a, buckets, onDone, onError }) {
+  const [target, setTarget] = useState('');
+  const [move, setMove] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const repoint = async () => {
+    if (!target) return;
+    setBusy(true);
+    try {
+      const data = await api('/api/store/buckets/aliases', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias: a.alias, canonical_model_id: target, move_listings: move }),
+      });
+      await onDone(move ? `Alias repointed — ${data.listings_moved} listing(s) moved with it.` : 'Alias repointed.');
+    } catch (e) { onError(e.message); }
+    setBusy(false);
+  };
+
+  const del = async () => {
+    if (!window.confirm(`Delete alias “${a.alias}”? Its listings keep their bucket; the raw string will re-enter the review queue next time it appears.`)) return;
+    setBusy(true);
+    try {
+      await api('/api/store/buckets/aliases', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias: a.alias }),
+      });
+      await onDone('Alias deleted.');
+    } catch (e) { onError(e.message); }
+    setBusy(false);
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 py-1.5">
+      <code className="text-slate-200 text-xs bg-slate-900/60 px-2 py-1 rounded">{a.alias}</code>
+      <span className="text-slate-500 text-xs">{a.listing_count} listing(s)</span>
+      <span className="flex-1" />
+      <select className={`${inputCls} py-1 text-xs`} value={target} onChange={(e) => setTarget(e.target.value)}>
+        <option value="">Repoint to…</option>
+        {buckets.filter((b) => b.id !== a.canonical_model_id).map((b) => (
+          <option key={b.id} value={b.id}>{b.make} {b.model}{b.generation ? ` (${b.generation})` : ''}</option>
+        ))}
+      </select>
+      <label className="flex items-center gap-1 text-xs text-slate-400" title="Also move this alias's listings to the new bucket. Listings with their own trim-level alias, or ones you placed by hand, stay put.">
+        <input type="checkbox" checked={move} onChange={(e) => setMove(e.target.checked)} /> move listings
+      </label>
+      <button onClick={repoint} disabled={busy || !target}
+        className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2.5 py-1 rounded disabled:opacity-50">
+        Repoint
+      </button>
+      <button onClick={del} disabled={busy} title="Delete alias"
+        className="text-slate-500 hover:text-red-400 disabled:opacity-50">
+        <XCircle size={14} />
+      </button>
+    </div>
+  );
+}
+
 function Buckets() {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [form, setForm] = useState({ make: '', model: '', generation: '', year_min: '', year_max: '' });
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState('');
+
+  // Inline bucket editor + per-bucket alias panel.
+  const [editingId, setEditingId] = useState(null);
+  const [edit, setEdit] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [aliasesFor, setAliasesFor] = useState(null);
+  const [aliases, setAliases] = useState([]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -1014,6 +1136,42 @@ function Buckets() {
       await load();
     } catch (err) { setError(err.message); }
     setSaving(false);
+  };
+
+  const openEdit = (b) => {
+    setError(null); setNotice(null);
+    setEditingId(b.id);
+    setEdit({
+      make: b.make, model: b.model, generation: b.generation || '',
+      year_min: b.year_min ?? '', year_max: b.year_max ?? '',
+    });
+  };
+  const saveEdit = async () => {
+    setSavingEdit(true); setError(null);
+    try {
+      await api('/api/store/buckets', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingId, ...edit }),
+      });
+      setEditingId(null);
+      await load();
+    } catch (e) { setError(e.message); }
+    setSavingEdit(false);
+  };
+
+  const loadAliases = useCallback(async (bucketId) => {
+    setAliases((await api(`/api/store/buckets?aliases_for=${bucketId}`)).rows);
+  }, []);
+  const toggleAliases = async (b) => {
+    setError(null); setNotice(null);
+    if (aliasesFor === b.id) { setAliasesFor(null); setAliases([]); return; }
+    setAliasesFor(b.id); setAliases([]);
+    try { await loadAliases(b.id); } catch (e) { setError(e.message); }
+  };
+  // After a repoint/delete, refresh the open alias list and the counts.
+  const aliasDone = async (msg) => {
+    setNotice(msg);
+    try { if (aliasesFor) await loadAliases(aliasesFor); await load(); } catch (e) { setError(e.message); }
   };
 
   const filtered = useMemo(
@@ -1042,23 +1200,83 @@ function Buckets() {
         </button>
       </form>
       {error && <ErrorNote error={error} />}
+      {notice && (
+        <div className="bg-emerald-900/30 border border-emerald-800 text-emerald-300 text-sm rounded-lg p-3 mb-3">{notice}</div>
+      )}
       <input className={`${inputCls} mb-3 w-64`} placeholder="Filter buckets…" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="overflow-x-auto rounded-lg border border-slate-700">
         <table className="w-full bg-slate-800">
           <thead className="bg-slate-800/80 border-b border-slate-700">
-            <tr><Th>Make</Th><Th>Model</Th><Th>Generation</Th><Th>Years</Th><Th>Listings</Th><Th>Aliases</Th></tr>
+            <tr><Th>Make</Th><Th>Model</Th><Th>Generation</Th><Th>Years</Th><Th>Listings</Th><Th>Aliases</Th><Th>Edit</Th></tr>
           </thead>
           <tbody className="divide-y divide-slate-700/60">
             {filtered.map((b) => (
-              <tr key={b.id} className="hover:bg-slate-700/40">
+              <React.Fragment key={b.id}>
+              <tr className="hover:bg-slate-700/40">
                 <Td>{b.make}</Td><Td>{b.model}</Td><Td>{b.generation || '—'}</Td>
                 <Td>{b.year_min || b.year_max ? `${b.year_min ?? '…'}–${b.year_max ?? '…'}` : '—'}</Td>
                 <Td className={Number(b.listing_count) < 10 ? 'text-amber-400' : ''}>{b.listing_count}</Td>
-                <Td>{b.alias_count}</Td>
+                <Td>
+                  <button onClick={() => toggleAliases(b)} title="Show this bucket's aliases"
+                    className={`underline decoration-dotted underline-offset-2 ${aliasesFor === b.id ? 'text-blue-300' : 'text-slate-300 hover:text-blue-300'}`}>
+                    {b.alias_count}
+                  </button>
+                </Td>
+                <Td>
+                  <button onClick={() => (editingId === b.id ? setEditingId(null) : openEdit(b))}
+                    className="text-slate-400 hover:text-blue-300" title="Edit make / model / generation / years">
+                    <Pencil size={14} />
+                  </button>
+                </Td>
               </tr>
+              {editingId === b.id && (
+                <tr className="bg-slate-800/80">
+                  <Td className="!p-0" colSpan={7}>
+                    <div className="px-4 py-3 border-y border-blue-700/40 bg-slate-900/40 flex flex-wrap items-center gap-2">
+                      <input className={`${inputCls} w-36 py-1`} placeholder="Make *" value={edit.make}
+                        onChange={(e) => setEdit({ ...edit, make: e.target.value })} />
+                      <input className={`${inputCls} w-44 py-1`} placeholder="Model *" value={edit.model}
+                        onChange={(e) => setEdit({ ...edit, model: e.target.value })} />
+                      <input className={`${inputCls} w-28 py-1`} placeholder="Generation" value={edit.generation}
+                        onChange={(e) => setEdit({ ...edit, generation: e.target.value })} />
+                      <input className={`${inputCls} w-24 py-1`} placeholder="Yr min" inputMode="numeric" value={edit.year_min}
+                        onChange={(e) => setEdit({ ...edit, year_min: e.target.value.replace(/\D/g, '') })} />
+                      <span className="text-slate-600">–</span>
+                      <input className={`${inputCls} w-24 py-1`} placeholder="Yr max" inputMode="numeric" value={edit.year_max}
+                        onChange={(e) => setEdit({ ...edit, year_max: e.target.value.replace(/\D/g, '') })} />
+                      <button onClick={saveEdit} disabled={savingEdit || !edit.make || !edit.model}
+                        className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-3 py-1.5 rounded disabled:opacity-50">
+                        <CheckCircle size={14} /> {savingEdit ? 'Saving…' : 'Save'}
+                      </button>
+                      <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-slate-200 text-sm px-2 py-1.5">Cancel</button>
+                      <span className="text-slate-500 text-xs w-full">Clearing generation or a year clears it in the store. Renames apply to the bucket everywhere — its listings and aliases stay attached.</span>
+                    </div>
+                  </Td>
+                </tr>
+              )}
+              {aliasesFor === b.id && (
+                <tr className="bg-slate-800/80">
+                  <Td className="!p-0" colSpan={7}>
+                    <div className="px-4 py-2 border-y border-slate-600/60 bg-slate-900/40">
+                      <p className="text-slate-400 text-xs pt-1">
+                        Raw make/model strings mapping into “{b.make} {b.model}{b.generation ? ` (${b.generation})` : ''}”.
+                        Repoint one to send its listings (and all future matches) to a different bucket, or delete it
+                        to make the string reviewable again.
+                      </p>
+                      <div className="divide-y divide-slate-700/40">
+                        {aliases.map((a) => (
+                          <AliasRow key={a.alias} a={a} buckets={rows} onDone={aliasDone} onError={setError} />
+                        ))}
+                        {aliases.length === 0 && <p className="text-slate-500 text-xs py-2">No aliases registered for this bucket.</p>}
+                      </div>
+                    </div>
+                  </Td>
+                </tr>
+              )}
+              </React.Fragment>
             ))}
             {filtered.length === 0 && (
-              <tr><Td className="text-slate-500 py-6 text-center" colSpan={6}>No buckets yet — create them here or from the review queue.</Td></tr>
+              <tr><Td className="text-slate-500 py-6 text-center" colSpan={7}>No buckets yet — create them here or from the review queue.</Td></tr>
             )}
           </tbody>
         </table>
