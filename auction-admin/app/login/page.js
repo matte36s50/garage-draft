@@ -17,7 +17,10 @@ export default function Login() {
         body: JSON.stringify({ password }),
       })
       if (res.ok) {
-        router.push('/')
+        // Return to the page that sent us here (e.g. /store after a session
+        // expiry); only same-site paths are honored.
+        const next = new URLSearchParams(window.location.search).get('next')
+        router.push(next && next.startsWith('/') && !next.startsWith('//') ? next : '/')
         router.refresh()
       } else {
         const data = await res.json().catch(() => ({}))

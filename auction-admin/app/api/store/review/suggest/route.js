@@ -66,6 +66,11 @@ const SUGGESTION_SCHEMA = {
 const groupKey = (r) =>
   [r.make, r.model, r.trim].map((s) => (s || '').trim().toLowerCase()).join('|');
 
+// One Claude call per batch of raw strings, a few batches in flight at a time:
+// a single call over the whole queue was hitting Vercel's 300s maxDuration.
+const BATCH_SIZE = 35;
+const BATCH_CONCURRENCY = 3;
+
 export async function POST(request) {
   const denied = verifyAdminRequest(request);
   if (denied) return denied;
@@ -126,7 +131,105 @@ async function suggest() {
   const bucketLines = buckets.rows.map((b) =>
     `${b.id} | ${b.make} ${b.model}${b.generation ? ` (${b.generation})` : ''}${b.year_min || b.year_max ? ` ${b.year_min ?? '?'}-${b.year_max ?? '?'}` : ''}`
   );
-  const groupLines = groupList.map((g, i) =>
+
+  const batches = [];
+  for (let i = 0; i < groupList.length; i += BATCH_SIZE) {
+    batches.push(groupList.slice(i, i + BATCH_SIZE));
+  }
+
+  const client = new Anthropic();
+  const results = new Array(batches.length);
+  let nextBatch = 0;
+  const worker = async () => {
+    while (nextBatch < batches.length) {
+      const idx = nextBatch++;
+      try {
+        results[idx] = await suggestBatch(client, bucketLines, batches[idx]);
+      } catch (error) {
+        results[idx] = { error };
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(BATCH_CONCURRENCY, batches.length) }, worker)
+  );
+
+  const failures = results.filter((r) => r.error);
+  if (failures.length === results.length) {
+    // Nothing succeeded — surface the first failure the way single-call mode did.
+    const error = failures[0].error;
+    if (error instanceof Anthropic.AuthenticationError) {
+      return NextResponse.json({ error: 'ANTHROPIC_API_KEY is invalid' }, { status: 503 });
+    }
+    if (error instanceof Anthropic.RateLimitError) {
+      return NextResponse.json({ error: 'Claude API rate limited — try again shortly' }, { status: 429 });
+    }
+    if (error instanceof Anthropic.APIError) {
+      return NextResponse.json({ error: `Claude API error: ${error.message}` }, { status: 502 });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Merge the batches. Bucket keys are stable slugs, so two batches proposing
+  // the same vehicle collapse into one bucket (first definition wins); apply()
+  // already creates each key exactly once.
+  const bucketIds = new Set(buckets.rows.map((b) => b.id));
+  const bucketsToCreate = new Map();
+  for (const r of results) {
+    for (const b of r.buckets_to_create || []) {
+      if (!bucketsToCreate.has(b.key)) bucketsToCreate.set(b.key, b);
+    }
+  }
+
+  const suggestions = [];
+  const usage = { input_tokens: 0, output_tokens: 0 };
+  const warnings = [];
+  results.forEach((r, idx) => {
+    if (r.error) return;
+    if (r.warning) warnings.push(r.warning);
+    if (r.usage) {
+      usage.input_tokens += r.usage.input_tokens;
+      usage.output_tokens += r.usage.output_tokens;
+    }
+    const batch = batches[idx];
+    for (const a of r.assignments || []) {
+      const g = batch[a.group_index];
+      if (!g) continue;
+      const valid =
+        (a.action === 'existing' && bucketIds.has(a.bucket_id)) ||
+        (a.action === 'new' && bucketsToCreate.has(a.new_bucket_key)) ||
+        a.action === 'skip';
+      suggestions.push({
+        ...g,
+        action: valid ? a.action : 'skip',
+        bucket_id: a.action === 'existing' ? a.bucket_id : null,
+        new_bucket_key: a.action === 'new' ? a.new_bucket_key : null,
+        confidence: ['high', 'medium', 'low'].includes(a.confidence) ? a.confidence : 'low',
+        note: valid ? a.note : 'AI referenced an unknown bucket — left for manual review',
+      });
+    }
+  });
+  if (failures.length > 0) {
+    warnings.push(
+      `${failures.length} of ${results.length} batches failed (${failures[0].error.message}) — the strings they covered stay in the queue; run AI suggest again for them`
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    groups: suggestions,
+    buckets_to_create: [...bucketsToCreate.values()],
+    usage,
+    ...(warnings.length > 0 ? { warning: warnings.join(' · ') } : {}),
+  });
+}
+
+// One Claude call over one batch of raw strings. group_index in the result is
+// relative to the batch. Returns { assignments, buckets_to_create, usage,
+// warning? }; abnormal stop reasons drop the batch with a warning instead of
+// failing the whole run.
+async function suggestBatch(client, bucketLines, batchGroups) {
+  const groupLines = batchGroups.map((g, i) =>
     `${i}. make="${g.make}" model="${g.model}"${g.trim ? ` trim="${g.trim}"` : ''} — ${g.listing_count} listing(s), years seen: ${g.years.join(', ') || 'unknown'}, sample titles: ${g.sample_titles.join(' · ') || 'none'}`
   );
 
@@ -152,67 +255,33 @@ ${groupLines.join('\n')}
 
 Return one assignment per numbered raw string.`;
 
-  try {
-    const client = new Anthropic();
-    const stream = client.messages.stream({
-      model: 'claude-opus-4-8',
-      max_tokens: 32000,
-      thinking: { type: 'adaptive' },
-      output_config: { format: { type: 'json_schema', schema: SUGGESTION_SCHEMA } },
-      messages: [{ role: 'user', content: prompt }],
-    });
-    const response = await stream.finalMessage();
+  const stream = client.messages.stream({
+    model: 'claude-opus-4-8',
+    max_tokens: 16000,
+    thinking: { type: 'adaptive' },
+    output_config: { format: { type: 'json_schema', schema: SUGGESTION_SCHEMA } },
+    messages: [{ role: 'user', content: prompt }],
+  });
+  const response = await stream.finalMessage();
+  const usage = { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens };
 
-    if (response.stop_reason === 'refusal') {
-      return NextResponse.json({ error: 'Suggestion was declined for this content' }, { status: 422 });
-    }
-    if (response.stop_reason === 'max_tokens') {
-      return NextResponse.json({ error: 'Queue too large to suggest in one pass — resolve some items and retry' }, { status: 422 });
-    }
-
-    const text = response.content.find((b) => b.type === 'text')?.text;
-    if (!text) return NextResponse.json({ error: 'No suggestion output returned' }, { status: 502 });
-    const data = JSON.parse(text);
-
-    // Validate references so the UI never stages a dangling suggestion.
-    const bucketIds = new Set(buckets.rows.map((b) => b.id));
-    const newKeys = new Set((data.buckets_to_create || []).map((b) => b.key));
-    const suggestions = [];
-    for (const a of data.assignments || []) {
-      const g = groupList[a.group_index];
-      if (!g) continue;
-      const valid =
-        (a.action === 'existing' && bucketIds.has(a.bucket_id)) ||
-        (a.action === 'new' && newKeys.has(a.new_bucket_key)) ||
-        a.action === 'skip';
-      suggestions.push({
-        ...g,
-        action: valid ? a.action : 'skip',
-        bucket_id: a.action === 'existing' ? a.bucket_id : null,
-        new_bucket_key: a.action === 'new' ? a.new_bucket_key : null,
-        confidence: ['high', 'medium', 'low'].includes(a.confidence) ? a.confidence : 'low',
-        note: valid ? a.note : 'AI referenced an unknown bucket — left for manual review',
-      });
-    }
-
-    return NextResponse.json({
-      success: true,
-      groups: suggestions,
-      buckets_to_create: data.buckets_to_create || [],
-      usage: { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens },
-    });
-  } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError) {
-      return NextResponse.json({ error: 'ANTHROPIC_API_KEY is invalid' }, { status: 503 });
-    }
-    if (error instanceof Anthropic.RateLimitError) {
-      return NextResponse.json({ error: 'Claude API rate limited — try again shortly' }, { status: 429 });
-    }
-    if (error instanceof Anthropic.APIError) {
-      return NextResponse.json({ error: `Claude API error: ${error.message}` }, { status: 502 });
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (response.stop_reason === 'refusal') {
+    return { assignments: [], buckets_to_create: [], usage, warning: 'One batch was declined and skipped' };
   }
+  if (response.stop_reason === 'max_tokens') {
+    return { assignments: [], buckets_to_create: [], usage, warning: 'One batch ran out of output room and was skipped' };
+  }
+
+  const text = response.content.find((b) => b.type === 'text')?.text;
+  if (!text) {
+    return { assignments: [], buckets_to_create: [], usage, warning: 'One batch returned no output and was skipped' };
+  }
+  const data = JSON.parse(text);
+  return {
+    assignments: data.assignments || [],
+    buckets_to_create: data.buckets_to_create || [],
+    usage,
+  };
 }
 
 // -------------------------------------------------------------------- apply

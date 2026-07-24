@@ -33,7 +33,7 @@ export async function POST(request) {
   const res = NextResponse.json({ success: true });
   const cookieOpts = {
     path: '/',
-    maxAge: 86400,
+    maxAge: 604800, // 7 days — long-lived tabs were hitting 401s mid-session at 24h
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
   };
