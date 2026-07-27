@@ -12,7 +12,12 @@ import { canonicalGet, canonicalRpc } from '../../../../../lib/canonicalStore';
  *                      strings, send them + the existing buckets to Claude, and
  *                      return proposed assignments (existing bucket, new bucket
  *                      with real-world production years, or skip). Nothing is
- *                      written.
+ *                      written. Bounded work per run (MAX_GROUPS_PER_RUN, plus
+ *                      a RUN_BUDGET_MS deadline): a request that outlives the
+ *                      platform's execution limit is killed with nothing to
+ *                      show for it, so a run returns a slice and reports how
+ *                      many strings are left in `remaining`. Busiest strings
+ *                      go first. Press the button again for the next slice.
  *   { apply: true,   — apply: create the (possibly user-edited) new buckets
  *     buckets, ...}    once each, then register each approved assignment via
  *                      auction_add_model_alias — the same RPCs the manual
@@ -68,8 +73,23 @@ const groupKey = (r) =>
 
 // One Claude call per batch of raw strings, a few batches in flight at a time:
 // a single call over the whole queue was hitting Vercel's 300s maxDuration.
-const BATCH_SIZE = 35;
+const BATCH_SIZE = 25;
 const BATCH_CONCURRENCY = 3;
+
+// A run is bounded twice over, because a request that overruns the platform's
+// execution limit is killed mid-flight — the browser gets a dead connection
+// ("Load failed") and every batch that had already finished is thrown away.
+//
+//   MAX_GROUPS_PER_RUN — how many distinct raw strings one run will classify.
+//     One wave of BATCH_CONCURRENCY batches, so wall time is about one Claude
+//     call, whatever the queue's size. What's left is reported back as
+//     `remaining`; press the button again for the next slice.
+//   RUN_BUDGET_MS — a deadline. Once it passes, workers stop picking up new
+//     batches and the run returns what it has. Default sits under the 60s cap
+//     that applies on Vercel's Hobby plan; raise it via env on a plan whose
+//     functions can run for the declared maxDuration.
+const MAX_GROUPS_PER_RUN = Number(process.env.SUGGEST_MAX_GROUPS || 75);
+const RUN_BUDGET_MS = Number(process.env.SUGGEST_BUDGET_MS || 45_000);
 
 export async function POST(request) {
   const denied = verifyAdminRequest(request);
@@ -120,13 +140,19 @@ async function suggest() {
     if (r.raw_title && g.sample_titles.length < 3) g.sample_titles.push(r.raw_title);
   }
 
-  const groupList = [...groups.values()].map((g) => ({
+  const allGroups = [...groups.values()].map((g) => ({
     ...g,
     years: [...g.years].sort(),
   }));
-  if (groupList.length === 0) {
+  if (allGroups.length === 0) {
     return NextResponse.json({ success: true, groups: [], buckets_to_create: [], message: 'Nothing in the queue with a raw make/model to suggest on' });
   }
+
+  // Busiest strings first: if a run only gets through part of the queue, it
+  // should be the part that clears the most listings.
+  allGroups.sort((a, b) => b.listing_count - a.listing_count);
+  const groupList = allGroups.slice(0, MAX_GROUPS_PER_RUN);
+  let deferred = allGroups.length - groupList.length;
 
   const bucketLines = buckets.rows.map((b) =>
     `${b.id} | ${b.make} ${b.model}${b.generation ? ` (${b.generation})` : ''}${b.year_min || b.year_max ? ` ${b.year_min ?? '?'}-${b.year_max ?? '?'}` : ''}`
@@ -137,11 +163,15 @@ async function suggest() {
     batches.push(groupList.slice(i, i + BATCH_SIZE));
   }
 
-  const client = new Anthropic();
+  // maxRetries 1: the SDK's default of 2 can turn one slow batch into three
+  // sequential ones, which is exactly how a run overruns its budget.
+  const client = new Anthropic({ maxRetries: 1 });
   const results = new Array(batches.length);
+  const deadline = Date.now() + RUN_BUDGET_MS;
   let nextBatch = 0;
   const worker = async () => {
     while (nextBatch < batches.length) {
+      if (Date.now() >= deadline) return;   // hand the rest to the next run
       const idx = nextBatch++;
       try {
         results[idx] = await suggestBatch(client, bucketLines, batches[idx]);
@@ -154,8 +184,22 @@ async function suggest() {
     Array.from({ length: Math.min(BATCH_CONCURRENCY, batches.length) }, worker)
   );
 
-  const failures = results.filter((r) => r.error);
-  if (failures.length === results.length) {
+  // Batches the deadline cut off aren't failures — nothing was asked of Claude
+  // and their strings are simply still in the queue.
+  const dispatched = [];
+  batches.forEach((batch, idx) => {
+    if (results[idx]) dispatched.push(idx);
+    else deferred += batch.length;
+  });
+  if (dispatched.length === 0) {
+    return NextResponse.json(
+      { error: 'Ran out of time before the first batch came back — lower SUGGEST_MAX_GROUPS or raise SUGGEST_BUDGET_MS' },
+      { status: 504 }
+    );
+  }
+
+  const failures = dispatched.map((i) => results[i]).filter((r) => r.error);
+  if (failures.length === dispatched.length) {
     // Nothing succeeded — surface the first failure the way single-call mode did.
     const error = failures[0].error;
     if (error instanceof Anthropic.AuthenticationError) {
@@ -175,8 +219,8 @@ async function suggest() {
   // already creates each key exactly once.
   const bucketIds = new Set(buckets.rows.map((b) => b.id));
   const bucketsToCreate = new Map();
-  for (const r of results) {
-    for (const b of r.buckets_to_create || []) {
+  for (const i of dispatched) {
+    for (const b of results[i].buckets_to_create || []) {
       if (!bucketsToCreate.has(b.key)) bucketsToCreate.set(b.key, b);
     }
   }
@@ -184,7 +228,8 @@ async function suggest() {
   const suggestions = [];
   const usage = { input_tokens: 0, output_tokens: 0 };
   const warnings = [];
-  results.forEach((r, idx) => {
+  dispatched.forEach((idx) => {
+    const r = results[idx];
     if (r.error) return;
     if (r.warning) warnings.push(r.warning);
     if (r.usage) {
@@ -211,7 +256,12 @@ async function suggest() {
   });
   if (failures.length > 0) {
     warnings.push(
-      `${failures.length} of ${results.length} batches failed (${failures[0].error.message}) — the strings they covered stay in the queue; run AI suggest again for them`
+      `${failures.length} of ${dispatched.length} batches failed (${failures[0].error.message}) — the strings they covered stay in the queue; run AI suggest again for them`
+    );
+  }
+  if (deferred > 0) {
+    warnings.push(
+      `${deferred} more raw string(s) are still queued — apply these, then run AI suggest again for the next batch`
     );
   }
 
@@ -220,6 +270,7 @@ async function suggest() {
     groups: suggestions,
     buckets_to_create: [...bucketsToCreate.values()],
     usage,
+    remaining: deferred,
     ...(warnings.length > 0 ? { warning: warnings.join(' · ') } : {}),
   });
 }
@@ -255,13 +306,18 @@ ${groupLines.join('\n')}
 
 Return one assignment per numbered raw string.`;
 
+  // Cap the call itself, not just the run: the run deadline stops workers from
+  // starting new batches but cannot claw back one that hangs, and an
+  // overrunning request is killed by the platform with nothing returned. A
+  // batch that times out throws, is caught per-batch, and its strings stay in
+  // the queue for the next run.
   const stream = client.messages.stream({
     model: 'claude-opus-4-8',
     max_tokens: 16000,
     thinking: { type: 'adaptive' },
     output_config: { format: { type: 'json_schema', schema: SUGGESTION_SCHEMA } },
     messages: [{ role: 'user', content: prompt }],
-  });
+  }, { timeout: RUN_BUDGET_MS });
   const response = await stream.finalMessage();
   const usage = { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens };
 
