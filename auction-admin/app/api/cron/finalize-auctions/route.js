@@ -11,8 +11,16 @@ import { toCanonicalItem, canonicalUpsertListings } from '@/lib/canonicalStore';
  * you already use for update-performance:
  *   URL:      https://bid-prix-admin.vercel.app/api/cron/finalize-auctions
  *   Method:   GET
- *   Schedule: Every 30 minutes  (0,30 * * * *)
+ *   Schedule: Hourly  (0 * * * *)
  *   Header:   Authorization: Bearer <CRON_SECRET>   (if CRON_SECRET env var is set)
+ *
+ * Hourly, not every 30 minutes. A BaT result does not change once the auction
+ * closes, so the only thing a tighter cadence buys is finding out sooner — and
+ * every run is a full scrape-and-parse pass over up to FINALIZE_BATCH_SIZE
+ * listings. At half-hourly this route was the whole of the project's Vercel
+ * Fluid Active CPU (3h of a 4h monthly allowance). Changing the constant here
+ * does nothing on its own: the schedule lives in the external cron service and
+ * has to be edited there.
  *
  * Manual trigger from admin UI: POST /api/cron/finalize-auctions (no auth needed)
  *
@@ -49,6 +57,20 @@ const USER_AGENTS = [
 // membership promo) rather than a real result, so we reject it. This is the
 // JS equivalent of the `amount < 100` guard the python scraper already had.
 const MIN_PLAUSIBLE_PRICE = 100;
+
+// How many consecutive failed passes a listing gets before the finalizer stops
+// picking it up. Twelve hourly runs is half a day of retries — comfortably more
+// than a transient Cloudflare block or a slow BaT finalization needs, and far
+// short of forever. A human setting a price resets the counter (see the
+// reset_finalize_attempts trigger in the migration).
+const MAX_FINALIZE_ATTEMPTS = Number(process.env.MAX_FINALIZE_ATTEMPTS || 12);
+
+// Auctions older than this are not worth re-scraping: BaT results do not change
+// months later, so a row still unresolved by now never will be through this path.
+const FINALIZE_MAX_AGE_DAYS = Number(process.env.FINALIZE_MAX_AGE_DAYS || 120);
+
+// Rows scraped per run. Wall time and CPU both scale linearly with this.
+const FINALIZE_BATCH_SIZE = Number(process.env.FINALIZE_BATCH_SIZE || 200);
 
 /**
  * Extract final price from BaT HTML via regex.
@@ -164,11 +186,16 @@ function extractPriceFromHtml(html) {
     }
   }
 
-  // Pass 3: raw HTML text patterns
-  const rawResult = matchText(html);
-  if (rawResult) return rawResult;
+  // NOTE: there is deliberately no pass over raw, un-stripped HTML. BaT always
+  // wraps the result amount in a tag ("Bid to <strong>EUR €7,000</strong>"), so
+  // a result banner can never match these patterns against raw markup — that is
+  // the entire reason the stripped pass below exists. The only thing a raw pass
+  // could match is uninterrupted prose in the description or comments ("one of
+  // these sold for $800,000"), which is precisely the false positive the
+  // banner-first ordering was introduced to prevent. It scanned the whole
+  // document with every pattern to find nothing, or worse, the wrong thing.
 
-  // Pass 4: strip all HTML tags, retry (handles price split across elements).
+  // Pass 3: strip all HTML tags, retry (handles price split across elements).
   // This MUST run before the bare <strong> fallback: BaT wraps the result
   // amount in a tag ("Bid to <strong>EUR €7,000</strong>"), so only the
   // stripped text reveals whether the amount is a sale price or a
@@ -177,7 +204,7 @@ function extractPriceFromHtml(html) {
   const strippedResult = matchText(stripped);
   if (strippedResult) { console.log('   (matched after stripping HTML tags)'); return strippedResult; }
 
-  // Pass 5: bare <strong>-wrapped amount. Ambiguous on its own — the same
+  // Pass 4: bare <strong>-wrapped amount. Ambiguous on its own — the same
   // markup carries both sale prices and reserve-not-met high bids — so check
   // the text immediately before the tag and only report 'sold' when nothing
   // marks the amount as a bid.
@@ -207,7 +234,7 @@ function extractPriceFromHtml(html) {
     }
   }
 
-  // Pass 6: reserve not met with no extractable price
+  // Pass 5: reserve not met with no extractable price
   if (/reserve\s+not\s+met/i.test(stripped)) {
     console.log('   ⚠️ Detected: Reserve Not Met (no price found)');
     return { price: null, status: 'no_sale', currency: null };
@@ -422,16 +449,25 @@ async function scrapeAuctionPrice(url) {
       return { price, status, currency, makeModel, engagement, error: null };
     }
 
-    // Nothing found — log debug info and retry next run
-    const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ');
-    const soldContext = stripped.match(/.{0,80}sold.{0,80}/i)?.[0]?.replace(/\s+/g, ' ');
-    const amountMatches = stripped.match(/[\$€£][\d,\.]+/g)?.slice(0, 5);
+    // Nothing found — retry next run (up to MAX_FINALIZE_ATTEMPTS).
+    //
+    // The deep diagnostics below strip the entire document a second time and
+    // then run two more scans over the result. That is the most expensive thing
+    // this route does, and it ran only on pages that failed to parse — i.e.
+    // exactly the rows that came back every single run. Diagnosing a scraper
+    // regression is worth that cost; paying it 48 times a day forever is not.
+    // Set FINALIZER_DEBUG=1 in the Vercel project when a page needs explaining.
     const pageTitle = html.match(/<title[^>]*>([^<]{1,120})<\/title>/i)?.[1];
     console.log(`   ⚠️ No price found — will retry next run`);
     console.log(`      Page title: ${pageTitle || 'none'}`);
-    console.log(`      Sold context: ${soldContext || 'none'}`);
-    console.log(`      Sample amounts: ${amountMatches?.join(', ') || 'none'}`);
     console.log(`      HTML length: ${html.length} chars`);
+    if (process.env.FINALIZER_DEBUG === '1') {
+      const stripped = html.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ');
+      const soldContext = stripped.match(/.{0,80}sold.{0,80}/i)?.[0]?.replace(/\s+/g, ' ');
+      const amountMatches = stripped.match(/[\$€£][\d,\.]+/g)?.slice(0, 5);
+      console.log(`      Sold context: ${soldContext || 'none'}`);
+      console.log(`      Sample amounts: ${amountMatches?.join(', ') || 'none'}`);
+    }
 
     return { price: null, status: null, currency: null, makeModel, engagement, error: 'No price found' };
 
@@ -487,17 +523,50 @@ async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
     const now = Math.floor(Date.now() / 1000);
     const cutoff = now - (minAgeMinutes * 60);
 
-    // Auctions ended > minAgeMinutes ago, no final price, not already flagged RNM
-    const { data: unfinalized, error: fetchError } = await supabase
-      .from('auctions')
-      .select('auction_id, title, url, current_bid, timestamp_end, make, model, year')
-      .lt('timestamp_end', cutoff)
-      .is('final_price', null)
-      .not('reserve_not_met', 'is', true)
-      .not('url', 'is', null)
-      .ilike('url', '%bringatrailer.com%')
-      .order('timestamp_end', { ascending: false })
-      .limit(200);
+    // Auctions ended > minAgeMinutes ago, no final price, not already flagged RNM.
+    //
+    // Bounded two ways, because nothing else ever removes a row from this set.
+    // A listing that cannot be parsed — withdrawn lot, Cloudflare block, markup
+    // change — keeps final_price NULL and so came back on every run in
+    // perpetuity. Enough of them accumulated to fill the 200-row limit, which
+    // meant every run re-fetched and re-scanned the same dead backlog and newly
+    // ended auctions queued behind it.
+    //
+    //   * finalize_attempts < MAX_FINALIZE_ATTEMPTS retires a row that has had
+    //     its chances. Nothing is deleted; see the query at the foot of
+    //     supabase_migration_finalize_attempts.sql to review what was retired.
+    //   * ordering by attempts ascending puts freshly ended auctions — the ones
+    //     that will actually resolve — ahead of the stuck ones every time.
+    const oldestFinalizable = now - (FINALIZE_MAX_AGE_DAYS * 24 * 60 * 60);
+    const unfinalizedQuery = (bounded) => {
+      let q = supabase
+        .from('auctions')
+        .select(`auction_id, title, url, current_bid, timestamp_end, make, model, year${bounded ? ', finalize_attempts' : ''}`)
+        .lt('timestamp_end', cutoff)
+        .is('final_price', null)
+        .not('reserve_not_met', 'is', true)
+        .not('url', 'is', null)
+        .ilike('url', '%bringatrailer.com%');
+      if (bounded) {
+        q = q
+          .gte('timestamp_end', oldestFinalizable)
+          .lt('finalize_attempts', MAX_FINALIZE_ATTEMPTS)
+          .order('finalize_attempts', { ascending: true });
+      }
+      return q.order('timestamp_end', { ascending: false }).limit(FINALIZE_BATCH_SIZE);
+    };
+
+    // The attempt columns arrive with supabase_migration_finalize_attempts.sql.
+    // Until that has been run the bounded query fails on the unknown column, so
+    // fall back to the old unbounded shape rather than failing the whole run —
+    // the same defensive posture the engagement-stats write already takes.
+    let { data: unfinalized, error: fetchError } = await unfinalizedQuery(true);
+    let attemptTrackingActive = !fetchError;
+
+    if (fetchError) {
+      console.log(`⚠️ Attempt tracking unavailable (${fetchError.message}) — run supabase_migration_finalize_attempts.sql`);
+      ({ data: unfinalized, error: fetchError } = await unfinalizedQuery(false));
+    }
 
     if (fetchError) {
       console.error('Error fetching auctions:', fetchError);
@@ -550,15 +619,26 @@ async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
       console.log(`🔧 Force re-finalize: ${forced.length}/${forceUrls.length} URL(s) matched`);
     }
 
+    // Only the unfinalized queue is attempt-counted. The other three sources are
+    // already bounded — recheck and suspiciousWithdrawn by a 30-day window and
+    // limits of 10 and 20, forced by an explicit human request — so counting
+    // their failures would spend a budget that exists to drain the one unbounded
+    // queue, and could retire a row a human had just asked to re-finalize.
     const seen = new Set();
     const auctions = [];
-    for (const a of [...forced, ...(unfinalized || []), ...(recheck || []), ...(suspiciousWithdrawn || [])]) {
+    const tracked = [
+      ...forced.map((a) => [a, false]),
+      ...(unfinalized || []).map((a) => [a, attemptTrackingActive]),
+      ...(recheck || []).map((a) => [a, false]),
+      ...(suspiciousWithdrawn || []).map((a) => [a, false]),
+    ];
+    for (const [a, countAttempts] of tracked) {
       // Key by url when auction_id is null so distinct legacy rows aren't
       // collapsed into one by a shared null key.
       const key = a.auction_id ?? a.url;
       if (!seen.has(key)) {
         seen.add(key);
-        auctions.push(a);
+        auctions.push({ ...a, _countAttempts: countAttempts });
       }
     }
 
@@ -571,6 +651,8 @@ async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
 
     const results = { successful: [], noSale: [], pending: [], skipped: [] };
     const canonicalItems = []; // Phase 2 dual-write; no-op unless configured
+    const pendingIds = [];     // rows that failed this pass, flushed in one RPC below
+    const pendingUrls = [];    // legacy rows with no auction_id, targeted by url
 
     for (let i = 0; i < auctions.length; i++) {
       const auction = auctions[i];
@@ -659,9 +741,38 @@ async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
         await eqAuction(supabase.from('auctions').update(makeModelUpdate), auction);
       }
 
-      // Leave final_price NULL, retry next run
-      console.log(`   🔄 Pending: ${error || 'no price found yet'}`);
-      results.pending.push({ id: auction.auction_id, title: auction.title, error: error || 'no price found' });
+      // Leave final_price NULL, retry next run — but count the attempt, so a
+      // listing that can never be parsed eventually stops being picked up.
+      const counted = auction._countAttempts;
+      if (counted) {
+        if (auction.auction_id != null) pendingIds.push(auction.auction_id);
+        else if (auction.url) pendingUrls.push(auction.url);
+      }
+
+      const attemptsSoFar = (auction.finalize_attempts ?? 0) + 1;
+      console.log(`   🔄 Pending: ${error || 'no price found yet'}${counted ? ` (attempt ${attemptsSoFar}/${MAX_FINALIZE_ATTEMPTS})` : ''}`);
+      results.pending.push({
+        id: auction.auction_id,
+        title: auction.title,
+        error: error || 'no price found',
+        ...(counted ? { attempts: attemptsSoFar, retiring: attemptsSoFar >= MAX_FINALIZE_ATTEMPTS } : {}),
+      });
+    }
+
+    // One statement for the whole run rather than an UPDATE per pending row.
+    let retired = 0;
+    if (attemptTrackingActive && (pendingIds.length || pendingUrls.length)) {
+      const { error: bumpError } = await supabase.rpc('bump_finalize_attempts', {
+        p_ids: pendingIds,
+        p_urls: pendingUrls,
+      });
+      if (bumpError) {
+        // Never fail a run over bookkeeping — the prices are already written.
+        console.log(`⚠️ Could not record finalize attempts (${bumpError.message}) — run supabase_migration_finalize_attempts.sql`);
+        attemptTrackingActive = false;
+      } else {
+        retired = results.pending.filter((p) => p.retiring).length;
+      }
     }
 
     const canonical = await canonicalUpsertListings(canonicalItems);
@@ -680,6 +791,9 @@ async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
     console.log(`   ⚠️  Reserve not met:  ${noSaleCount}`);
     console.log(`   🔄 Pending (retry):   ${pendingCount}`);
     console.log(`   ⏭️ Skipped:           ${skipCount}`);
+    if (retired > 0) {
+      console.log(`   🛑 Retired this run:  ${retired} (hit ${MAX_FINALIZE_ATTEMPTS} attempts — see supabase_migration_finalize_attempts.sql for the review query)`);
+    }
     console.log(`   📈 Resolved rate:     ${successRate}%`);
     console.log('='.repeat(50));
 
@@ -687,7 +801,8 @@ async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
       success: true,
       timestamp: new Date().toISOString(),
       processed: total,
-      stats: { sold: successCount, noSale: noSaleCount, pending: pendingCount, skipped: skipCount },
+      stats: { sold: successCount, noSale: noSaleCount, pending: pendingCount, skipped: skipCount, retired },
+      attemptTracking: attemptTrackingActive,
       successRate,
       canonicalMirror: canonical,
       results: {
