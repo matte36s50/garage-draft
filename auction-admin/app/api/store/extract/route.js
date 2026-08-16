@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { verifyAdminRequest } from '../../../../lib/adminAuth';
+import { normalizeCategory, normalizeFeeSchedule } from '../../../../lib/feeSchedule';
 
 /**
  * POST /api/store/extract — Claude-powered lot extraction for the Live Entry
@@ -11,7 +12,9 @@ import { verifyAdminRequest } from '../../../../lib/adminAuth';
  *   mode 'estimate' — pre-auction catalog: lots with estimate ranges
  *   mode 'result'   — post-auction results: lots with prices/outcomes
  *
- * Returns: { event: {name, house, location, buyer_premium_pct}, lots: [...] }
+ * Returns: { event: {name, house, location, buyer_premium_pct, fee_schedule}, lots: [...] }
+ * fee_schedule is the house's buyer-premium table (tiered, per lot category)
+ * in the shape lib/feeSchedule.js defines, when the page states one.
  * Nothing is written to the store here — the UI stages the rows for review
  * and imports them through /api/store/entry.
  *
@@ -31,9 +34,44 @@ const EXTRACTION_SCHEMA = {
         name: { type: ['string', 'null'], description: "Event/sale name, e.g. 'Amelia Island 2026'" },
         house: { type: ['string', 'null'], description: "Auction house, e.g. 'RM Sotheby's', 'Gooding & Company', 'Mecum'" },
         location: { type: ['string', 'null'] },
-        buyer_premium_pct: { type: ['number', 'null'], description: 'Buyer premium percentage if stated, e.g. 12' },
+        buyer_premium_pct: {
+          type: ['number', 'null'],
+          description: 'Buyer premium percentage when the house charges one flat rate, e.g. 12. Null when the fees are tiered — use fee_categories for those.',
+        },
+        fee_categories: {
+          type: ['array', 'null'],
+          description: 'Buyer premium fee table when the page states one, one entry per lot category.',
+          items: {
+            type: 'object',
+            properties: {
+              category: {
+                type: 'string',
+                description: "Lot category the rates apply to: 'cars', 'motorcycles', 'automobilia', or 'default' when the table is not split by category",
+              },
+              mode: {
+                type: 'string',
+                description: "'marginal' when each rate applies only to the slice of the hammer price in its band (\"12% up to $250,000, 10% on any balance over\" — the usual wording); 'bracket' when the whole hammer price takes the rate of the band it falls in",
+              },
+              tiers: {
+                type: 'array',
+                description: 'Rate bands in ascending order. A flat rate is a single band with up_to null.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    up_to: { type: ['number', 'null'], description: 'Top of this band in the catalog currency; null for the open-ended top band' },
+                    pct: { type: 'number', description: 'Premium percentage for this band, e.g. 12' },
+                  },
+                  required: ['up_to', 'pct'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['category', 'mode', 'tiers'],
+            additionalProperties: false,
+          },
+        },
       },
-      required: ['name', 'house', 'location', 'buyer_premium_pct'],
+      required: ['name', 'house', 'location', 'buyer_premium_pct', 'fee_categories'],
       additionalProperties: false,
     },
     lots: {
@@ -182,7 +220,15 @@ Rules:
   "Est. $150,000 - $200,000" -> estimate_low 150000, estimate_high 200000.
 - year/make/model split: "1962 Ferrari 250 GT SWB Berlinetta" -> year 1962, make "Ferrari",
   model "250 GT SWB", trim "Berlinetta" (trim only when clearly separable, else null).
-- Detect the event name, auction house, location, and stated buyer premium % when present.
+- Detect the event name, auction house, location, and the buyer premium when stated.
+  Houses usually publish a fee table rather than one rate — put it in fee_categories,
+  one entry per lot category, and leave buyer_premium_pct null. For example
+  "Cars: 12% on a hammer price up to $250,000, 10% on any balance over $250,000.
+  Motorcycles: 20% on the total hammer price" becomes
+  [{category:'cars', mode:'marginal', tiers:[{up_to:250000,pct:12},{up_to:null,pct:10}]},
+   {category:'motorcycles', mode:'marginal', tiers:[{up_to:null,pct:20}]}].
+  Only use mode 'bracket' when the page says the rate applies to the whole hammer price
+  once it passes a threshold. If no fee table is on the page, fee_categories is null.
 - If a value is not on the page, use null. Never guess amounts.
 - The text may end with an "EMBEDDED PAGE DATA (JSON)" section (the page's data payload).
   Lots that appear only there count the same as lots in the visible text — but never
@@ -224,10 +270,29 @@ ${pageText}`;
       outcome: VALID_OUTCOMES.has(l.outcome) ? l.outcome : null,
     }));
 
+    // Fold the extracted fee table into the canonical schedule shape the entry
+    // route and the panel share. A malformed table is dropped rather than
+    // failing the whole extraction — the admin can still type the tiers in.
+    const event = { ...(data.event || {}) };
+    let feeSchedule = null;
+    try {
+      const categories = {};
+      for (const c of event.fee_categories || []) {
+        categories[normalizeCategory(c.category)] = { mode: c.mode, tiers: c.tiers };
+      }
+      feeSchedule = Object.keys(categories).length
+        ? normalizeFeeSchedule({ categories })
+        : normalizeFeeSchedule(event.buyer_premium_pct);
+    } catch {
+      feeSchedule = null;
+    }
+    delete event.fee_categories;
+    event.fee_schedule = feeSchedule;
+
     return NextResponse.json({
       success: true,
       mode,
-      event: data.event || {},
+      event,
       lots,
       usage: { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens },
     });
