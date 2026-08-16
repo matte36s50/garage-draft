@@ -1076,6 +1076,8 @@ function ReviewQueue() {
         groups: (data.groups || []).map((g) => ({ ...g, _include: g.action !== 'skip' && g.confidence !== 'low' })),
         buckets_to_create: data.buckets_to_create || [],
         warning: data.warning || null,
+        usage: data.usage || null,
+        model: data.model || null,
       });
     } catch (e) { setError(e.message); }
     setAiBusy(false);
@@ -1143,6 +1145,7 @@ function ReviewQueue() {
         <div className="bg-emerald-900/30 border border-emerald-800 text-emerald-300 text-sm rounded-lg p-3 mb-3">
           Applied: {applyResult.buckets_created} bucket(s) created, {applyResult.aliases_registered} alias(es) registered,
           {' '}{applyResult.listings_claimed} listing(s) claimed.
+          {applyResult.rejected_count > 0 && ` ${applyResult.rejected_count} rejected as automobilia/parts: ${applyResult.rejected.join('; ')}`}
           {applyResult.errors?.length > 0 && ` Errors: ${applyResult.errors.join('; ')}`}
         </div>
       )}
@@ -1160,6 +1163,13 @@ function ReviewQueue() {
             <div className="bg-amber-900/30 border border-amber-800 text-amber-300 text-xs rounded p-2 mb-3">
               {ai.warning}
             </div>
+          )}
+          {ai.usage && (
+            <p className="text-slate-600 text-xs mb-3">
+              {ai.model} · {ai.usage.input_tokens.toLocaleString()} in / {ai.usage.output_tokens.toLocaleString()} out
+              {ai.usage.cache_read_input_tokens > 0 && ` · ${ai.usage.cache_read_input_tokens.toLocaleString()} cached (10% price)`}
+              {ai.usage.cache_creation_input_tokens > 0 && ` · ${ai.usage.cache_creation_input_tokens.toLocaleString()} written to cache`}
+            </p>
           )}
 
           {ai.buckets_to_create.length > 0 && (
