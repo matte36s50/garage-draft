@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { verifyAdminRequest } from '../../../../../lib/adminAuth';
 import { canonicalGet, canonicalRpc } from '../../../../../lib/canonicalStore';
+import { automobiliaMatch } from '../../../../../lib/automobilia';
 
 /**
  * POST /api/store/review/suggest — Claude-powered first pass over the review
@@ -76,6 +77,22 @@ const groupKey = (r) =>
 const BATCH_SIZE = 25;
 const BATCH_CONCURRENCY = 3;
 
+// Cost controls. This is bulk classification of short strings against a list
+// we hand the model, not open-ended reasoning, so it does not need the top of
+// the model range — Sonnet at medium effort matches Opus's answers here at a
+// fraction of the price. Both are env-overridable so the tradeoff can be
+// retuned without a deploy (SUGGEST_MODEL=claude-haiku-4-5 is the cheapest
+// setting; Haiku takes neither thinking nor effort, so those are dropped for
+// it automatically).
+const MODEL = process.env.SUGGEST_MODEL || 'claude-sonnet-5';
+const EFFORT = process.env.SUGGEST_EFFORT || 'medium';
+const SUPPORTS_EFFORT = !/^claude-haiku/.test(MODEL);
+
+// Sample titles are the bulkiest per-string input and only need to be long
+// enough to spot a generation; two truncated ones carry that.
+const MAX_SAMPLE_TITLES = 2;
+const MAX_SAMPLE_TITLE_CHARS = 140;
+
 // A run is bounded twice over, because a request that overruns the platform's
 // execution limit is killed mid-flight — the browser gets a dead connection
 // ("Load failed") and every batch that had already finished is thrown away.
@@ -137,7 +154,9 @@ async function suggest() {
     const g = groups.get(key);
     g.listing_count += 1;
     if (r.year) g.years.add(r.year);
-    if (r.raw_title && g.sample_titles.length < 3) g.sample_titles.push(r.raw_title);
+    if (r.raw_title && g.sample_titles.length < MAX_SAMPLE_TITLES) {
+      g.sample_titles.push(r.raw_title.slice(0, MAX_SAMPLE_TITLE_CHARS));
+    }
   }
 
   const allGroups = [...groups.values()].map((g) => ({
@@ -148,15 +167,54 @@ async function suggest() {
     return NextResponse.json({ success: true, groups: [], buckets_to_create: [], message: 'Nothing in the queue with a raw make/model to suggest on' });
   }
 
+  // Automobilia never goes to Claude. Posters, badges, literature, wheels and
+  // loose engines are not bucketable vehicles, so classifying them is pure
+  // spend on an answer we already know — they come back as fixed skips, and
+  // apply() refuses them again on the way in.
+  const skipped = [];
+  const classifiable = [];
+  for (const g of allGroups) {
+    const hit = automobiliaMatch({ make: g.make, model: g.model, trim: g.trim, titles: g.sample_titles });
+    if (hit) {
+      skipped.push({
+        ...g,
+        action: 'skip',
+        bucket_id: null,
+        new_bucket_key: null,
+        confidence: 'high',
+        note: `automobilia/parts ("${hit}") — not a vehicle, never bucketed`,
+      });
+    } else {
+      classifiable.push(g);
+    }
+  }
+
   // Busiest strings first: if a run only gets through part of the queue, it
   // should be the part that clears the most listings.
-  allGroups.sort((a, b) => b.listing_count - a.listing_count);
-  const groupList = allGroups.slice(0, MAX_GROUPS_PER_RUN);
-  let deferred = allGroups.length - groupList.length;
+  classifiable.sort((a, b) => b.listing_count - a.listing_count);
+  const groupList = classifiable.slice(0, MAX_GROUPS_PER_RUN);
+  let deferred = classifiable.length - groupList.length;
 
-  const bucketLines = buckets.rows.map((b) =>
-    `${b.id} | ${b.make} ${b.model}${b.generation ? ` (${b.generation})` : ''}${b.year_min || b.year_max ? ` ${b.year_min ?? '?'}-${b.year_max ?? '?'}` : ''}`
-  );
+  if (groupList.length === 0) {
+    return NextResponse.json({
+      success: true,
+      groups: skipped,
+      buckets_to_create: [],
+      usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      remaining: 0,
+      message: 'Everything left in the queue is automobilia — nothing to classify',
+    });
+  }
+
+  // Sorted by id, not by listing_count: this list is the cached prompt prefix
+  // (see suggestBatch) and prompt caching is a byte-exact prefix match, so an
+  // ordering that shifts as listings get claimed would invalidate the cache on
+  // every run.
+  const bucketLines = buckets.rows
+    .map((b) =>
+      `${b.id} | ${b.make} ${b.model}${b.generation ? ` (${b.generation})` : ''}${b.year_min || b.year_max ? ` ${b.year_min ?? '?'}-${b.year_max ?? '?'}` : ''}`
+    )
+    .sort();
 
   const batches = [];
   for (let i = 0; i < groupList.length; i += BATCH_SIZE) {
@@ -226,15 +284,17 @@ async function suggest() {
   }
 
   const suggestions = [];
-  const usage = { input_tokens: 0, output_tokens: 0 };
+  const usage = {
+    input_tokens: 0, output_tokens: 0,
+    cache_creation_input_tokens: 0, cache_read_input_tokens: 0,
+  };
   const warnings = [];
   dispatched.forEach((idx) => {
     const r = results[idx];
     if (r.error) return;
     if (r.warning) warnings.push(r.warning);
     if (r.usage) {
-      usage.input_tokens += r.usage.input_tokens;
-      usage.output_tokens += r.usage.output_tokens;
+      for (const k of Object.keys(usage)) usage[k] += r.usage[k] || 0;
     }
     const batch = batches[idx];
     for (const a of r.assignments || []) {
@@ -264,12 +324,16 @@ async function suggest() {
       `${deferred} more raw string(s) are still queued — apply these, then run AI suggest again for the next batch`
     );
   }
+  if (skipped.length > 0) {
+    warnings.push(`${skipped.length} automobilia/parts string(s) skipped without an AI call`);
+  }
 
   return NextResponse.json({
     success: true,
-    groups: suggestions,
+    groups: [...suggestions, ...skipped],
     buckets_to_create: [...bucketsToCreate.values()],
     usage,
+    model: MODEL,
     remaining: deferred,
     ...(warnings.length > 0 ? { warning: warnings.join(' · ') } : {}),
   });
@@ -284,12 +348,16 @@ async function suggestBatch(client, bucketLines, batchGroups) {
     `${i}. make="${g.make}" model="${g.model}"${g.trim ? ` trim="${g.trim}"` : ''} — ${g.listing_count} listing(s), years seen: ${g.years.join(', ') || 'unknown'}, sample titles: ${g.sample_titles.join(' · ') || 'none'}`
   );
 
-  const prompt = `You are organizing a canonical auction database for collector cars. Each "bucket" is one canonical vehicle (make + model, optionally a generation and its production year range) that groups auction listings for price-history analysis.
+  // The prompt is split in two so the bucket list — by far the biggest part of
+  // the request, and identical for every batch and every run — can be cached.
+  // Everything before the breakpoint must stay byte-identical, so nothing
+  // batch-specific may move into `sharedPrompt`.
+  const sharedPrompt = `You are organizing a canonical auction database for collector cars. Each "bucket" is one canonical vehicle (make + model, optionally a generation and its production year range) that groups auction listings for price-history analysis.
 
-Below are (A) the existing buckets and (B) raw make/model strings from auction listings that matched no bucket. For each raw string, decide:
+You will be given (A) the existing buckets and (B) raw make/model strings from auction listings that matched no bucket. For each raw string, decide:
 - action "existing": it belongs in one of the existing buckets (set bucket_id to that bucket's id).
 - action "new": propose a bucket for it (add the bucket to buckets_to_create and set new_bucket_key). REUSE the same key across raw strings that describe the same vehicle, so e.g. "Porsche 997 911 Turbo" and "2011 Porsche 911 Turbo S" share one bucket.
-- action "skip": not a bucketable production vehicle (one-off replicas, kit cars with no model identity, wheels/parts, unidentifiable strings).
+- action "skip": not a bucketable production vehicle. This always includes automobilia and memorabilia (posters, signs, badges, hood ornaments, gas pumps and globes, literature and brochures, artwork, scale models, trophies, helmets, race suits, watches) and loose parts (wheels, tires, engines, gearboxes, body panels, parts lots) — never assign these to a bucket or invent a bucket for them, whatever make they carry. Also skip one-off replicas, kit cars with no model identity, and unidentifiable strings.
 
 Rules for new buckets:
 - make/model must be clean: no year prefixes, no duplicated make in the model ("Volkswagen Vanagon" -> make "Volkswagen", model "Vanagon"), no generation ranges in the model name.
@@ -299,9 +367,9 @@ Rules for new buckets:
 - Confidence: "high" when the mapping is unambiguous, "medium" when reasonable but debatable (e.g. generation inferred), "low" when guessing.
 
 (A) EXISTING BUCKETS (id | name):
-${bucketLines.join('\n') || '(none yet)'}
+${bucketLines.join('\n') || '(none yet)'}`;
 
-(B) RAW STRINGS TO CLASSIFY:
+  const batchPrompt = `(B) RAW STRINGS TO CLASSIFY:
 ${groupLines.join('\n')}
 
 Return one assignment per numbered raw string.`;
@@ -312,14 +380,28 @@ Return one assignment per numbered raw string.`;
   // batch that times out throws, is caught per-batch, and its strings stay in
   // the queue for the next run.
   const stream = client.messages.stream({
-    model: 'claude-opus-4-8',
+    model: MODEL,
     max_tokens: 16000,
-    thinking: { type: 'adaptive' },
-    output_config: { format: { type: 'json_schema', schema: SUGGESTION_SCHEMA } },
-    messages: [{ role: 'user', content: prompt }],
+    ...(SUPPORTS_EFFORT ? { thinking: { type: 'adaptive' } } : {}),
+    output_config: {
+      ...(SUPPORTS_EFFORT ? { effort: EFFORT } : {}),
+      format: { type: 'json_schema', schema: SUGGESTION_SCHEMA },
+    },
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: sharedPrompt, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: batchPrompt },
+      ],
+    }],
   }, { timeout: RUN_BUDGET_MS });
   const response = await stream.finalMessage();
-  const usage = { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens };
+  const usage = {
+    input_tokens: response.usage.input_tokens,
+    output_tokens: response.usage.output_tokens,
+    cache_creation_input_tokens: response.usage.cache_creation_input_tokens || 0,
+    cache_read_input_tokens: response.usage.cache_read_input_tokens || 0,
+  };
 
   if (response.stop_reason === 'refusal') {
     return { assignments: [], buckets_to_create: [], usage, warning: 'One batch was declined and skipped' };
@@ -348,10 +430,24 @@ async function apply(body) {
     return NextResponse.json({ error: 'No assignments to apply' }, { status: 400 });
   }
 
-  // Create each proposed bucket exactly once, mapping key -> id.
+  // Second automobilia gate. suggest() already filtered these out, but apply()
+  // takes its assignments from the request body, so a stale or hand-edited
+  // payload could still carry one — drop them here rather than trust the
+  // round trip.
+  const rejected = [];
+  const cleanAssignments = [];
+  for (const a of assignments) {
+    const hit = automobiliaMatch({ make: a.make, model: a.model, trim: a.trim });
+    if (hit) rejected.push(`${a.make || '?'} ${a.model || '?'}: automobilia/parts ("${hit}") — not bucketed`);
+    else cleanAssignments.push(a);
+  }
+  const usedKeys = new Set(cleanAssignments.map((a) => a.new_bucket_key).filter(Boolean));
+
+  // Create each proposed bucket exactly once, mapping key -> id. Buckets whose
+  // only claimants were rejected above are not created at all.
   const keyToId = {};
   for (const b of bucketDefs) {
-    if (!b.key || !b.make || !b.model) continue;
+    if (!b.key || !b.make || !b.model || !usedKeys.has(b.key)) continue;
     const res = await canonicalRpc('auction_create_canonical_model', {
       p_make: b.make,
       p_model: b.model,
@@ -368,7 +464,7 @@ async function apply(body) {
   let aliases = 0;
   let claimed = 0;
   const errors = [];
-  for (const a of assignments) {
+  for (const a of cleanAssignments) {
     const bucketId = a.bucket_id || keyToId[a.new_bucket_key];
     if (!bucketId || !a.make || !a.model) {
       errors.push(`${a.make || '?'} ${a.model || '?'}: no target bucket`);
@@ -392,5 +488,6 @@ async function apply(body) {
     aliases_registered: aliases,
     listings_claimed: claimed,
     errors: errors.slice(0, 10),
+    ...(rejected.length > 0 ? { rejected: rejected.slice(0, 10), rejected_count: rejected.length } : {}),
   });
 }
