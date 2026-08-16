@@ -1,0 +1,1862 @@
+<title>Hammer Index</title>
+<style>
+  :root {
+    color-scheme: dark;
+    /* Ground — the repo's existing "Racing Energy" tokens */
+    --bg:        #0a0a0c;
+    --surface:   #15161b;
+    --surface-2: #1c1d23;
+    --surface-3: #232430;
+    --line:      rgba(255,255,255,0.08);
+    --line-hi:   rgba(255,255,255,0.16);
+
+    /* Ink */
+    --ink:       #f4f4f5;
+    --ink-2:     #b6b6bf;
+    --ink-3:     #8a8a92;
+    --ink-4:     #5b5b64;
+
+    /* Chart chrome */
+    --grid:      #26262e;
+    --axis:      #35353f;
+
+    /* Categorical — validated all-pairs on #15161b (CVD ΔE 10.2, normal 17.2) */
+    --s1: #3d8ede;   /* blue   */
+    --s2: #b8861b;   /* gold   */
+    --s3: #22a37c;   /* teal   */
+
+    /* Diverging — warm = above estimate, cool = below (CVD ΔE 25.4) */
+    --div-warm:   #ef3a32;
+    --div-warm-2: #f5776f;
+    --div-cool:   #3d8ede;
+    --div-cool-2: #7fb6ea;
+    --div-mid:    #3a3a42;
+
+    /* Sequential heat — analogous amber→red, semantic, always with a scale legend */
+    --heat-1: #8f7620;
+    --heat-2: #b8961d;
+    --heat-3: #d9a413;
+    --heat-4: #ef7a2a;
+    --heat-5: #ef3a32;
+
+    /* Status — never reused as a series colour; always with icon + label */
+    --good:     #5cd17a;
+    --warning:  #f5c542;
+    --critical: #ef3a32;
+
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+
+    --r: 10px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 32px 24px 96px; }
+
+  /* ---------- page head ---------- */
+  .masthead { display: flex; flex-direction: column; gap: 10px; padding-bottom: 24px; }
+  .eyebrow {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
+  .standfirst { color: var(--ink-2); max-width: 68ch; margin: 0; }
+
+  .notice {
+    margin-top: 6px; display: flex; gap: 10px; align-items: flex-start;
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 3px solid var(--warning);
+    border-radius: var(--r); padding: 12px 14px; color: var(--ink-2); font-size: 13px;
+  }
+  .notice strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- tabs ---------- */
+  .tabs {
+    display: flex; gap: 4px; margin: 28px 0 0; padding: 4px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    overflow-x: auto;
+  }
+  .tab {
+    appearance: none; border: 0; background: transparent; color: var(--ink-3);
+    font-family: var(--font-ui); font-size: 13px; font-weight: 550;
+    padding: 9px 14px; border-radius: 7px; cursor: pointer; white-space: nowrap;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .tab:hover { color: var(--ink); background: var(--surface-2); }
+  .tab[aria-selected="true"] { background: var(--surface-3); color: var(--ink); }
+  .tab .tnum { font-family: var(--font-mono); font-size: 11px; color: var(--ink-4); }
+  .tab[aria-selected="true"] .tnum { color: var(--s2); }
+  .tab:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+
+  .panel[hidden] { display: none; }
+  .panel { padding-top: 22px; display: flex; flex-direction: column; gap: 18px; }
+
+  .panel-intro { display: flex; flex-direction: column; gap: 4px; }
+  .panel-intro h2 { margin: 0; font-size: 19px; letter-spacing: -0.01em; }
+  .panel-intro p { margin: 0; color: var(--ink-2); max-width: 72ch; font-size: 13px; }
+
+  /* ---------- filter row (one row, scopes everything below) ---------- */
+  .filters {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 10px 12px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: var(--r);
+  }
+  .filters .flabel {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--ink-4); margin-right: 2px;
+  }
+  .seg { display: flex; background: var(--surface-2); border-radius: 7px; padding: 3px; gap: 2px; }
+  .seg button {
+    appearance: none; border: 0; background: transparent; color: var(--ink-3);
+    font-family: var(--font-ui); font-size: 12px; padding: 5px 10px;
+    border-radius: 5px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--surface-3); color: var(--ink); }
+  .seg button:hover { color: var(--ink); }
+  .seg button:focus-visible { outline: 2px solid var(--s1); outline-offset: 1px; }
+  select.ctl {
+    appearance: none; background: var(--surface-2) ; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 7px;
+    font-family: var(--font-ui); font-size: 12px; padding: 6px 28px 6px 10px; cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%), linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+    background-position: calc(100% - 15px) 13px, calc(100% - 10px) 13px;
+    background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+  }
+  select.ctl:focus-visible { outline: 2px solid var(--s1); outline-offset: 1px; }
+  .filters .spacer { margin-left: auto; }
+  .scope-note { font-size: 11px; color: var(--ink-4); font-family: var(--font-mono); }
+
+  /* ---------- KPI strip ---------- */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .kpi {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 14px 15px; display: flex; flex-direction: column; gap: 7px; min-width: 0;
+  }
+  .kpi .klabel { font-size: 12px; color: var(--ink-3); }
+  .kpi .kval { font-size: 25px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
+  .kpi .krow { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+  .kpi .kspark { flex-shrink: 0; }
+  .delta { font-family: var(--font-mono); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+  .delta.up   { color: var(--good); }
+  .delta.down { color: var(--critical); }
+  .delta.flat { color: var(--ink-3); }
+  .delta.info { color: var(--ink-3); }
+  .delta .dsub { color: var(--ink-4); }
+
+  /* hero figure — exactly one per view */
+  .hero {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 20px 22px; display: flex; flex-wrap: wrap; gap: 24px; align-items: center;
+  }
+  .hero .hmain { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
+  .hero .hlabel { font-size: 12px; color: var(--ink-3); }
+  .hero .hval { font-size: 52px; font-weight: 600; line-height: 1; letter-spacing: -0.03em; }
+  .hero .hnote { font-size: 12px; color: var(--ink-4); max-width: 46ch; }
+  .hero .hsep { width: 1px; align-self: stretch; background: var(--line); }
+
+  /* ---------- chart cards ---------- */
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    margin: 0; padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  }
+  .card-head { display: flex; align-items: flex-start; gap: 12px; }
+  .card-head .ct { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .card h3 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.005em; }
+  .card .sub { font-size: 12px; color: var(--ink-3); }
+  .card .tools { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
+  .tbtn {
+    appearance: none; background: var(--surface-2); border: 1px solid var(--line);
+    color: var(--ink-3); font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 5px 9px; border-radius: 6px; cursor: pointer;
+  }
+  .tbtn:hover { color: var(--ink); border-color: var(--line-hi); }
+  .tbtn[aria-pressed="true"] { background: var(--surface-3); color: var(--ink); }
+  .tbtn:focus-visible { outline: 2px solid var(--s1); outline-offset: 1px; }
+
+  .plot { width: 100%; margin-top: 8px; }
+  .plot svg { display: block; width: 100%; overflow: visible; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
+  .lg { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
+  .lg .key { width: 14px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+  .lg .key.dot { width: 9px; height: 9px; border-radius: 50%; }
+
+  .reading {
+    margin: 12px 0 0; padding-top: 11px; border-top: 1px solid var(--line);
+    font-size: 12.5px; color: var(--ink-2); display: flex; gap: 8px; align-items: flex-start;
+  }
+  .reading b { color: var(--ink); font-weight: 600; }
+  .reading .rk {
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-4); flex-shrink: 0; padding-top: 2px;
+  }
+
+  /* ---------- tables ---------- */
+  .tablewrap { overflow-x: auto; margin-top: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: right; padding: 7px 10px; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--ink-4); font-weight: 500; border-bottom: 1px solid var(--line-hi);
+  }
+  tbody td { border-bottom: 1px solid var(--line); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  tbody td:first-child { color: var(--ink); }
+  tbody tr:last-child td { border-bottom: 0; }
+  .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .dim { color: var(--ink-4); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--line-hi); color: var(--ink-2); background: var(--surface-2);
+  }
+  .chip .ic { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .chip.hot    { color: #ffb3ae; border-color: rgba(239,58,50,0.4);  background: rgba(239,58,50,0.12); }
+  .chip.hot .ic    { background: var(--critical); }
+  .chip.pace   { color: #ffe49a; border-color: rgba(245,197,66,0.35); background: rgba(245,197,66,0.10); }
+  .chip.pace .ic   { background: var(--warning); }
+  .chip.cold   { color: #aacdf2; border-color: rgba(61,142,222,0.35); background: rgba(61,142,222,0.10); }
+  .chip.cold .ic   { background: var(--s1); }
+  /* sample-quality scale — status palette, ordered, always with a written label */
+  .chip.ok     { color: #a9e6b9; border-color: rgba(92,209,122,0.35); background: rgba(92,209,122,0.10); }
+  .chip.ok .ic     { background: var(--good); }
+  .chip.floor  { color: #ffb3ae; border-color: rgba(239,58,50,0.40); background: rgba(239,58,50,0.12); }
+  .chip.floor .ic  { background: var(--critical); }
+
+  /* meter — track is a lighter step of the fill's own ramp */
+  .meter { display: inline-flex; align-items: center; gap: 8px; }
+  .meter .track {
+    width: 66px; height: 5px; border-radius: 3px; background: #33343e; overflow: hidden; flex-shrink: 0;
+  }
+  .meter .fill { display: block; height: 100%; border-radius: 3px; }
+
+  /* ---------- scale legend for the heat ramp ---------- */
+  .scalelegend { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 11px; color: var(--ink-3); }
+  .scalelegend .ramp { display: flex; height: 7px; border-radius: 4px; overflow: hidden; width: 130px; }
+  .scalelegend .ramp i { flex: 1; }
+
+  /* ---------- cut list ---------- */
+  .cutlist { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-top: 12px; }
+  .cut {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    border-left: 3px solid var(--surface-3); padding: 13px 15px;
+  }
+  .cut h4 { margin: 0 0 5px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+  .cut p { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+  .cut .verdict {
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-4); display: block; margin-bottom: 6px;
+  }
+
+  hr.rule { border: 0; border-top: 1px solid var(--line); margin: 40px 0 0; }
+  .section-head { margin: 32px 0 0; }
+  .section-head h2 { margin: 0 0 4px; font-size: 19px; letter-spacing: -0.01em; }
+  .section-head p { margin: 0; color: var(--ink-2); max-width: 72ch; font-size: 13px; }
+
+  /* ---------- tooltip ---------- */
+  #tt {
+    position: fixed; z-index: 60; pointer-events: none; opacity: 0;
+    transition: opacity .09s linear;
+    background: var(--surface-3); border: 1px solid var(--line-hi);
+    border-radius: 8px; padding: 9px 11px; min-width: 130px;
+    box-shadow: 0 8px 26px rgba(0,0,0,0.55); font-size: 12px;
+  }
+  #tt.on { opacity: 1; }
+  #tt .tthead { color: var(--ink); font-weight: 600; margin-bottom: 6px; font-size: 12px; }
+  #tt .ttsub { color: var(--ink-4); font-size: 11px; font-weight: 400; margin-top: 1px; }
+  #tt .ttrow { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+  #tt .ttrow .k { width: 11px; height: 2.5px; border-radius: 2px; flex-shrink: 0; }
+  #tt .ttrow .v { font-family: var(--font-mono); color: var(--ink); font-weight: 600; margin-left: auto; font-variant-numeric: tabular-nums; }
+  #tt .ttrow .n { color: var(--ink-3); font-size: 11.5px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+  @media (max-width: 720px) {
+    .wrap { padding: 22px 14px 70px; }
+    h1 { font-size: 24px; }
+    .hero .hval { font-size: 40px; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <span class="eyebrow">Bid Prix · analytics surface</span>
+    <h1>Hammer Index</h1>
+    <p class="standfirst">
+      Five dashboard mockups for the auction data you're now collecting. Each one answers a
+      single question an operator actually asks, and carries only the numbers that move that answer.
+    </p>
+    <div class="notice">
+      <div><strong>Illustrative data.</strong> Every figure on this page is synthetic — shaped to be
+      realistic for classic-car auctions, but not read from your database. The schema, field names and
+      metric definitions are real and map to <code>auction_listings_all</code>, <code>auction_buckets</code>
+      and the fee schedules.</div>
+    </div>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="Dashboard mockups">
+    <button class="tab" role="tab" id="tab-pulse"  aria-controls="p-pulse"  aria-selected="true"><span class="tnum">01</span>Market Pulse</button>
+    <button class="tab" role="tab" id="tab-disc"   aria-controls="p-disc"   aria-selected="false"><span class="tnum">02</span>Price Discovery</button>
+    <button class="tab" role="tab" id="tab-demand" aria-controls="p-demand" aria-selected="false"><span class="tnum">03</span>Demand Signals</button>
+    <button class="tab" role="tab" id="tab-comp"   aria-controls="p-comp"   aria-selected="false"><span class="tnum">04</span>Comparable Set</button>
+    <button class="tab" role="tab" id="tab-halo"   aria-controls="p-halo"   aria-selected="false"><span class="tnum">05</span>Online → Live</button>
+  </div>
+
+  <!-- ══════════════════════ 01 · MARKET PULSE ══════════════════════ -->
+  <section class="panel" id="p-pulse" role="tabpanel" aria-labelledby="tab-pulse">
+
+    <div class="panel-intro">
+      <h2>Which way is the market moving?</h2>
+      <p>Average sale price can't answer this — it moves when the <em>mix</em> of cars changes, not when
+      values do. This board uses a repeat-sale index built from buckets that sold in both periods, so a
+      quarter full of Ferraris doesn't read as a rising market.</p>
+    </div>
+
+    <div class="filters">
+      <span class="flabel">Window</span>
+      <div class="seg" role="group" aria-label="Time window">
+        <button type="button" aria-pressed="false">4Q</button>
+        <button type="button" aria-pressed="true">8Q</button>
+        <button type="button" aria-pressed="false">All</button>
+      </div>
+      <span class="flabel" style="margin-left:8px">Source</span>
+      <select class="ctl" aria-label="Source"><option>All sources</option><option>Bring a Trailer</option><option>Cars &amp; Bids</option><option>RM Sotheby's</option><option>Gooding &amp; Co.</option></select>
+      <select class="ctl" aria-label="Category"><option>Cars only</option><option>All lots</option><option>Motorcycles</option></select>
+      <span class="spacer"></span>
+      <span class="scope-note">3,412 settled lots · 486 in Q2</span>
+    </div>
+
+    <div class="hero">
+      <div class="hmain">
+        <span class="hlabel">Repeat-sale index · 2026 Q2</span>
+        <span class="hval">104.8</span>
+        <span class="delta up">▲ 1.4 <span class="dsub">vs 2025 Q4</span></span>
+      </div>
+      <div class="hsep"></div>
+      <p class="hnote">Base 100 = 2024 Q3. Built from 61 buckets with a settled sale in both
+      periods. A bucket enters only with n≥3 that quarter, which is why the index is quieter than
+      the raw medians below it.</p>
+    </div>
+
+    <div class="kpis" id="kpi-pulse"></div>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Price index by value tier</h3>
+          <span class="sub">Repeat-sale index, base 100 = 2024 Q3</span>
+        </div>
+        <div class="tools"><button class="tbtn" data-table="t-index" aria-pressed="false">Table</button></div>
+      </div>
+      <div class="plot" id="c-index"></div>
+      <div class="legend" id="l-index"></div>
+      <div class="tablewrap" id="t-index" hidden></div>
+      <p class="reading"><span class="rk">Reading</span><span><b>The market has split.</b> Cars over
+      $250k are up 19.5% in two years while sub-$50k cars are down 7.4%. A single blended
+      "market is up" number hides both halves — which is exactly what an average price tile would have told you.</span></p>
+    </figure>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Sell-through by value tier</h3>
+          <span class="sub">Share of settled lots that met reserve · same tiers, same quarters</span>
+        </div>
+        <div class="tools"><button class="tbtn" data-table="t-sell" aria-pressed="false">Table</button></div>
+      </div>
+      <div class="plot" id="c-sell"></div>
+      <div class="legend" id="l-sell"></div>
+      <div class="tablewrap" id="t-sell" hidden></div>
+      <p class="reading"><span class="rk">Reading</span><span><b>Sell-through breaks before price
+      does.</b> Entry-level sell-through started falling in 2024 Q4, five quarters before the sub-$50k
+      price index rolled over. Sellers hold their reserve on the way down, so volume dries up first —
+      this is the leading indicator on the page. It is plotted on its own axis, under the index and
+      sharing its x-scale, rather than as a second y-axis on the chart above.</span></p>
+    </figure>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Lots settled per quarter</h3>
+          <span class="sub">Sample size behind every point above</span>
+        </div>
+        <div class="tools"><button class="tbtn" data-table="t-vol" aria-pressed="false">Table</button></div>
+      </div>
+      <div class="plot" id="c-vol"></div>
+      <div class="tablewrap" id="t-vol" hidden></div>
+      <p class="reading"><span class="rk">Reading</span><span>Context, not a KPI. It's here so nobody
+      reads a 4-point index move off a thin quarter — coverage roughly doubled over the window, so
+      early points carry wider error than late ones.</span></p>
+    </figure>
+  </section>
+
+  <!-- ══════════════════════ 02 · PRICE DISCOVERY ══════════════════════ -->
+  <section class="panel" id="p-disc" role="tabpanel" aria-labelledby="tab-disc" hidden>
+
+    <div class="panel-intro">
+      <h2>Are the estimates right, and where are they wrong?</h2>
+      <p>You store <code>estimate_low</code> / <code>estimate_high</code> for catalogue lots and
+      <code>price_at_48h</code> for BaT. Both are a prior; the sale is the posterior. The gap between
+      them, sliced by marque and by house, is where the tradeable information lives.</p>
+    </div>
+
+    <div class="filters">
+      <span class="flabel">Window</span>
+      <div class="seg" role="group" aria-label="Time window">
+        <button type="button" aria-pressed="false">90d</button>
+        <button type="button" aria-pressed="true">12m</button>
+        <button type="button" aria-pressed="false">All</button>
+      </div>
+      <span class="flabel" style="margin-left:8px">Basis</span>
+      <div class="seg" role="group" aria-label="Price basis">
+        <button type="button" aria-pressed="true">All-in</button>
+        <button type="button" aria-pressed="false">Hammer</button>
+      </div>
+      <select class="ctl" aria-label="Source"><option>Catalogue houses</option><option>All sources</option></select>
+      <span class="spacer"></span>
+      <span class="scope-note">957 lots with a published estimate</span>
+    </div>
+
+    <div class="kpis" id="kpi-disc"></div>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Where lots settle against their estimate</h3>
+          <span class="sub">All-in price ÷ mid-estimate · 957 lots · bin width 0.10×</span>
+        </div>
+        <div class="tools"><button class="tbtn" data-table="t-hist" aria-pressed="false">Table</button></div>
+      </div>
+      <div class="plot" id="c-hist"></div>
+      <div class="legend" id="l-hist"></div>
+      <div class="tablewrap" id="t-hist" hidden></div>
+      <p class="reading"><span class="rk">Reading</span><span><b>The books run hot.</b> The modal lot
+      settles at 0.90–1.00× its mid-estimate and 52% of lots land below the midpoint — an unbiased
+      estimate would split 50/50 with the peak straddling 1.0×. The right tail is long and thin: the
+      occasional 1.9× result is what people remember, and it is why the <em>mean</em> ratio (1.06×)
+      reads optimistic where the median (0.99×) does not.</span></p>
+    </figure>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Which marques beat their book</h3>
+          <span class="sub">Median all-in ÷ mid-estimate by make · marques with n≥8 only</span>
+        </div>
+        <div class="tools"><button class="tbtn" data-table="t-make" aria-pressed="false">Table</button></div>
+      </div>
+      <div class="plot" id="c-make"></div>
+      <div class="legend" id="l-make"></div>
+      <div class="tablewrap" id="t-make" hidden></div>
+      <p class="reading"><span class="rk">Reading</span><span><b>Estimate error is systematic, not
+      random.</b> Land Rover and Porsche clear their books by 12–19% every quarter; Jaguar and Aston
+      Martin trail by 12–14%. That's a stale estimate book on British marques, and it is a standing
+      edge — you can price against it. 14 marques with n&lt;8 (61 lots) are withheld rather than
+      plotted as noise.</span></p>
+    </figure>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>The same car costs different money at different houses</h3>
+          <span class="sub">Buyer premium on a $120,000 hammer, from each house's stored fee schedule</span>
+        </div>
+      </div>
+      <div class="tablewrap" id="t-fees"></div>
+      <p class="reading"><span class="rk">Reading</span><span><b>Never compare hammer prices across
+      sources.</b> A $120k hammer is $126.0k all-in on Bring a Trailer and $135.5k at Bonhams — a
+      7.5% spread that is pure fee structure, not market. Your marginal-tier maths already computes
+      this per lot; the analytics page should default every price to all-in and make hammer the
+      opt-in, not the reverse.</span></p>
+    </figure>
+  </section>
+
+  <!-- ══════════════════════ 03 · DEMAND SIGNALS ══════════════════════ -->
+  <section class="panel" id="p-demand" role="tabpanel" aria-labelledby="tab-demand" hidden>
+
+    <div class="panel-intro">
+      <h2>Does attention turn into money?</h2>
+      <p>You collect <code>watchers</code>, <code>views</code>, <code>comments</code> and
+      <code>bid_count</code> but nothing currently reads them. BaT and Cars &amp; Bids publish no
+      estimate, so the outcome here is <strong>price ÷ the lot's own bucket median</strong>, never
+      price ÷ estimate — that keeps online and live lots on one scale and needs no catalogue.</p>
+    </div>
+
+    <div class="filters">
+      <span class="flabel">Window</span>
+      <div class="seg" role="group" aria-label="Time window">
+        <button type="button" aria-pressed="false">90d</button>
+        <button type="button" aria-pressed="true">12m</button>
+      </div>
+      <span class="flabel" style="margin-left:8px">Signal</span>
+      <div class="seg" role="group" aria-label="Engagement signal">
+        <button type="button" aria-pressed="true">Watchers</button>
+        <button type="button" aria-pressed="false">Views</button>
+        <button type="button" aria-pressed="false">Comments</button>
+      </div>
+      <span class="spacer"></span>
+      <span class="scope-note">Deciles computed within price band</span>
+    </div>
+
+    <div class="kpis" id="kpi-demand"></div>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Result by watcher decile</h3>
+          <span class="sub">Median all-in ÷ the lot's bucket median · deciles ranked within price band</span>
+        </div>
+        <div class="tools"><button class="tbtn" data-table="t-dec" aria-pressed="false">Table</button></div>
+      </div>
+      <div class="plot" id="c-dec"></div>
+      <div class="legend" id="l-dec"></div>
+      <div class="tablewrap" id="t-dec" hidden></div>
+      <p class="reading"><span class="rk">Reading</span><span><b>Attention converts, monotonically.</b>
+      Every decile beats the one below it — top-decile lots clear their bucket median by 31%,
+      bottom-decile miss by 16%, and sell-through runs 94% against 51%. Deciles are ranked
+      <em>within price band</em>, so this is not just "expensive cars get watched": it says a
+      well-watched $40k car beats a poorly-watched $40k car. One caveat the chart can't fix —
+      today's <code>watchers</code> is scraped at finalisation, so it is a <em>closing</em> count,
+      partly caused by the bidding it is meant to predict. See board 05.</span></p>
+    </figure>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Live board · ending in the next 48 hours</h3>
+          <span class="sub">Current bid against the bucket's trailing-12m median, ranked by heat</span>
+        </div>
+      </div>
+      <div class="tablewrap" id="t-live"></div>
+      <div class="scalelegend">
+        <span>Heat</span>
+        <span class="ramp"><i style="background:var(--heat-1)"></i><i style="background:var(--heat-2)"></i><i style="background:var(--heat-3)"></i><i style="background:var(--heat-4)"></i><i style="background:var(--heat-5)"></i></span>
+        <span>cold → hot · watcher percentile within band</span>
+      </div>
+      <p class="reading"><span class="rk">Reading</span><span><b>This is the only screen that is
+      actionable before a hammer falls.</b> Lot 4471 is at 0.71× its bucket median with 36 hours left
+      and sits in the 91st watcher percentile — heavy attention, price not yet there. The two cold rows
+      are the mirror image: thin watching, bid already past the comp, likely to stall at reserve.</span></p>
+    </figure>
+  </section>
+
+  <!-- ══════════════════════ 04 · COMPARABLE SET ══════════════════════ -->
+  <section class="panel" id="p-comp" role="tabpanel" aria-labelledby="tab-comp" hidden>
+
+    <div class="panel-intro">
+      <h2>What is this specific car worth?</h2>
+      <p>The drill-down every other board hands off to. It runs on <code>canonical_model_id</code> —
+      your bucket — so aliases like "911 Carrera 2", "964 C2" and "911 (964) Carrera" resolve to one
+      comparable set instead of three thin ones.</p>
+    </div>
+
+    <div class="filters">
+      <span class="flabel">Bucket</span>
+      <select class="ctl" aria-label="Bucket" style="min-width:250px">
+        <option>Porsche 911 (964) Carrera 2 · 1989–1994</option>
+        <option>Porsche 911 (993) Carrera · 1995–1998</option>
+        <option>Mercedes-Benz 300SL Gullwing · 1954–1957</option>
+        <option>Land Rover Defender 90 · 1990–1997</option>
+      </select>
+      <div class="seg" role="group" aria-label="Time window">
+        <button type="button" aria-pressed="false">12m</button>
+        <button type="button" aria-pressed="true">24m</button>
+        <button type="button" aria-pressed="false">All</button>
+      </div>
+      <span class="spacer"></span>
+      <span class="scope-note">34 settled · 6 aliases · 3 sources</span>
+    </div>
+
+    <div class="hero">
+      <div class="hmain">
+        <span class="hlabel">Median all-in · trailing 12 months</span>
+        <span class="hval">$148k</span>
+        <span class="delta up">▲ 6.1% <span class="dsub">vs prior 12m</span></span>
+      </div>
+      <div class="hsep"></div>
+      <p class="hnote">Interquartile range $119k–$187k across 34 settled lots. The spread is the
+      answer as much as the midpoint — half of all 964 Carreras trade inside a $68k band, so a
+      point estimate without it is false precision.</p>
+    </div>
+
+    <div class="kpis" id="kpi-comp"></div>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Every settled lot by model year</h3>
+          <span class="sub">All-in price · log scale · 34 lots over 24 months</span>
+        </div>
+        <div class="tools"><button class="tbtn" data-table="t-sc" aria-pressed="false">Table</button></div>
+      </div>
+      <div class="plot" id="c-scatter"></div>
+      <div class="legend" id="l-scatter"></div>
+      <div class="tablewrap" id="t-sc" hidden></div>
+      <p class="reading"><span class="rk">Reading</span><span><b>The late cars carry a real premium.</b>
+      Median rises from $121k (1990) to $178k (1994) — the last-of-line effect, visible because the
+      y-axis is logarithmic. On a linear axis the two $300k+ outliers would flatten every other
+      point into a band a few pixels tall. Reserve-not-met lots are plotted at their high bid and
+      keyed separately — four of the six sit above their year's median, which is what a failed
+      reserve is: a seller asking more than the middle of the market.</span></p>
+    </figure>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>This bucket against the market</h3>
+          <span class="sub">Bucket median indexed to 100, with interquartile band · market index for reference</span>
+        </div>
+        <div class="tools"><button class="tbtn" data-table="t-bt" aria-pressed="false">Table</button></div>
+      </div>
+      <div class="plot" id="c-bucket"></div>
+      <div class="legend" id="l-bucket"></div>
+      <div class="tablewrap" id="t-bt" hidden></div>
+      <p class="reading"><span class="rk">Reading</span><span><b>Outperforming, but the band is
+      wide.</b> The 964 is up 18 points against the market's 5. The shaded interquartile band is the
+      honesty check — it never narrows below ±14 points, so a single quarter's move inside that band
+      is not yet a trend. Both series are indexed to the same base on one axis; the market line is
+      reference, drawn recessive.</span></p>
+    </figure>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Recent comparables</h3>
+          <span class="sub">Last six settled lots in this bucket</span>
+        </div>
+      </div>
+      <div class="tablewrap" id="t-comps"></div>
+      <p class="reading"><span class="rk">Reading</span><span>The audit trail. Every aggregate above
+      resolves to rows like these, with source and lot reference intact, so a number that looks wrong
+      can be traced to the listing that caused it in one click.</span></p>
+    </figure>
+  </section>
+
+  <!-- ══════════════════════ 05 · ONLINE → LIVE (HALO) ══════════════════════ -->
+  <section class="panel" id="p-halo" role="tabpanel" aria-labelledby="tab-halo" hidden>
+
+    <div class="panel-intro">
+      <h2>Does online attention price the room at Monterey?</h2>
+      <p>The unit here is the <strong>bucket</strong>, not the lot — a Monterey lot has no watcher
+      count, so the only way to connect the two markets is through
+      <code>canonical_model_id</code>. Online attention for a model is measured on BaT and Cars
+      &amp; Bids; the outcome is what that same model does at premier live sales.</p>
+    </div>
+
+    <div class="filters">
+      <span class="flabel">Live scope</span>
+      <select class="ctl" aria-label="Live scope" style="min-width:230px">
+        <option>All premier live sales</option>
+        <option>Monterey week only</option>
+        <option>Amelia Island</option>
+        <option>Arizona week</option>
+      </select>
+      <span class="flabel" style="margin-left:8px">Lead</span>
+      <div class="seg" role="group" aria-label="Lead window">
+        <button type="button" aria-pressed="false">Same quarter</button>
+        <button type="button" aria-pressed="true">1Q lead</button>
+        <button type="button" aria-pressed="false">2Q lead</button>
+      </div>
+      <span class="spacer"></span>
+      <span class="scope-note">15 buckets clear n≥3 both sides</span>
+    </div>
+
+    <div class="hero">
+      <div class="hmain">
+        <span class="hlabel">Rank correlation · online attention → live premium</span>
+        <span class="hval">0.81</span>
+        <span class="delta info">Spearman ρ · 1-quarter lead · n=15 buckets</span>
+      </div>
+      <div class="hsep"></div>
+      <p class="hnote">Strong, but resting on 15 buckets. At n=15 the 5% significance
+      threshold is ρ≈0.52, so this clears it — while remaining one thin year of live sales away
+      from being fragile. The coverage table below is the part to read first.</p>
+    </div>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Online attention against live-sale premium</h3>
+          <span class="sub">Each dot is one bucket · dot size = live lots behind it</span>
+        </div>
+        <div class="tools"><button class="tbtn" data-table="t-halo" aria-pressed="false">Table</button></div>
+      </div>
+      <div class="plot" id="c-halo"></div>
+      <div class="legend" id="l-halo"></div>
+      <div class="tablewrap" id="t-halo" hidden></div>
+      <p class="reading"><span class="rk">Reading</span><span><b>The halo is visible, and it is not
+      uniform.</b> Buckets in the top online quintile — 993s, first-gen Broncos, FJ40s, Defenders —
+      clear their online comp by 17–31% when they reach a live rostrum. Buckets the internet is
+      indifferent to (C2 Corvettes, Pagodas, Series 1 E-Types) sell at or below it. The outcome is
+      deliberately measured against the <em>online comp</em>, not the house estimate: the houses
+      read BaT too, so an estimate already absorbs the signal you're trying to detect.</span></p>
+    </figure>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Does online attention lead, or just move together?</h3>
+          <span class="sub">Rank correlation at each lag · online attention in quarter t vs live premium in t+k</span>
+        </div>
+        <div class="tools"><button class="tbtn" data-table="t-lag" aria-pressed="false">Table</button></div>
+      </div>
+      <div class="plot" id="c-lag"></div>
+      <div class="tablewrap" id="t-lag" hidden></div>
+      <p class="reading"><span class="rk">Reading</span><span><b>The peak sits at one quarter, not
+      zero.</b> Correlation rises from 0.62 same-quarter to 0.81 at a one-quarter lead, then decays —
+      the shape you'd expect if online demand genuinely front-runs the live room rather than both
+      responding to the same news. This is the chart that distinguishes a halo from a coincidence,
+      and it is also the one most exposed to sample size: everything below the dashed
+      significance floor is indistinguishable from noise at n=15.</span></p>
+    </figure>
+
+    <figure class="card">
+      <div class="card-head">
+        <div class="ct">
+          <h3>Coverage — what the correlation is actually built on</h3>
+          <span class="sub">Buckets with lots on both sides, trailing 24 months</span>
+        </div>
+      </div>
+      <div class="tablewrap" id="t-cov"></div>
+      <p class="reading"><span class="rk">Reading</span><span><b>Read this before the charts above.</b>
+      Live counts are thin — a median of 8 lots per bucket, and three buckets sit at the n≥3 floor.
+      The overlap is also structurally narrow: most Monterey consignments (pre-war, competition
+      cars, one-off coachbuilt) never appear online at all, and most BaT volume never reaches a
+      premier rostrum. This analysis can only ever speak to the band where the two markets
+      genuinely meet — roughly air-cooled Porsche, utility 4×4s, 60s–80s Ferrari, and JDM.</span></p>
+    </figure>
+  </section>
+
+  <hr class="rule">
+
+  <div class="section-head">
+    <h2>What I deliberately left out</h2>
+    <p>You asked for nothing that doesn't add insight. These are the things I removed, and the reason
+    each one fails — several are on the current analytics page.</p>
+  </div>
+
+  <div class="cutlist">
+    <div class="cut">
+      <span class="verdict">Cut · misleading</span>
+      <h4>Average estimate &amp; average final price</h4>
+      <p>Auction prices are log-normal with a fat right tail. One $2.4M Gullwing moves the mean of a
+      400-lot quarter by more than the other 399 combined. Medians and percentiles replace them;
+      the "median vs avg gap" tile that currently exists is a workaround for a number that shouldn't
+      be on the page.</p>
+    </div>
+    <div class="cut">
+      <span class="verdict">Cut · unreadable</span>
+      <h4>Estimate vs final, 30 most recent, grouped bars</h4>
+      <p>Sixty bars with 40°-rotated labels, ordered by nothing anyone cares about. It answers "what
+      happened to lot #17" — a question the sortable table answers better — while looking like it
+      answers something aggregate. The distribution histogram on board 02 is the aggregate version.</p>
+    </div>
+    <div class="cut">
+      <span class="verdict">Cut · geometry</span>
+      <h4>Linear-axis estimate-vs-final scatter</h4>
+      <p>With a $9k Miata and a $2.4M Gullwing on the same linear axis, 90% of points compress into
+      the bottom-left corner. Log-log fixes it, but the ratio histogram answers the same question
+      without asking anyone to read a scatter.</p>
+    </div>
+    <div class="cut">
+      <span class="verdict">Cut · mix effect</span>
+      <h4>Absolute-dollar price brackets</h4>
+      <p>"$25k–$50k" pools a running Miata with a project Ferrari. Sell-through by absolute bracket
+      therefore measures which segments happened to consign that quarter. Board 01 uses value tiers
+      on a repeat-sale basis; board 03 ranks within band.</p>
+    </div>
+    <div class="cut">
+      <span class="verdict">Cut · forbidden</span>
+      <h4>Price and sell-through on one dual-axis chart</h4>
+      <p>The obvious way to show board 01's story, and it invents a correlation — the alignment of the
+      two y-scales is arbitrary. Two charts stacked on a shared x-axis show the same lead-lag
+      relationship without the artefact.</p>
+    </div>
+    <div class="cut">
+      <span class="verdict">Cut · no such field</span>
+      <h4>Realized-vs-estimate on BaT and Cars &amp; Bids</h4>
+      <p>Neither publishes a pre-sale estimate, so an estimate ratio can only ever be computed for
+      catalogue houses — board 02 is scoped to those 957 lots and says so. Everywhere online lots
+      appear (boards 03 and 05) the outcome is price ÷ the lot's own bucket median instead, which
+      needs no catalogue and puts online and live lots on one scale.</p>
+    </div>
+    <div class="cut">
+      <span class="verdict">Cut · wrong unit</span>
+      <h4>Lot-level online → live regression</h4>
+      <p>A Monterey lot has no watcher count — engagement exists only on the online side, so there
+      is no lot-to-lot join. Board 05 aggregates to bucket × quarter, which is the finest grain at
+      which both markets are actually observed.</p>
+    </div>
+    <div class="cut">
+      <span class="verdict">Cut · thin data</span>
+      <h4>Any segment with n&lt;8</h4>
+      <p>A make with three sales produces a headline "+180% vs estimate" that is one car. Thin
+      segments are withheld and counted in a footnote rather than plotted, everywhere on this page.</p>
+    </div>
+  </div>
+
+</div>
+
+<div id="tt" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var NS = "http://www.w3.org/2000/svg";
+  var C = {};
+  ["s1","s2","s3","div-warm","div-warm-2","div-cool","div-cool-2","div-mid","grid","axis",
+   "ink","ink-2","ink-3","ink-4","surface","surface-2","surface-3","good","warning","critical",
+   "heat-1","heat-2","heat-3","heat-4","heat-5","line","line-hi"].forEach(function (k) {
+    C[k] = getComputedStyle(document.documentElement).getPropertyValue("--" + k).trim();
+  });
+
+  /* ───────────────────────── helpers ───────────────────────── */
+
+  function el(tag, attrs, text) {
+    var e = document.createElementNS(NS, tag);
+    if (attrs) for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function h(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function lin(d0, d1, r0, r1) {
+    return function (v) { return d1 === d0 ? r0 : r0 + (v - d0) / (d1 - d0) * (r1 - r0); };
+  }
+  function logScale(d0, d1, r0, r1) {
+    var l0 = Math.log(d0), l1 = Math.log(d1);
+    return function (v) { return r0 + (Math.log(v) - l0) / (l1 - l0) * (r1 - r0); };
+  }
+  function money(v) {
+    var a = Math.abs(v);
+    if (a >= 1e6) return "$" + (v / 1e6).toFixed(v % 1e6 === 0 ? 0 : 1) + "M";
+    if (a >= 1000) return "$" + Math.round(v / 1000) + "k";
+    return "$" + Math.round(v).toLocaleString("en-US");
+  }
+  function moneyFull(v) { return "$" + Math.round(v).toLocaleString("en-US"); }
+  function ratio(v) { return v.toFixed(2) + "×"; }
+  function pct(v, dp) { return v.toFixed(dp == null ? 0 : dp) + "%"; }
+
+  /* shared tooltip */
+  var TT = document.getElementById("tt");
+  function ttShow(ev, head, sub, rows) {
+    TT.textContent = "";
+    var hd = h("div", "tthead"); hd.appendChild(document.createTextNode(head));
+    if (sub) { var s = h("div", "ttsub"); s.textContent = sub; hd.appendChild(s); }
+    TT.appendChild(hd);
+    (rows || []).forEach(function (r) {
+      var row = h("div", "ttrow");
+      if (r.color) { var k = h("span", "k"); k.style.background = r.color; row.appendChild(k); }
+      row.appendChild(h("span", "n", r.name));
+      row.appendChild(h("span", "v", r.value));
+      TT.appendChild(row);
+    });
+    TT.classList.add("on");
+    ttMove(ev);
+  }
+  function ttMove(ev) {
+    var pad = 16, w = TT.offsetWidth, ht = TT.offsetHeight;
+    var x = ev.clientX + pad, y = ev.clientY + pad;
+    if (x + w > innerWidth - 8) x = ev.clientX - w - pad;
+    if (y + ht > innerHeight - 8) y = ev.clientY - ht - pad;
+    TT.style.left = Math.max(8, x) + "px";
+    TT.style.top = Math.max(8, y) + "px";
+  }
+  function ttHide() { TT.classList.remove("on"); }
+
+  /* build a plot frame */
+  function frame(host, height, m) {
+    var w = host.clientWidth || 600;
+    var svg = el("svg", { viewBox: "0 0 " + w + " " + height, height: height, role: "img" });
+    var g = el("g", { transform: "translate(" + m.l + "," + m.t + ")" });
+    svg.appendChild(g);
+    host.textContent = "";
+    host.appendChild(svg);
+    return { svg: svg, g: g, w: w, h: height, iw: w - m.l - m.r, ih: height - m.t - m.b, m: m };
+  }
+  function gridline(g, x1, y1, x2, y2, color) {
+    g.appendChild(el("line", { x1: x1, y1: y1, x2: x2, y2: y2, stroke: color || C.grid, "stroke-width": 1 }));
+  }
+  function axisText(g, x, y, txt, anchor, color, size) {
+    var t = el("text", {
+      x: x, y: y, "text-anchor": anchor || "middle",
+      fill: color || C["ink-3"], "font-size": size || 11,
+      "font-family": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    }, txt);
+    g.appendChild(t);
+    return t;
+  }
+  function label(g, x, y, txt, anchor, color, size, weight) {
+    var t = el("text", {
+      x: x, y: y, "text-anchor": anchor || "middle", fill: color || C["ink-2"],
+      "font-size": size || 11.5, "font-weight": weight || 400,
+      "font-family": "system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+    }, txt);
+    g.appendChild(t);
+    return t;
+  }
+  function legendInto(host, items) {
+    if (!host) return;
+    host.textContent = "";
+    items.forEach(function (it) {
+      var s = h("span", "lg");
+      var k = h("span", "key" + (it.dot ? " dot" : ""));
+      k.style.background = it.color;
+      if (it.hollow) { k.style.background = "transparent"; k.style.boxShadow = "inset 0 0 0 2px " + it.color; }
+      s.appendChild(k);
+      s.appendChild(document.createTextNode(it.name));
+      host.appendChild(s);
+    });
+  }
+  function tableInto(host, cols, rows, aligns) {
+    if (!host) return;
+    host.textContent = "";
+    var t = h("table");
+    var thead = h("thead"), tr = h("tr");
+    cols.forEach(function (c, i) {
+      var th = h("th", null, c);
+      if (aligns && aligns[i] === "l") th.style.textAlign = "left";
+      tr.appendChild(th);
+    });
+    thead.appendChild(tr); t.appendChild(thead);
+    var tb = h("tbody");
+    rows.forEach(function (r) {
+      var row = h("tr");
+      r.forEach(function (cell, i) {
+        var td = h("td");
+        if (cell && cell.nodeType) td.appendChild(cell);
+        else td.textContent = cell;
+        if (i > 0) td.className = "num";
+        if (aligns && aligns[i] === "l") td.style.textAlign = "left";
+        row.appendChild(td);
+      });
+      tb.appendChild(row);
+    });
+    t.appendChild(tb);
+    host.appendChild(t);
+  }
+
+  /* ───────────────────────── data (synthetic, deterministic) ───────────────────────── */
+
+  var Q = ["24 Q3", "24 Q4", "25 Q1", "25 Q2", "25 Q3", "25 Q4", "26 Q1", "26 Q2"];
+
+  var TIERS = [
+    { name: "Under $50k",  color: C.s1, index: [100, 101.2, 100.4, 98.6, 96.9, 95.2, 93.8, 92.6], sell: [78, 77, 75, 73, 71, 68, 66, 64] },
+    { name: "$50k–$250k",  color: C.s2, index: [100, 102.1, 103.4, 104.0, 103.2, 103.9, 105.1, 106.3], sell: [74, 75, 74, 73, 72, 71, 70, 69] },
+    { name: "$250k and up", color: C.s3, index: [100, 103.5, 106.2, 109.4, 111.0, 113.8, 116.2, 119.5], sell: [66, 68, 69, 71, 70, 72, 71, 73] }
+  ];
+  var VOLUME = [380, 402, 425, 448, 461, 455, 470, 486];
+
+  var HIST = [
+    { c0: 0.5, c1: 0.6, n: 18 }, { c0: 0.6, c1: 0.7, n: 34 }, { c0: 0.7, c1: 0.8, n: 71 },
+    { c0: 0.8, c1: 0.9, n: 128 }, { c0: 0.9, c1: 1.0, n: 196 }, { c0: 1.0, c1: 1.1, n: 174 },
+    { c0: 1.1, c1: 1.2, n: 121 }, { c0: 1.2, c1: 1.3, n: 82 }, { c0: 1.3, c1: 1.4, n: 51 },
+    { c0: 1.4, c1: 1.5, n: 33 }, { c0: 1.5, c1: 1.6, n: 21 }, { c0: 1.6, c1: 1.7, n: 10 },
+    { c0: 1.7, c1: 1.8, n: 7 }, { c0: 1.8, c1: 1.9, n: 6 }, { c0: 1.9, c1: 2.0, n: 5 }
+  ];
+
+  var MAKES = [
+    { make: "Land Rover", v: 1.19, n: 64 }, { make: "Porsche", v: 1.12, n: 147 },
+    { make: "BMW", v: 1.08, n: 96 }, { make: "Ferrari", v: 1.04, n: 88 },
+    { make: "Lamborghini", v: 1.01, n: 41 }, { make: "Chevrolet", v: 0.97, n: 134 },
+    { make: "Alfa Romeo", v: 0.95, n: 29 }, { make: "Mercedes-Benz", v: 0.94, n: 112 },
+    { make: "Ford", v: 0.91, n: 103 }, { make: "Aston Martin", v: 0.88, n: 33 },
+    { make: "Jaguar", v: 0.86, n: 57 }
+  ];
+
+  var FEES = [
+    { house: "Bring a Trailer", rule: "5% capped at $7,500", prem: 6000, eff: 5.0 },
+    { house: "Cars & Bids", rule: "4.5% capped at $4,500", prem: 4500, eff: 3.75 },
+    { house: "RM Sotheby's", rule: "12% to $250k, then 10%", prem: 14400, eff: 12.0 },
+    { house: "Gooding & Co.", rule: "12% to $250k, then 10%", prem: 14400, eff: 12.0 },
+    { house: "Bonhams", rule: "15% to $100k, then 12.5%", prem: 17500, eff: 14.58 }
+  ];
+
+  var DECILES = [
+    { d: 1, v: 0.84, sell: 51, n: 96 }, { d: 2, v: 0.88, sell: 57, n: 95 },
+    { d: 3, v: 0.91, sell: 62, n: 96 }, { d: 4, v: 0.94, sell: 66, n: 95 },
+    { d: 5, v: 0.97, sell: 70, n: 96 }, { d: 6, v: 0.99, sell: 73, n: 96 },
+    { d: 7, v: 1.03, sell: 77, n: 95 }, { d: 8, v: 1.09, sell: 82, n: 96 },
+    { d: 9, v: 1.16, sell: 88, n: 95 }, { d: 10, v: 1.31, sell: 94, n: 96 }
+  ];
+
+  var LIVE = [
+    { lot: "4471", car: "1994 Porsche 911 (964) Carrera 2", bid: 105000, comp: 148000, r: 0.71, wp: 91, left: "36h", state: "hot" },
+    { lot: "BAT-88214", car: "1973 BMW 3.0 CSL", bid: 132000, comp: 171000, r: 0.77, wp: 87, left: "11h", state: "hot" },
+    { lot: "4488", car: "1967 Alfa Romeo Giulia Sprint GT", bid: 61500, comp: 74000, r: 0.83, wp: 78, left: "44h", state: "hot" },
+    { lot: "BAT-88190", car: "1991 Land Rover Defender 90", bid: 48200, comp: 52500, r: 0.92, wp: 66, left: "6h", state: "pace" },
+    { lot: "CB-20551", car: "2004 Subaru Impreza WRX STI", bid: 38900, comp: 41000, r: 0.95, wp: 58, left: "29h", state: "pace" },
+    { lot: "4462", car: "1965 Jaguar E-Type Series 1", bid: 143000, comp: 146000, r: 0.98, wp: 44, left: "18h", state: "pace" },
+    { lot: "BAT-88233", car: "1979 Mercedes-Benz 450SL", bid: 34500, comp: 29800, r: 1.16, wp: 21, left: "40h", state: "cold" },
+    { lot: "CB-20563", car: "2013 Ford Mustang Boss 302", bid: 47800, comp: 40100, r: 1.19, wp: 14, left: "22h", state: "cold" }
+  ];
+
+  /* 964 comparable set — deterministic pseudo-random spread */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  var YEAR_MED = { 1989: 118000, 1990: 121000, 1991: 128000, 1992: 141000, 1993: 158000, 1994: 178000 };
+  var SCATTER = (function () {
+    var rnd = mulberry32(20260816), out = [], years = [1989, 1990, 1991, 1992, 1993, 1994];
+    var perYear = [4, 6, 7, 6, 6, 5];
+    years.forEach(function (y, i) {
+      for (var k = 0; k < perYear[i]; k++) {
+        var z = (rnd() + rnd() + rnd() - 1.5) / 1.5;          // ~normal
+        var p = YEAR_MED[y] * Math.exp(z * 0.38);
+        var rnm = rnd() < 0.18;
+        out.push({ year: y, price: Math.round(p / 500) * 500, rnm: rnm });
+      }
+    });
+    out[9].price = 312000; out[9].rnm = false;
+    out[21].price = 341000; out[21].rnm = true;
+    return out;
+  })();
+
+  var BQ = ["25 Q1", "25 Q2", "25 Q3", "25 Q4", "26 Q1", "26 Q2"];
+  var BUCKET = {
+    med:  [100, 104, 103, 109, 114, 118],
+    p25:  [88, 91, 89, 94, 99, 102],
+    p75:  [116, 121, 119, 127, 133, 139],
+    mkt:  [100, 101, 101, 102, 104, 105]
+  };
+
+  var COMPS = [
+    { date: "2026-07-28", lot: "BAT-88102", year: 1994, miles: "41,900", hammer: 168000, allin: 176400, vs: 1.19, src: "Bring a Trailer" },
+    { date: "2026-07-11", lot: "4419",      year: 1991, miles: "77,200", hammer: 112000, allin: 125440, vs: 0.85, src: "RM Sotheby's" },
+    { date: "2026-06-30", lot: "BAT-87944", year: 1993, miles: "58,400", hammer: 149000, allin: 156450, vs: 1.06, src: "Bring a Trailer" },
+    { date: "2026-06-19", lot: "CB-20388",  year: 1990, miles: "104,600", hammer: 96000, allin: 100320, vs: 0.68, src: "Cars & Bids" },
+    { date: "2026-06-02", lot: "4402",      year: 1994, miles: "29,100", hammer: 205000, allin: 229600, vs: 1.55, src: "Gooding & Co." },
+    { date: "2026-05-24", lot: "BAT-87811", year: 1992, miles: "63,800", hammer: 138000, allin: 144900, vs: 0.98, src: "Bring a Trailer" }
+  ];
+
+  /* Board 05 — buckets that trade in BOTH markets.
+     onlineP  = watcher percentile on BaT + Cars & Bids, trailing 12m
+     liveR    = live all-in ÷ the same bucket's contemporaneous online comp median
+     liveN/onlineN = lots behind each side */
+  var HALO = [
+    { b: "Porsche 911 (993) Carrera",   onlineP: 92, liveR: 1.28, liveN: 12, onlineN: 41 },
+    { b: "Ford Bronco (1st gen)",       onlineP: 95, liveR: 1.31, liveN: 6,  onlineN: 58 },
+    { b: "Porsche 911 (964) Carrera 2", onlineP: 88, liveR: 1.22, liveN: 9,  onlineN: 34 },
+    { b: "Toyota Land Cruiser FJ40",    onlineP: 87, liveR: 1.17, liveN: 5,  onlineN: 44 },
+    { b: "Land Rover Defender 90",      onlineP: 90, liveR: 1.19, liveN: 4,  onlineN: 47 },
+    { b: "Datsun 240Z",                 onlineP: 82, liveR: 1.05, liveN: 3,  onlineN: 39 },
+    { b: "Lamborghini Countach",        onlineP: 78, liveR: 1.14, liveN: 7,  onlineN: 9 },
+    { b: "Ferrari Testarossa",          onlineP: 73, liveR: 1.11, liveN: 11, onlineN: 27 },
+    { b: "Porsche 356 Speedster",       onlineP: 66, liveR: 1.07, liveN: 6,  onlineN: 8 },
+    { b: "Ferrari 308 GTS",             onlineP: 61, liveR: 0.98, liveN: 8,  onlineN: 22 },
+    { b: "Shelby GT350",                onlineP: 57, liveR: 1.01, liveN: 10, onlineN: 24 },
+    { b: "Mercedes-Benz 300SL Gullwing",onlineP: 54, liveR: 1.04, liveN: 7,  onlineN: 5 },
+    { b: "Mercedes-Benz 280SL Pagoda",  onlineP: 50, liveR: 0.96, liveN: 9,  onlineN: 19 },
+    { b: "Chevrolet Corvette C2",       onlineP: 48, liveR: 0.94, liveN: 16, onlineN: 36 },
+    { b: "Jaguar E-Type Series 1",      onlineP: 44, liveR: 0.92, liveN: 14, onlineN: 31 }
+  ];
+  /* Spearman ρ at each lag, k quarters. 0.52 is the 5% threshold at n=15. */
+  var LAGS = [
+    { k: 0, rho: 0.62 }, { k: 1, rho: 0.81 }, { k: 2, rho: 0.74 }, { k: 3, rho: 0.51 }
+  ];
+  var RHO_CRIT = 0.52;
+
+  /* ───────────────────────── stat tiles ───────────────────────── */
+
+  function sparkline(values, color, w, ht) {
+    w = w || 62; ht = ht || 20;
+    var mn = Math.min.apply(null, values), mx = Math.max.apply(null, values);
+    var pad = (mx - mn) * 0.15 || 1;
+    var x = lin(0, values.length - 1, 0, w), y = lin(mn - pad, mx + pad, ht - 2, 2);
+    var svg = el("svg", { viewBox: "0 0 " + w + " " + ht, width: w, height: ht, "aria-hidden": "true" });
+    var d = values.map(function (v, i) { return (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); }).join(" ");
+    svg.appendChild(el("path", { d: d, fill: "none", stroke: C["ink-4"], "stroke-width": 1.5, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+    svg.appendChild(el("circle", { cx: x(values.length - 1), cy: y(values[values.length - 1]), r: 2.6, fill: color, stroke: C.surface, "stroke-width": 2 }));
+    return svg;
+  }
+
+  function kpis(host, items) {
+    host = document.getElementById(host);
+    if (!host) return;
+    host.textContent = "";
+    items.forEach(function (it) {
+      var card = h("div", "kpi");
+      card.appendChild(h("span", "klabel", it.label));
+      var row = h("div", "krow");
+      var left = h("div");
+      left.appendChild(h("span", "kval", it.value));
+      row.appendChild(left);
+      if (it.spark) {
+        var sp = h("div", "kspark");
+        sp.appendChild(sparkline(it.spark, it.sparkColor || C.s1));
+        row.appendChild(sp);
+      }
+      card.appendChild(row);
+      if (it.delta) {
+        var d = h("span", "delta " + it.dir);
+        var mark = it.dir === "up" ? "▲ " : it.dir === "down" ? "▼ " : "";
+        d.appendChild(document.createTextNode(mark + it.delta + " "));
+        d.appendChild(h("span", "dsub", it.dsub || ""));
+        card.appendChild(d);
+      }
+      host.appendChild(card);
+    });
+  }
+
+  /* ───────────────────────── chart: multi-line with crosshair ───────────────────────── */
+
+  function lineChart(hostId, opts) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var m = { t: 12, r: opts.rightPad || 52, b: 30, l: 46 };
+    var f = frame(host, opts.height || 250, m);
+    var xs = opts.xLabels;
+    var x = lin(0, xs.length - 1, 0, f.iw);
+    var y = lin(opts.yMin, opts.yMax, f.ih, 0);
+
+    (opts.yTicks || []).forEach(function (tv) {
+      gridline(f.g, 0, y(tv), f.iw, y(tv));
+      axisText(f.g, -10, y(tv) + 3.5, opts.yFmt(tv), "end", C["ink-4"], 10.5);
+    });
+    if (opts.refY != null) {
+      f.g.appendChild(el("line", { x1: 0, y1: y(opts.refY), x2: f.iw, y2: y(opts.refY), stroke: C.axis, "stroke-width": 1 }));
+    }
+    xs.forEach(function (lb, i) { axisText(f.g, x(i), f.ih + 19, lb, "middle", C["ink-4"], 10.5); });
+
+    /* interquartile band (single-series option) */
+    if (opts.band) {
+      var up = opts.band.hi.map(function (v, i) { return x(i).toFixed(1) + " " + y(v).toFixed(1); });
+      var dn = opts.band.lo.map(function (v, i) { return x(i).toFixed(1) + " " + y(v).toFixed(1); }).reverse();
+      f.g.appendChild(el("path", {
+        d: "M" + up.join(" L") + " L" + dn.join(" L") + " Z",
+        fill: opts.band.color, "fill-opacity": 0.10, stroke: "none"
+      }));
+    }
+
+    opts.series.forEach(function (s) {
+      var d = s.values.map(function (v, i) { return (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); }).join(" ");
+      f.g.appendChild(el("path", {
+        d: d, fill: "none", stroke: s.color, "stroke-width": s.reference ? 1.5 : 2,
+        "stroke-linecap": "round", "stroke-linejoin": "round",
+        "stroke-opacity": s.reference ? 0.55 : 1
+      }));
+      var last = s.values.length - 1;
+      f.g.appendChild(el("circle", {
+        cx: x(last), cy: y(s.values[last]), r: 4.5, fill: s.color, stroke: C.surface, "stroke-width": 2
+      }));
+      if (!opts.noEndLabels) {
+        label(f.g, x(last) + 9, y(s.values[last]) + 3.5,
+          opts.endFmt ? opts.endFmt(s.values[last]) : String(s.values[last]),
+          "start", s.reference ? C["ink-4"] : C["ink-2"], 11, 600);
+      }
+    });
+
+    /* crosshair */
+    var cross = el("line", { x1: 0, y1: 0, x2: 0, y2: f.ih, stroke: C["line-hi"], "stroke-width": 1, opacity: 0 });
+    f.g.appendChild(cross);
+    var dots = el("g", { opacity: 0 });
+    f.g.appendChild(dots);
+    var hit = el("rect", { x: 0, y: 0, width: f.iw, height: f.ih, fill: "transparent", style: "cursor:crosshair" });
+    f.g.appendChild(hit);
+
+    function at(ev) {
+      var r = f.svg.getBoundingClientRect();
+      var px = (ev.clientX - r.left) * (f.w / r.width) - m.l;
+      var i = Math.max(0, Math.min(xs.length - 1, Math.round(px / (f.iw / (xs.length - 1)))));
+      cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i));
+      cross.setAttribute("opacity", 1);
+      dots.textContent = "";
+      opts.series.forEach(function (s) {
+        dots.appendChild(el("circle", { cx: x(i), cy: y(s.values[i]), r: 4.5, fill: s.color, stroke: C.surface, "stroke-width": 2 }));
+      });
+      dots.setAttribute("opacity", 1);
+      ttShow(ev, xs[i], opts.ttSub, opts.series.map(function (s) {
+        return { color: s.color, name: s.name, value: opts.ttFmt ? opts.ttFmt(s.values[i], s, i) : String(s.values[i]) };
+      }));
+    }
+    hit.addEventListener("pointermove", at);
+    hit.addEventListener("pointerenter", at);
+    hit.addEventListener("pointerleave", function () {
+      cross.setAttribute("opacity", 0); dots.setAttribute("opacity", 0); ttHide();
+    });
+
+    if (opts.legendId) {
+      legendInto(document.getElementById(opts.legendId), opts.series.map(function (s) {
+        return { name: s.name + (s.reference ? " (reference)" : ""), color: s.color };
+      }));
+    }
+  }
+
+  /* ───────────────────────── chart: columns ───────────────────────── */
+
+  function columnChart(hostId, opts) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var m = { t: 16, r: 12, b: opts.bottomPad || 32, l: 46 };
+    var f = frame(host, opts.height || 210, m);
+    var n = opts.data.length;
+    var band = f.iw / n;
+    var bw = Math.min(opts.maxBar || 24, band - 8);
+    var y = lin(opts.yMin, opts.yMax, f.ih, 0);
+
+    (opts.yTicks || []).forEach(function (tv) {
+      gridline(f.g, 0, y(tv), f.iw, y(tv));
+      axisText(f.g, -10, y(tv) + 3.5, opts.yFmt(tv), "end", C["ink-4"], 10.5);
+    });
+
+    var base = opts.baseline != null ? opts.baseline : opts.yMin;
+    if (opts.refY != null) {
+      f.g.appendChild(el("line", { x1: 0, y1: y(opts.refY), x2: f.iw, y2: y(opts.refY), stroke: C["ink-3"], "stroke-width": 1 }));
+      label(f.g, 2, y(opts.refY) - 7, opts.refLabel || "", "start", C["ink-3"], 10.5, 600);
+    }
+
+    /* A genuine threshold, so it is drawn dashed on purpose — the one case where
+       a dashed rule means what dashing implies, unlike a dashed gridline. */
+    if (opts.sigLine != null) {
+      f.g.appendChild(el("line", {
+        x1: 0, y1: y(opts.sigLine), x2: f.iw, y2: y(opts.sigLine),
+        stroke: C.warning, "stroke-width": 1.5, "stroke-dasharray": "5 4", "stroke-opacity": 0.85
+      }));
+      label(f.g, f.iw - 2, y(opts.sigLine) - 7, opts.sigLabel || "", "end", C.warning, 10.5, 600);
+    }
+
+    opts.data.forEach(function (d, i) {
+      var cx = band * i + band / 2;
+      var top = Math.min(y(d.value), y(base)), bot = Math.max(y(d.value), y(base));
+      var hgt = Math.max(1, bot - top);
+      var color = opts.colorOf ? opts.colorOf(d, i) : C.s1;
+      var r = Math.min(4, hgt);
+      /* 4px rounded data-end, square at the baseline */
+      var up = d.value >= base;
+      var path = up
+        ? "M" + (cx - bw / 2) + " " + bot + " L" + (cx - bw / 2) + " " + (top + r) +
+          " Q" + (cx - bw / 2) + " " + top + " " + (cx - bw / 2 + r) + " " + top +
+          " L" + (cx + bw / 2 - r) + " " + top + " Q" + (cx + bw / 2) + " " + top + " " + (cx + bw / 2) + " " + (top + r) +
+          " L" + (cx + bw / 2) + " " + bot + " Z"
+        : "M" + (cx - bw / 2) + " " + top + " L" + (cx - bw / 2) + " " + (bot - r) +
+          " Q" + (cx - bw / 2) + " " + bot + " " + (cx - bw / 2 + r) + " " + bot +
+          " L" + (cx + bw / 2 - r) + " " + bot + " Q" + (cx + bw / 2) + " " + bot + " " + (cx + bw / 2) + " " + (bot - r) +
+          " L" + (cx + bw / 2) + " " + top + " Z";
+      var bar = el("path", { d: path, fill: color });
+      f.g.appendChild(bar);
+
+      if (opts.xLabelOf) axisText(f.g, cx, f.ih + 18, opts.xLabelOf(d, i), "middle", C["ink-4"], 10.5);
+      if (opts.emphasis && opts.emphasis(d, i)) {
+        /* a downward bar takes its label below the tip, never over the baseline */
+        label(f.g, cx, up ? top - 8 : bot + 15, opts.valueFmt(d.value), "middle", C["ink"], 11, 600);
+      }
+
+      var hitR = el("rect", {
+        x: band * i, y: 0, width: band, height: f.ih, fill: "transparent", style: "cursor:pointer"
+      });
+      hitR.addEventListener("pointerenter", function (ev) {
+        bar.setAttribute("fill-opacity", 0.78);
+        ttShow(ev, opts.ttHead(d), opts.ttSub ? opts.ttSub(d) : null, opts.ttRows(d));
+      });
+      hitR.addEventListener("pointermove", ttMove);
+      hitR.addEventListener("pointerleave", function () { bar.removeAttribute("fill-opacity"); ttHide(); });
+      f.g.appendChild(hitR);
+    });
+  }
+
+  /* ───────────────────────── chart: diverging histogram ───────────────────────── */
+
+  function divergingHist(hostId, opts) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var m = { t: 26, r: 14, b: 34, l: 46 };
+    var f = frame(host, 250, m);
+    var bins = opts.bins;
+    var x0 = bins[0].c0, x1 = bins[bins.length - 1].c1;
+    var x = lin(x0, x1, 0, f.iw);
+    var mx = Math.max.apply(null, bins.map(function (b) { return b.n; }));
+    var y = lin(0, mx, f.ih, 0);
+
+    [0, 50, 100, 150, 200].forEach(function (tv) {
+      if (tv > mx) return;
+      gridline(f.g, 0, y(tv), f.iw, y(tv));
+      axisText(f.g, -10, y(tv) + 3.5, String(tv), "end", C["ink-4"], 10.5);
+    });
+
+    bins.forEach(function (b) {
+      var bx = x(b.c0) + 1, bw = Math.max(2, x(b.c1) - x(b.c0) - 2); /* 2px surface gap */
+      var top = y(b.n), hgt = f.ih - top;
+      var mid = (b.c0 + b.c1) / 2;
+      var color = mid < 1 ? (mid < 0.8 ? C["div-cool"] : C["div-cool-2"]) : (mid > 1.3 ? C["div-warm"] : C["div-warm-2"]);
+      var r = Math.min(4, hgt);
+      var d = "M" + bx + " " + f.ih + " L" + bx + " " + (top + r) +
+              " Q" + bx + " " + top + " " + (bx + r) + " " + top +
+              " L" + (bx + bw - r) + " " + top + " Q" + (bx + bw) + " " + top + " " + (bx + bw) + " " + (top + r) +
+              " L" + (bx + bw) + " " + f.ih + " Z";
+      var bar = el("path", { d: d, fill: color });
+      f.g.appendChild(bar);
+      var hitR = el("rect", { x: x(b.c0), y: 0, width: Math.max(24, x(b.c1) - x(b.c0)), height: f.ih, fill: "transparent", style: "cursor:pointer" });
+      hitR.addEventListener("pointerenter", function (ev) {
+        bar.setAttribute("fill-opacity", 0.78);
+        ttShow(ev, b.c0.toFixed(2) + "× – " + b.c1.toFixed(2) + "×",
+          mid < 1 ? "Below mid-estimate" : "Above mid-estimate",
+          [{ color: color, name: "Lots", value: String(b.n) },
+           { color: null, name: "Share", value: pct(b.n / 957 * 100, 1) }]);
+      });
+      hitR.addEventListener("pointermove", ttMove);
+      hitR.addEventListener("pointerleave", function () { bar.removeAttribute("fill-opacity"); ttHide(); });
+      f.g.appendChild(hitR);
+    });
+
+    /* parity line at 1.0×. The median (0.99×) is deliberately NOT drawn: at one
+       pixel from parity it would read as a duplicate rule, so the number lives
+       in the stat tile and the reading instead. */
+    f.g.appendChild(el("line", { x1: x(1), y1: -8, x2: x(1), y2: f.ih, stroke: C["ink-3"], "stroke-width": 1 }));
+    label(f.g, x(1), -14, "estimate", "middle", C["ink-3"], 10.5, 600);
+
+    [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].forEach(function (tv) {
+      axisText(f.g, x(tv), f.ih + 19, tv.toFixed(2) + "×", "middle", C["ink-4"], 10.5);
+    });
+    axisText(f.g, -10, -14, "lots", "end", C["ink-4"], 10);
+  }
+
+  /* ───────────────────────── chart: horizontal lollipop ───────────────────────── */
+
+  function lollipop(hostId, opts) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var rows = opts.rows;
+    var rowH = 26;
+    var m = { t: 24, r: 54, b: 26, l: 116 };
+    var f = frame(host, m.t + m.b + rows.length * rowH, m);
+    var x = lin(opts.xMin, opts.xMax, 0, f.iw);
+
+    [0.85, 0.9, 1.0, 1.1, 1.2].forEach(function (tv) {
+      gridline(f.g, x(tv), -6, x(tv), rows.length * rowH - 6);
+      axisText(f.g, x(tv), -12, tv.toFixed(2) + "×", "middle", C["ink-4"], 10.5);
+    });
+    /* parity */
+    f.g.appendChild(el("line", { x1: x(1), y1: -6, x2: x(1), y2: rows.length * rowH - 6, stroke: C["ink-3"], "stroke-width": 1 }));
+
+    rows.forEach(function (r, i) {
+      var cy = i * rowH + rowH / 2 - 6;
+      var color = r.v >= 1 ? C["div-warm"] : C["div-cool"];
+      label(f.g, -12, cy + 4, r.make, "end", C["ink-2"], 12);
+      f.g.appendChild(el("line", {
+        x1: x(1), y1: cy, x2: x(r.v), y2: cy, stroke: color, "stroke-width": 2, "stroke-linecap": "round", "stroke-opacity": 0.55
+      }));
+      var dot = el("circle", { cx: x(r.v), cy: cy, r: 5.5, fill: color, stroke: C.surface, "stroke-width": 2 });
+      f.g.appendChild(dot);
+      axisText(f.g, f.iw + 10, cy + 4, "n=" + r.n, "start", C["ink-4"], 10.5);
+
+      var hitR = el("rect", { x: -m.l, y: i * rowH - 6, width: f.iw + m.l + m.r, height: rowH, fill: "transparent", style: "cursor:pointer" });
+      hitR.addEventListener("pointerenter", function (ev) {
+        dot.setAttribute("r", 7);
+        ttShow(ev, r.make, r.v >= 1 ? "Beats its book" : "Trails its book", [
+          { color: color, name: "Median vs estimate", value: ratio(r.v) },
+          { color: null, name: "Settled lots", value: String(r.n) },
+          { color: null, name: "Implied gap", value: (r.v >= 1 ? "+" : "") + pct((r.v - 1) * 100, 0) }
+        ]);
+      });
+      hitR.addEventListener("pointermove", ttMove);
+      hitR.addEventListener("pointerleave", function () { dot.setAttribute("r", 5.5); ttHide(); });
+      f.g.appendChild(hitR);
+    });
+
+    if (opts.legendId) {
+      legendInto(document.getElementById(opts.legendId), [
+        { name: "Settles above estimate", color: C["div-warm"], dot: true },
+        { name: "Settles below estimate", color: C["div-cool"], dot: true }
+      ]);
+    }
+  }
+
+  /* ───────────────────────── chart: scatter (log y, nearest-point) ───────────────────────── */
+
+  function scatterChart(hostId, opts) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var m = { t: 16, r: 16, b: 34, l: 52 };
+    var f = frame(host, 280, m);
+    var pts = opts.points;
+    var x = lin(opts.xMin - 0.6, opts.xMax + 0.6, 0, f.iw);
+    var y = logScale(opts.yMin, opts.yMax, f.ih, 0);
+
+    opts.yTicks.forEach(function (tv) {
+      gridline(f.g, 0, y(tv), f.iw, y(tv));
+      axisText(f.g, -10, y(tv) + 3.5, money(tv), "end", C["ink-4"], 10.5);
+    });
+    for (var yr = opts.xMin; yr <= opts.xMax; yr++) {
+      axisText(f.g, x(yr), f.ih + 19, String(yr), "middle", C["ink-4"], 10.5);
+    }
+
+    /* median-by-year line */
+    var medPts = [];
+    for (var yy = opts.xMin; yy <= opts.xMax; yy++) {
+      if (opts.medians[yy]) medPts.push({ x: x(yy), y: y(opts.medians[yy]), yr: yy, v: opts.medians[yy] });
+    }
+    f.g.appendChild(el("path", {
+      d: medPts.map(function (p, i) { return (i ? "L" : "M") + p.x.toFixed(1) + " " + p.y.toFixed(1); }).join(" "),
+      fill: "none", stroke: C.s2, "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round"
+    }));
+
+    var marks = [];
+    pts.forEach(function (p) {
+      var color = p.rnm ? C["ink-3"] : C.s1;
+      var cxj = x(p.year) + ((p.jit || 0));
+      var c = el("circle", {
+        cx: cxj, cy: y(p.price), r: 5, fill: p.rnm ? "transparent" : color,
+        stroke: p.rnm ? color : C.surface, "stroke-width": 2, "fill-opacity": p.rnm ? 0 : 0.9
+      });
+      f.g.appendChild(c);
+      marks.push({ el: c, x: cxj, y: y(p.price), d: p });
+    });
+
+    var hit = el("rect", { x: 0, y: 0, width: f.iw, height: f.ih, fill: "transparent", style: "cursor:crosshair" });
+    f.g.appendChild(hit);
+    var active = null;
+    hit.addEventListener("pointermove", function (ev) {
+      var r = f.svg.getBoundingClientRect();
+      /* x and y need their own client→viewBox ratios; reusing the x ratio for y
+         put every point out of range and killed the hover. */
+      var px = (ev.clientX - r.left) * (f.w / r.width) - m.l;
+      var py = (ev.clientY - r.top) * (f.h / r.height) - m.t;
+      var best = null, bd = Infinity;
+      marks.forEach(function (mk) {
+        var dd = (mk.x - px) * (mk.x - px) + (mk.y - py) * (mk.y - py);
+        if (dd < bd) { bd = dd; best = mk; }
+      });
+      /* nearest-point layer: the pointer only has to be closest, not dead-centre.
+         The radius is deliberately generous — far wider than the 8px mark — so a
+         sparse patch of the plot still resolves to the point the reader meant. */
+      if (!best || bd > 110 * 110) { if (active) { active.el.setAttribute("r", 5); active = null; } ttHide(); return; }
+      if (active && active !== best) active.el.setAttribute("r", 5);
+      best.el.setAttribute("r", 7);
+      active = best;
+      ttShow(ev, best.d.year + " Porsche 911 Carrera 2",
+        best.d.rnm ? "Reserve not met — plotted at high bid" : "Sold",
+        [{ color: best.d.rnm ? C["ink-3"] : C.s1, name: "All-in", value: moneyFull(best.d.price) },
+         { color: C.s2, name: "Year median", value: moneyFull(opts.medians[best.d.year]) },
+         { color: null, name: "vs year median", value: (best.d.price >= opts.medians[best.d.year] ? "+" : "") + pct((best.d.price / opts.medians[best.d.year] - 1) * 100, 0) }]);
+    });
+    hit.addEventListener("pointerleave", function () {
+      if (active) { active.el.setAttribute("r", 5); active = null; }
+      ttHide();
+    });
+
+    if (opts.legendId) {
+      legendInto(document.getElementById(opts.legendId), [
+        { name: "Sold", color: C.s1, dot: true },
+        { name: "Reserve not met (high bid)", color: C["ink-3"], dot: true, hollow: true },
+        { name: "Median by year", color: C.s2 }
+      ]);
+    }
+  }
+
+  /* ───────────────────────── chart: bubble (nearest-point) ───────────────────────── */
+
+  function bubbleChart(hostId, opts) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var m = { t: 18, r: 22, b: 40, l: 54 };
+    var f = frame(host, 320, m);
+    var x = lin(opts.xMin, opts.xMax, 0, f.iw);
+    var y = lin(opts.yMin, opts.yMax, f.ih, 0);
+    var rad = function (n) { return 4 + Math.sqrt(n) * 3.2; };
+
+    [0.9, 1.0, 1.1, 1.2, 1.3].forEach(function (tv) {
+      gridline(f.g, 0, y(tv), f.iw, y(tv));
+      axisText(f.g, -10, y(tv) + 3.5, tv.toFixed(2) + "×", "end", C["ink-4"], 10.5);
+    });
+    [40, 50, 60, 70, 80, 90, 100].forEach(function (tv) {
+      axisText(f.g, x(tv), f.ih + 19, "p" + tv, "middle", C["ink-4"], 10.5);
+    });
+    label(f.g, f.iw / 2, f.ih + 36, "Online watcher percentile (BaT + Cars & Bids, trailing 12m)", "middle", C["ink-4"], 11);
+    label(f.g, -44, -6, "Live ÷ online comp", "start", C["ink-4"], 11);
+
+    /* parity: the live room pays exactly the online price */
+    f.g.appendChild(el("line", { x1: 0, y1: y(1), x2: f.iw, y2: y(1), stroke: C["ink-3"], "stroke-width": 1 }));
+    label(f.g, 2, y(1) - 7, "online comp", "start", C["ink-3"], 10.5, 600);
+
+    var marks = [];
+    opts.points.forEach(function (p) {
+      var color = p.liveR >= 1 ? C["div-warm"] : C["div-cool"];
+      var c = el("circle", {
+        cx: x(p.onlineP), cy: y(p.liveR), r: rad(p.liveN),
+        fill: color, "fill-opacity": 0.28, stroke: color, "stroke-width": 2
+      });
+      f.g.appendChild(c);
+      marks.push({ el: c, x: x(p.onlineP), y: y(p.liveR), d: p, base: rad(p.liveN) });
+    });
+
+    var hit = el("rect", { x: 0, y: 0, width: f.iw, height: f.ih, fill: "transparent", style: "cursor:crosshair" });
+    f.g.appendChild(hit);
+    var active = null;
+    hit.addEventListener("pointermove", function (ev) {
+      var r = f.svg.getBoundingClientRect();
+      var px = (ev.clientX - r.left) * (f.w / r.width) - m.l;
+      var py = (ev.clientY - r.top) * (f.h / r.height) - m.t;
+      var best = null, bd = Infinity;
+      marks.forEach(function (mk) {
+        var dd = (mk.x - px) * (mk.x - px) + (mk.y - py) * (mk.y - py);
+        if (dd < bd) { bd = dd; best = mk; }
+      });
+      if (!best || bd > 110 * 110) {
+        if (active) { active.el.setAttribute("fill-opacity", 0.28); active = null; }
+        ttHide(); return;
+      }
+      if (active && active !== best) active.el.setAttribute("fill-opacity", 0.28);
+      best.el.setAttribute("fill-opacity", 0.55);
+      active = best;
+      var d = best.d;
+      ttShow(ev, d.b, d.liveR >= 1 ? "Live room pays a premium" : "Live room pays a discount", [
+        { color: d.liveR >= 1 ? C["div-warm"] : C["div-cool"], name: "Live ÷ online comp", value: ratio(d.liveR) },
+        { color: null, name: "Online percentile", value: "p" + d.onlineP },
+        { color: null, name: "Live lots", value: String(d.liveN) },
+        { color: null, name: "Online lots", value: String(d.onlineN) }
+      ]);
+    });
+    hit.addEventListener("pointerleave", function () {
+      if (active) { active.el.setAttribute("fill-opacity", 0.28); active = null; }
+      ttHide();
+    });
+
+    if (opts.legendId) {
+      legendInto(document.getElementById(opts.legendId), [
+        { name: "Live premium over the online comp", color: C["div-warm"], dot: true },
+        { name: "Live discount to the online comp", color: C["div-cool"], dot: true }
+      ]);
+    }
+  }
+
+  /* ───────────────────────── render each board ───────────────────────── */
+
+  function heatColor(p) {
+    return p >= 85 ? C["heat-5"] : p >= 70 ? C["heat-4"] : p >= 50 ? C["heat-3"] : p >= 30 ? C["heat-2"] : C["heat-1"];
+  }
+
+  function renderPulse() {
+    kpis("kpi-pulse", [
+      { label: "Sell-through", value: "68.4%", spark: [74, 74, 73, 72, 71, 70, 69, 68.4], sparkColor: C.critical, delta: "4.1 pts", dir: "down", dsub: "vs 2025 Q4" },
+      { label: "Median all-in", value: "$47,500", spark: [44, 45, 45.5, 46, 46.2, 46.4, 47, 47.5], sparkColor: C.good, delta: "2.1%", dir: "up", dsub: "vs 2025 Q4" },
+      { label: "Sold above high estimate", value: "23%", spark: [31, 30, 29, 28, 26, 25, 24, 23], sparkColor: C.critical, delta: "6 pts", dir: "down", dsub: "vs 2025 Q4" },
+      { label: "Settled volume", value: "$41.2M", spark: [33, 34, 36, 38, 39, 38, 40, 41.2], sparkColor: C.good, delta: "6.4%", dir: "up", dsub: "vs 2025 Q4" }
+    ]);
+
+    lineChart("c-index", {
+      xLabels: Q, yMin: 88, yMax: 124, yTicks: [90, 100, 110, 120],
+      yFmt: function (v) { return String(v); }, refY: 100,
+      series: TIERS.map(function (t) { return { name: t.name, color: t.color, values: t.index }; }),
+      endFmt: function (v) { return v.toFixed(1); },
+      ttSub: "Index, base 100 = 2024 Q3",
+      ttFmt: function (v) { return v.toFixed(1); },
+      legendId: "l-index", height: 250
+    });
+    tableInto(document.getElementById("t-index"),
+      ["Quarter"].concat(TIERS.map(function (t) { return t.name; })),
+      Q.map(function (q, i) { return [q].concat(TIERS.map(function (t) { return t.index[i].toFixed(1); })); }),
+      ["l"]);
+
+    lineChart("c-sell", {
+      xLabels: Q, yMin: 58, yMax: 82, yTicks: [60, 65, 70, 75, 80],
+      yFmt: function (v) { return v + "%"; },
+      series: TIERS.map(function (t) { return { name: t.name, color: t.color, values: t.sell }; }),
+      endFmt: function (v) { return v + "%"; },
+      ttSub: "Share meeting reserve",
+      ttFmt: function (v) { return v + "%"; },
+      legendId: "l-sell", height: 230
+    });
+    tableInto(document.getElementById("t-sell"),
+      ["Quarter"].concat(TIERS.map(function (t) { return t.name; })),
+      Q.map(function (q, i) { return [q].concat(TIERS.map(function (t) { return t.sell[i] + "%"; })); }),
+      ["l"]);
+
+    columnChart("c-vol", {
+      data: VOLUME.map(function (v, i) { return { value: v, q: Q[i] }; }),
+      yMin: 0, yMax: 520, yTicks: [0, 200, 400], yFmt: function (v) { return String(v); },
+      colorOf: function () { return "#565764"; },   /* de-emphasis grey, still ≥3:1 on the card */
+      xLabelOf: function (d) { return d.q; },
+      valueFmt: function (v) { return String(v); },
+      emphasis: function (d, i) { return i === VOLUME.length - 1; },
+      ttHead: function (d) { return d.q; },
+      ttRows: function (d) { return [{ color: C["ink-3"], name: "Lots settled", value: String(d.value) }]; },
+      height: 165
+    });
+    tableInto(document.getElementById("t-vol"), ["Quarter", "Lots settled"],
+      Q.map(function (q, i) { return [q, String(VOLUME[i])]; }), ["l"]);
+  }
+
+  function renderDiscovery() {
+    kpis("kpi-disc", [
+      { label: "Median vs mid-estimate", value: "0.99×", delta: "1% under book", dir: "info", dsub: "· 957 lots" },
+      { label: "Settle below midpoint", value: "52%", delta: "2 pts", dir: "down", dsub: "vs prior 12m" },
+      { label: "Beat the high estimate", value: "23%", delta: "6 pts", dir: "down", dsub: "vs prior 12m" },
+      { label: "Median buyer premium", value: "11.4%", delta: "of hammer", dir: "info", dsub: "· catalogue houses only" }
+    ]);
+
+    divergingHist("c-hist", { bins: HIST });
+    legendInto(document.getElementById("l-hist"), [
+      { name: "Below mid-estimate", color: C["div-cool"] },
+      { name: "Above mid-estimate", color: C["div-warm"] }
+    ]);
+    tableInto(document.getElementById("t-hist"), ["Ratio band", "Lots", "Share"],
+      HIST.map(function (b) {
+        return [b.c0.toFixed(2) + "× – " + b.c1.toFixed(2) + "×", String(b.n), pct(b.n / 957 * 100, 1)];
+      }), ["l"]);
+
+    lollipop("c-make", { rows: MAKES, xMin: 0.82, xMax: 1.23, legendId: "l-make" });
+    tableInto(document.getElementById("t-make"), ["Make", "Median vs estimate", "Gap", "Lots"],
+      MAKES.map(function (r) {
+        return [r.make, ratio(r.v), (r.v >= 1 ? "+" : "") + pct((r.v - 1) * 100, 0), String(r.n)];
+      }), ["l"]);
+
+    var feeRows = FEES.map(function (f) {
+      var meter = h("span", "meter");
+      var track = h("span", "track");
+      var fill = h("span", "fill");
+      fill.style.width = (f.eff / 15 * 100) + "%";
+      fill.style.background = f.eff >= 13 ? C["heat-5"] : f.eff >= 10 ? C["heat-4"] : C["heat-2"];
+      track.appendChild(fill);
+      meter.appendChild(track);
+      var v = h("span", "num"); v.textContent = pct(f.eff, 2);
+      meter.appendChild(v);
+      return [f.house, h("span", "dim", f.rule), moneyFull(f.prem), moneyFull(120000 + f.prem), meter];
+    });
+    tableInto(document.getElementById("t-fees"),
+      ["House", "Fee schedule", "Premium", "All-in", "Effective rate"], feeRows, ["l", "l"]);
+  }
+
+  function renderDemand() {
+    kpis("kpi-demand", [
+      { label: "Top-decile vs bucket median", value: "1.31×", delta: "vs 0.84×", dir: "info", dsub: "in the bottom decile" },
+      { label: "Top-decile sell-through", value: "94%", delta: "43 pts", dir: "up", dsub: "vs bottom decile" },
+      { label: "Rank correlation", value: "0.87", delta: "Spearman", dir: "info", dsub: "· closing watchers" },
+      { label: "Live lots ending <48h", value: "8", delta: "3 hot", dir: "info", dsub: "· across 3 sources" }
+    ]);
+
+    columnChart("c-dec", {
+      data: DECILES.map(function (d) { return { value: d.v, d: d.d, sell: d.sell, n: d.n }; }),
+      yMin: 0.75, yMax: 1.38, baseline: 1.0,
+      yTicks: [0.8, 0.9, 1.0, 1.1, 1.2, 1.3],
+      yFmt: function (v) { return v.toFixed(1) + "×"; },
+      refY: 1.0, refLabel: "bucket median",
+      /* diverging from the 1.0× baseline — same colour language as board 02.
+         Decile order is already carried by the x-axis, so hue encodes only sign. */
+      colorOf: function (d) { return d.value >= 1 ? C["div-warm"] : C["div-cool"]; },
+      xLabelOf: function (d) { return "D" + d.d; },
+      valueFmt: function (v) { return ratio(v); },
+      emphasis: function (d, i) { return i === 0 || i === DECILES.length - 1; },
+      ttHead: function (d) { return "Watcher decile " + d.d + (d.d === 10 ? " (most watched)" : d.d === 1 ? " (least watched)" : ""); },
+      ttRows: function (d) {
+        return [
+          { color: d.value >= 1 ? C["div-warm"] : C["div-cool"], name: "vs bucket median", value: ratio(d.value) },
+          { color: null, name: "Sell-through", value: d.sell + "%" },
+          { color: null, name: "Lots", value: String(d.n) }
+        ];
+      },
+      height: 240, maxBar: 24, bottomPad: 34
+    });
+    legendInto(document.getElementById("l-dec"), [
+      { name: "Sells above its bucket median", color: C["div-warm"] },
+      { name: "Sells below its bucket median", color: C["div-cool"] }
+    ]);
+    tableInto(document.getElementById("t-dec"),
+      ["Watcher decile", "vs bucket median", "Sell-through", "Lots"],
+      DECILES.map(function (d) { return ["D" + d.d, ratio(d.v), d.sell + "%", String(d.n)]; }), ["l"]);
+
+    var liveRows = LIVE.map(function (r) {
+      var chip = h("span", "chip " + r.state);
+      chip.appendChild(h("span", "ic"));
+      chip.appendChild(document.createTextNode(r.state === "hot" ? "Hot" : r.state === "pace" ? "On pace" : "Cold"));
+      var meter = h("span", "meter");
+      var track = h("span", "track"), fill = h("span", "fill");
+      fill.style.width = r.wp + "%";
+      fill.style.background = heatColor(r.wp);
+      track.appendChild(fill); meter.appendChild(track);
+      var pv = h("span", "num"); pv.textContent = "p" + r.wp;
+      meter.appendChild(pv);
+      var lot = h("span"); lot.appendChild(h("span", "num dim", r.lot));
+      lot.appendChild(document.createTextNode("  " + r.car));
+      return [lot, moneyFull(r.bid), moneyFull(r.comp), ratio(r.r), meter, r.left, chip];
+    });
+    tableInto(document.getElementById("t-live"),
+      ["Lot", "Current bid", "Bucket median", "vs comp", "Watcher percentile", "Left", "State"],
+      liveRows, ["l"]);
+  }
+
+  function renderComp() {
+    kpis("kpi-comp", [
+      { label: "Settled lots (24m)", value: "34", delta: "6 aliases merged", dir: "info", dsub: "· 3 sources" },
+      { label: "Sell-through", value: "82%", delta: "14 pts", dir: "up", dsub: "vs market 68%" },
+      { label: "Interquartile range", value: "$68k", delta: "$119k–$187k", dir: "info", dsub: "· half of all sales" },
+      { label: "vs market index", value: "+13 pts", delta: "since 2025 Q1", dir: "up" }
+    ]);
+
+    var jittered = SCATTER.map(function (p, i) {
+      return { year: p.year, price: p.price, rnm: p.rnm, jit: ((i % 5) - 2) * 6 };
+    });
+    scatterChart("c-scatter", {
+      points: jittered, xMin: 1989, xMax: 1994,
+      yMin: 70000, yMax: 380000, yTicks: [80000, 100000, 150000, 200000, 300000],
+      medians: YEAR_MED, legendId: "l-scatter"
+    });
+    tableInto(document.getElementById("t-sc"), ["Model year", "Lots", "Median all-in", "Range"],
+      [1989, 1990, 1991, 1992, 1993, 1994].map(function (yr) {
+        var ps = SCATTER.filter(function (p) { return p.year === yr; }).map(function (p) { return p.price; });
+        return [String(yr), String(ps.length), moneyFull(YEAR_MED[yr]),
+                moneyFull(Math.min.apply(null, ps)) + " – " + moneyFull(Math.max.apply(null, ps))];
+      }), ["l"]);
+
+    lineChart("c-bucket", {
+      xLabels: BQ, yMin: 82, yMax: 145, yTicks: [90, 100, 110, 120, 130, 140],
+      yFmt: function (v) { return String(v); }, refY: 100,
+      band: { hi: BUCKET.p75, lo: BUCKET.p25, color: C.s3 },
+      series: [
+        { name: "911 (964) Carrera 2 median", color: C.s3, values: BUCKET.med },
+        { name: "Market index", color: C["ink-3"], values: BUCKET.mkt, reference: true }
+      ],
+      endFmt: function (v) { return String(v); },
+      ttSub: "Index, base 100 = 2025 Q1",
+      ttFmt: function (v, s, i) {
+        if (s.reference) return String(v);
+        return v + "  (" + BUCKET.p25[i] + "–" + BUCKET.p75[i] + ")";
+      },
+      legendId: "l-bucket", height: 240, rightPad: 62
+    });
+    tableInto(document.getElementById("t-bt"),
+      ["Quarter", "Bucket median", "p25", "p75", "Market"],
+      BQ.map(function (q, i) {
+        return [q, String(BUCKET.med[i]), String(BUCKET.p25[i]), String(BUCKET.p75[i]), String(BUCKET.mkt[i])];
+      }), ["l"]);
+
+    tableInto(document.getElementById("t-comps"),
+      ["Sold", "Lot", "Year", "Miles", "Hammer", "All-in", "vs median", "Source"],
+      COMPS.map(function (c) {
+        var vs = h("span", "num");
+        vs.textContent = ratio(c.vs);
+        vs.style.color = c.vs >= 1 ? C["div-warm-2"] : C["div-cool-2"];
+        return [c.date, h("span", "num dim", c.lot), String(c.year), c.miles,
+                moneyFull(c.hammer), moneyFull(c.allin), vs, h("span", "dim", c.src)];
+      }), ["l", "l"]);
+  }
+
+  function renderHalo() {
+    bubbleChart("c-halo", {
+      points: HALO, xMin: 38, xMax: 100, yMin: 0.86, yMax: 1.36, legendId: "l-halo"
+    });
+    tableInto(document.getElementById("t-halo"),
+      ["Bucket", "Online pct", "Live ÷ online comp", "Live lots", "Online lots"],
+      HALO.map(function (d) {
+        return [d.b, "p" + d.onlineP, ratio(d.liveR), String(d.liveN), String(d.onlineN)];
+      }), ["l"]);
+
+    columnChart("c-lag", {
+      data: LAGS.map(function (l) { return { value: l.rho, k: l.k }; }),
+      yMin: 0, yMax: 0.9, yTicks: [0, 0.2, 0.4, 0.6, 0.8],
+      yFmt: function (v) { return v.toFixed(1); },
+      colorOf: function (d) { return d.value >= RHO_CRIT ? C.s3 : C["ink-4"]; },
+      xLabelOf: function (d) { return d.k === 0 ? "same Q" : "+" + d.k + "Q"; },
+      valueFmt: function (v) { return v.toFixed(2); },
+      emphasis: function (d) { return d.value === 0.81; },
+      ttHead: function (d) { return d.k === 0 ? "Same quarter" : d.k + "-quarter lead"; },
+      ttSub: function (d) { return d.value >= RHO_CRIT ? "Above the n=15 significance floor" : "Not distinguishable from noise"; },
+      ttRows: function (d) {
+        return [
+          { color: d.value >= RHO_CRIT ? C.s3 : C["ink-4"], name: "Spearman ρ", value: d.value.toFixed(2) },
+          { color: null, name: "5% floor at n=15", value: RHO_CRIT.toFixed(2) }
+        ];
+      },
+      height: 215, maxBar: 46, bottomPad: 34, sigLine: RHO_CRIT, sigLabel: "5% significance floor (n=15)"
+    });
+    tableInto(document.getElementById("t-lag"),
+      ["Lag", "Spearman ρ", "Above 5% floor"],
+      LAGS.map(function (l) {
+        return [l.k === 0 ? "Same quarter" : l.k + "-quarter lead", l.rho.toFixed(2), l.rho >= RHO_CRIT ? "yes" : "no"];
+      }), ["l"]);
+
+    var covRows = HALO.slice().sort(function (a, b) { return a.liveN - b.liveN; }).map(function (d) {
+      var thin = d.liveN <= 4;
+      var chip = h("span", "chip " + (thin ? "floor" : d.liveN >= 9 ? "ok" : "pace"));
+      chip.appendChild(h("span", "ic"));
+      chip.appendChild(document.createTextNode(thin ? "At the floor" : d.liveN >= 9 ? "Usable" : "Thin"));
+      return [d.b, String(d.onlineN), String(d.liveN), "p" + d.onlineP, ratio(d.liveR), chip];
+    });
+    tableInto(document.getElementById("t-cov"),
+      ["Bucket", "Online lots", "Live lots", "Online pct", "Live ÷ comp", "Sample"],
+      covRows, ["l"]);
+  }
+
+  var RENDERERS = {
+    "p-pulse": renderPulse, "p-disc": renderDiscovery, "p-demand": renderDemand,
+    "p-comp": renderComp, "p-halo": renderHalo
+  };
+
+  function renderActive() {
+    var active = document.querySelector(".panel:not([hidden])");
+    if (active && RENDERERS[active.id]) RENDERERS[active.id]();
+  }
+
+  /* ───────────────────────── tabs, table toggles, resize ───────────────────────── */
+
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+  tabs.forEach(function (t) {
+    t.addEventListener("click", function () {
+      tabs.forEach(function (o) {
+        var on = o === t;
+        o.setAttribute("aria-selected", on ? "true" : "false");
+        document.getElementById(o.getAttribute("aria-controls")).hidden = !on;
+      });
+      ttHide();
+      renderActive();
+    });
+  });
+
+  document.addEventListener("click", function (ev) {
+    var b = ev.target.closest ? ev.target.closest(".tbtn[data-table]") : null;
+    if (!b) return;
+    var t = document.getElementById(b.getAttribute("data-table"));
+    var fig = b.closest("figure");
+    var plot = fig.querySelector(".plot");
+    var leg = fig.querySelector(".legend");
+    var show = b.getAttribute("aria-pressed") !== "true";
+    b.setAttribute("aria-pressed", show ? "true" : "false");
+    t.hidden = !show;
+    if (plot) plot.hidden = show;
+    if (leg) leg.hidden = show;
+  });
+
+  /* segmented / select controls are mockup affordances — reflect the click, don't refetch */
+  document.addEventListener("click", function (ev) {
+    var b = ev.target.closest ? ev.target.closest(".seg button") : null;
+    if (!b) return;
+    Array.prototype.forEach.call(b.parentNode.children, function (o) {
+      o.setAttribute("aria-pressed", o === b ? "true" : "false");
+    });
+  });
+
+  var rt;
+  addEventListener("resize", function () {
+    clearTimeout(rt);
+    rt = setTimeout(renderActive, 140);
+  });
+
+  renderActive();
+})();
+</script>
