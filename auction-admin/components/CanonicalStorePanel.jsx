@@ -2,8 +2,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   RefreshCw, Download, Search, Plus, CheckCircle, XCircle, ExternalLink,
-  Gavel, ListChecks, Rows3, FolderTree, Radio, Sparkles, Pencil,
+  Gavel, ListChecks, Rows3, FolderTree, Radio, Sparkles, Pencil, Trash2,
 } from 'lucide-react';
+import {
+  DEFAULT_CATEGORY, FEE_CATEGORY_LABELS, categoryLabel, computePremium,
+  describeTierSet, normalizeFeeSchedule,
+} from '../lib/feeSchedule';
 
 /**
  * Unified admin panel for the canonical auction store (plan §5, Phase 3 MVP).
@@ -430,9 +434,156 @@ function Results() {
   );
 }
 
+// ------------------------------------------------------- Buyer premium tiers
+// Houses publish a fee table, not a single rate ("12% up to $250,000, 10% on
+// any balance over; motorcycles 20%"). The editor below keeps tiers as typed
+// strings and normalizes through lib/feeSchedule, so the preview here and the
+// premium the server writes come from the same arithmetic.
+
+const emptyFeeRow = (category = DEFAULT_CATEGORY) => ({
+  category, mode: 'marginal', tiers: [{ up_to: '', pct: '' }],
+});
+
+/** Editor rows -> canonical schedule (throws with a readable reason). */
+function feeRowsToSchedule(rows) {
+  const categories = {};
+  for (const r of rows) {
+    if (categories[r.category]) {
+      throw new Error(`Two fee rows both cover ${categoryLabel(r.category)} — merge them or pick another category`);
+    }
+    categories[r.category] = { mode: r.mode, tiers: r.tiers };
+  }
+  return normalizeFeeSchedule({ categories });
+}
+
+/** Canonical schedule -> editor rows. */
+function scheduleToFeeRows(schedule) {
+  if (!schedule?.categories || !Object.keys(schedule.categories).length) return [emptyFeeRow()];
+  return Object.entries(schedule.categories).map(([category, set]) => ({
+    category,
+    mode: set.mode,
+    tiers: set.tiers.map((t) => ({ up_to: t.up_to == null ? '' : String(t.up_to), pct: String(t.pct) })),
+  }));
+}
+
+// Schedules are remembered per event in the browser, so re-opening an event
+// mid-sale brings its fee table back without retyping. The authoritative copy
+// travels with each lot (raw_payload.fee_schedule) and is reloaded from there
+// by "Load event lots" when this browser has never seen the event.
+const feeStorageKey = (eventName) => `store-fee-schedule:${String(eventName || '').trim().toLowerCase()}`;
+
+function loadStoredFeeRows(eventName) {
+  if (typeof window === 'undefined' || !eventName?.trim()) return null;
+  try {
+    const raw = window.localStorage.getItem(feeStorageKey(eventName));
+    return raw ? scheduleToFeeRows(normalizeFeeSchedule(JSON.parse(raw))) : null;
+  } catch { return null; }
+}
+
+function FeeScheduleEditor({ rows, setRows, schedule, error, currency }) {
+  const [sample, setSample] = useState('');
+  const cur = currency || 'USD';
+  const unusedCategory = Object.keys(FEE_CATEGORY_LABELS)
+    .find((k) => !rows.some((r) => r.category === k)) || `category_${rows.length + 1}`;
+
+  const patchRow = (i, patch) => setRows(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const patchTier = (i, ti, patch) => patchRow(i, {
+    tiers: rows[i].tiers.map((t, idx) => (idx === ti ? { ...t, ...patch } : t)),
+  });
+
+  return (
+    <div className="mt-3 border-t border-slate-700 pt-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <h4 className="text-slate-300 text-sm font-semibold uppercase tracking-wide">Buyer premium</h4>
+        <span className="text-slate-500 text-xs">
+          Sliding scales welcome — a blank threshold means “and anything above”.
+        </span>
+      </div>
+
+      {rows.map((row, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2 mt-2">
+          <select className={`${inputCls} py-1`} value={row.category}
+            onChange={(e) => patchRow(i, { category: e.target.value })}>
+            {Object.entries(FEE_CATEGORY_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+            {!FEE_CATEGORY_LABELS[row.category] && <option value={row.category}>{row.category}</option>}
+          </select>
+          <select className={`${inputCls} py-1`} value={row.mode} title="How the bands combine"
+            onChange={(e) => patchRow(i, { mode: e.target.value })}>
+            <option value="marginal">tier by band (12% up to X, 10% on the balance)</option>
+            <option value="bracket">whole price at one band’s rate</option>
+          </select>
+          {row.tiers.map((t, ti) => (
+            <span key={ti} className="flex items-center gap-1 bg-slate-900/40 rounded px-2 py-1">
+              <input className={`${inputCls} w-16 py-1`} placeholder="%" inputMode="decimal" value={t.pct}
+                onChange={(e) => patchTier(i, ti, { pct: e.target.value.replace(/[^\d.]/g, '') })} />
+              <span className="text-slate-500 text-xs">% up to</span>
+              <input className={`${inputCls} w-28 py-1`} placeholder="no limit" inputMode="numeric" value={t.up_to}
+                onChange={(e) => patchTier(i, ti, { up_to: e.target.value.replace(/[^\d.]/g, '') })} />
+              {row.tiers.length > 1 && (
+                <button type="button" title="Remove tier" className="text-slate-500 hover:text-red-300"
+                  onClick={() => patchRow(i, { tiers: row.tiers.filter((_, idx) => idx !== ti) })}>
+                  <XCircle size={13} />
+                </button>
+              )}
+            </span>
+          ))}
+          <button type="button" className="text-blue-300 hover:text-blue-200 text-xs px-1"
+            onClick={() => patchRow(i, { tiers: [...row.tiers, { up_to: '', pct: '' }] })}>
+            + tier
+          </button>
+          {rows.length > 1 && (
+            <button type="button" title="Remove category" className="text-slate-500 hover:text-red-300"
+              onClick={() => setRows(rows.filter((_, idx) => idx !== i))}>
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+      ))}
+
+      <div className="flex flex-wrap items-center gap-3 mt-2">
+        <button type="button" className="text-blue-300 hover:text-blue-200 text-xs"
+          onClick={() => setRows([...rows, emptyFeeRow(unusedCategory)])}>
+          + lot category
+        </button>
+        <button type="button" className="text-slate-500 hover:text-slate-300 text-xs"
+          onClick={() => setRows([emptyFeeRow()])}>
+          clear
+        </button>
+        <input className={`${inputCls} w-36 py-1`} placeholder="Preview hammer $" inputMode="numeric"
+          value={sample} onChange={(e) => setSample(e.target.value.replace(/[^\d.]/g, ''))} />
+      </div>
+
+      {error && <p className="text-red-300 text-xs mt-2">{error}</p>}
+      {!error && schedule && (
+        <div className="mt-2 space-y-0.5">
+          {Object.entries(schedule.categories).map(([key, set]) => {
+            const fee = sample ? computePremium(sample, schedule, key) : null;
+            return (
+              <p key={key} className="text-slate-400 text-xs">
+                <span className="text-slate-300">{categoryLabel(key)}</span> — {describeTierSet(set)}
+                {fee && (
+                  <span className="text-emerald-300">
+                    {' · '}{fmtMoney(Number(sample), cur)} hammer → premium {fmtMoney(fee.premium, cur)}
+                    {' '}({fee.effective_pct}%) → all-in {fmtMoney(fee.price_all_in, cur)}
+                  </span>
+                )}
+              </p>
+            );
+          })}
+        </div>
+      )}
+      {!error && !schedule && (
+        <p className="text-slate-500 text-xs mt-2">No premium set — lots save with hammer prices only.</p>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- Live entry
 function LiveEntry() {
-  const [event, setEvent] = useState({ event_name: '', event_house: '', event_location: '', buyer_premium_pct: '', sale_date: '', currency: '' });
+  const [event, setEvent] = useState({ event_name: '', event_house: '', event_location: '', sale_date: '', currency: '' });
+  const [feeRows, setFeeRows] = useState([emptyFeeRow()]);
+  const [lotCategory, setLotCategory] = useState(DEFAULT_CATEGORY);
   const [events, setEvents] = useState([]);
   const [mode, setMode] = useState('estimate'); // 'estimate' (pre-auction) | 'result'
   const [lot, setLot] = useState({ lot: '', year: '', make: '', model: '', trim: '', price: '', estimate_low: '', estimate_high: '', outcome: 'sold' });
@@ -457,14 +608,50 @@ function LiveEntry() {
     api('/api/store/events').then((d) => setEvents(d.rows || [])).catch(() => {});
   }, []);
 
+  // The fee table the editor currently describes; null when nothing is set.
+  const { schedule: feeSchedule, error: feeError } = useMemo(() => {
+    try { return { schedule: feeRowsToSchedule(feeRows), error: null }; }
+    catch (e) { return { schedule: null, error: e.message }; }
+  }, [feeRows]);
+  const feeCategories = feeSchedule ? Object.keys(feeSchedule.categories) : [];
+
+  // Keep the picked category on a row that still exists in the schedule.
+  useEffect(() => {
+    if (feeCategories.length && !feeCategories.includes(lotCategory)) {
+      setLotCategory(feeCategories.includes(DEFAULT_CATEGORY) ? DEFAULT_CATEGORY : feeCategories[0]);
+    }
+  }, [feeCategories.join(','), lotCategory]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore a remembered schedule when an event name is typed/picked — but
+  // never over tiers already entered for the event in front of you.
+  const feeRowsRef = useRef(feeRows);
+  feeRowsRef.current = feeRows;
+  useEffect(() => {
+    if (!event.event_name?.trim()) return;
+    let hasTiers = true;
+    try { hasTiers = Boolean(feeRowsToSchedule(feeRowsRef.current)); } catch { hasTiers = true; }
+    if (hasTiers) return;
+    const stored = loadStoredFeeRows(event.event_name);
+    if (stored) setFeeRows(stored);
+  }, [event.event_name]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const name = event.event_name?.trim();
+    if (!name || !feeSchedule) return;
+    try { window.localStorage.setItem(feeStorageKey(name), JSON.stringify(feeSchedule)); } catch { /* private mode */ }
+  }, [event.event_name, feeSchedule]);
+
   const submit = async (e) => {
     e.preventDefault();
     if (saving) return;
+    if (feeError) { setError(feeError); return; }
     setError(null); setSaving(true);
     try {
       const body = { ...event, ...lot, mode };
-      if (mode === 'result' && event.buyer_premium_pct !== '' && lot.outcome === 'sold') {
-        body.buyer_premium_pct = event.buyer_premium_pct;
+      if (feeSchedule) {
+        body.fee_schedule = feeSchedule;
+        body.lot_category = lotCategory;
       }
       const data = await api('/api/store/entry', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -485,11 +672,15 @@ function LiveEntry() {
       if (data.event) {
         setEvent((ev) => ({ ...ev, event_house: ev.event_house || data.event.house || '', event_location: ev.event_location || data.event.location || '' }));
       }
+      // Lots carry the schedule they were priced with — adopt it when this
+      // browser has no tiers for the event yet.
+      if (data.fee_schedule && !feeSchedule) setFeeRows(scheduleToFeeRows(data.fee_schedule));
     } catch (e) { setError(e.message); }
   };
 
   const saveLotResult = async (row) => {
     const edit = lotEdits[row.id] || {};
+    if (feeError) { setError(feeError); return; }
     setSavingLot(row.id); setError(null);
     try {
       await api('/api/store/entry', {
@@ -503,7 +694,8 @@ function LiveEntry() {
           price: edit.price,
           currency: event.currency || undefined,
           sale_date: event.sale_date || undefined,
-          buyer_premium_pct: event.buyer_premium_pct !== '' ? event.buyer_premium_pct : undefined,
+          fee_schedule: feeSchedule || undefined,
+          lot_category: feeSchedule ? (edit.category || lotCategory) : undefined,
         }),
       });
       await loadEventLots();
@@ -532,15 +724,18 @@ function LiveEntry() {
         event_name: prev.event_name || ev.name || '',
         event_house: prev.event_house || ev.house || '',
         event_location: prev.event_location || ev.location || '',
-        buyer_premium_pct: prev.buyer_premium_pct || (ev.buyer_premium_pct ?? ''),
         currency: prev.currency || extractedCurrency,
       }));
+      // A fee table on the page (flat or tiered) fills the editor when it is
+      // still empty — never over tiers already entered by hand.
+      if (ev.fee_schedule && !feeSchedule) setFeeRows(scheduleToFeeRows(ev.fee_schedule));
     } catch (e) { setError(e.message); }
     setAiBusy(false);
   };
 
   const importStaged = async () => {
     if (!staged) return;
+    if (feeError) { setError(feeError); return; }
     setImporting(true); setError(null);
     let ok = 0;
     for (const l of staged) {
@@ -556,7 +751,8 @@ function LiveEntry() {
             price: l.price, outcome: l.outcome || undefined,
             currency: l.currency || event.currency || undefined,
             sale_date: event.sale_date || undefined,
-            buyer_premium_pct: event.buyer_premium_pct !== '' ? event.buyer_premium_pct : undefined,
+            fee_schedule: feeSchedule || undefined,
+            lot_category: feeSchedule ? (l.category || lotCategory) : undefined,
           }),
         });
         ok += 1;
@@ -577,7 +773,7 @@ function LiveEntry() {
     <div className="max-w-6xl">
       <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 mb-4">
         <h3 className="text-slate-300 text-sm font-semibold mb-2 uppercase tracking-wide">Event</h3>
-        <div className="grid grid-cols-2 md:grid-cols-7 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
           <input className={inputCls} list="store-events" placeholder="Event name *" value={event.event_name}
             onChange={(e) => setEvent({ ...event, event_name: e.target.value })} />
           <datalist id="store-events">{events.map((ev) => <option key={ev.id} value={ev.name} />)}</datalist>
@@ -592,12 +788,12 @@ function LiveEntry() {
             <option value="">USD</option>
             {['EUR', 'GBP', 'CHF', 'CAD', 'AUD', 'JPY'].map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <input className={inputCls} type="number" step="0.5" placeholder="Buyer premium %" value={event.buyer_premium_pct}
-            onChange={(e) => setEvent({ ...event, buyer_premium_pct: e.target.value })} />
           <button onClick={loadEventLots} className="bg-slate-700 hover:bg-slate-600 text-white text-sm px-3 py-2 rounded">
             Load event lots
           </button>
         </div>
+        <FeeScheduleEditor rows={feeRows} setRows={setFeeRows} schedule={feeSchedule}
+          error={feeError} currency={event.currency} />
         {event.currency && (
           <p className="text-slate-500 text-xs mt-2">
             {event.currency} amounts are converted to USD at the ECB rate for
@@ -649,7 +845,12 @@ function LiveEntry() {
                 <option value="reserve_not_met">RNM</option>
                 <option value="withdrawn">Withdrawn</option>
               </select>
-              <div />
+              {feeCategories.length > 1 ? (
+                <select className={inputCls} title="Which row of the fee table this lot pays"
+                  value={lotCategory} onChange={(e) => setLotCategory(e.target.value)}>
+                  {feeCategories.map((k) => <option key={k} value={k}>{categoryLabel(k)}</option>)}
+                </select>
+              ) : <div />}
             </>
           )}
         </div>
@@ -658,6 +859,16 @@ function LiveEntry() {
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded font-medium disabled:opacity-50">
             <Plus size={16} /> {saving ? 'Saving…' : mode === 'estimate' ? 'Add lot with estimate (Enter)' : 'Add result (Enter)'}
           </button>
+          {mode === 'result' && lot.outcome === 'sold' && (() => {
+            const fee = feeSchedule && lot.price ? computePremium(lot.price, feeSchedule, lotCategory) : null;
+            if (!fee) return null;
+            return (
+              <span className="text-slate-400 text-sm">
+                + {fmtMoney(fee.premium, event.currency || 'USD')} premium ({fee.effective_pct}%)
+                {' → '}<span className="text-emerald-300">all-in {fmtMoney(fee.price_all_in, event.currency || 'USD')}</span>
+              </span>
+            );
+          })()}
         </div>
       </form>
 
@@ -720,6 +931,13 @@ function LiveEntry() {
                               <option value="reserve_not_met">RNM</option>
                               <option value="withdrawn">Withdrawn</option>
                             </select>
+                            {feeCategories.length > 1 && (
+                              <select className={`${inputCls} py-1`} title="Fee table row for this lot"
+                                value={lotEdits[r.id]?.category ?? lotCategory}
+                                onChange={(e) => setLotEdits({ ...lotEdits, [r.id]: { ...lotEdits[r.id], category: e.target.value } })}>
+                                {feeCategories.map((k) => <option key={k} value={k}>{categoryLabel(k)}</option>)}
+                              </select>
+                            )}
                           </div>
                         </Td>
                         <Td>
@@ -770,7 +988,8 @@ function LiveEntry() {
           <div className="overflow-x-auto rounded-lg border border-slate-700 mt-3">
             <table className="w-full bg-slate-800/60">
               <thead className="bg-slate-800/80 border-b border-slate-700">
-                <tr><Th></Th><Th>Lot</Th><Th>Year</Th><Th>Make</Th><Th>Model</Th><Th>Est. low</Th><Th>Est. high</Th><Th>Price</Th><Th>Cur</Th><Th>Outcome</Th></tr>
+                <tr><Th></Th><Th>Lot</Th><Th>Year</Th><Th>Make</Th><Th>Model</Th><Th>Est. low</Th><Th>Est. high</Th><Th>Price</Th><Th>Cur</Th><Th>Outcome</Th>
+                  {feeCategories.length > 1 && <Th>Fee row</Th>}</tr>
               </thead>
               <tbody className="divide-y divide-slate-700/60">
                 {staged.map((l, i) => (
@@ -792,6 +1011,14 @@ function LiveEntry() {
                         <option value="withdrawn">withdrawn</option>
                       </select>
                     </Td>
+                    {feeCategories.length > 1 && (
+                      <Td>
+                        <select className={`${inputCls} py-1`} value={l.category ?? lotCategory}
+                          onChange={(e) => setStagedField(i, 'category', e.target.value)}>
+                          {feeCategories.map((k) => <option key={k} value={k}>{categoryLabel(k)}</option>)}
+                        </select>
+                      </Td>
+                    )}
                   </tr>
                 ))}
               </tbody>

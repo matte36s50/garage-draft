@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '../../../../lib/adminAuth';
 import { canonicalGet, canonicalRpc } from '../../../../lib/canonicalStore';
 import { getUsdRate } from '../../../../lib/fx';
+import {
+  computePremium, normalizeCategory, normalizeFeeSchedule, tierSetForCategory,
+} from '../../../../lib/feeSchedule';
 
 /**
  * Manual live-auction lot entry (unified panel) — two-phase workflow:
@@ -14,6 +17,13 @@ import { getUsdRate } from '../../../../lib/fx';
  *
  * GET ?event=<name> lists that event's lots (for the "update with results"
  * pass in the UI).
+ *
+ * Buyer premium: send either a flat `buyer_premium_pct` or a `fee_schedule`
+ * (see lib/feeSchedule.js) for houses that publish a sliding scale — plus an
+ * optional `lot_category` ('cars', 'motorcycles', 'automobilia') to pick the
+ * right row of their fee table. The premium is computed here, in the catalog
+ * currency, before the FX conversion below; the store gets price_all_in, the
+ * blended rate in buyer_premium_pct, and the schedule itself for audit.
  */
 
 const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
@@ -35,7 +45,24 @@ export async function GET(request) {
     `auction_listings_all?select=id,source_listing_id,raw_title,year,make,model,trim,status,outcome,price,price_all_in,currency,estimate_low,estimate_high,buyer_premium_pct&event_id=eq.${ev.rows[0].id}&order=source_listing_id.asc&limit=1000`
   );
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: res.status });
-  return NextResponse.json({ event: ev.rows[0], rows: res.rows });
+
+  // Best-effort: recover the fee schedule from a lot that was entered with one
+  // so the UI can reload the event's tiers. A store that can't answer the
+  // JSON-path query simply reports no schedule — never a failed lot list.
+  let feeSchedule = null;
+  const fs = await canonicalGet(
+    `auction_listings_all?select=fee_schedule:raw_payload->fee_schedule`
+    + `&event_id=eq.${ev.rows[0].id}&raw_payload->>fee_schedule=not.is.null&limit=1`
+  );
+  if (fs.ok && fs.rows.length) {
+    try {
+      feeSchedule = normalizeFeeSchedule(fs.rows[0].fee_schedule);
+    } catch {
+      feeSchedule = null;
+    }
+  }
+
+  return NextResponse.json({ event: ev.rows[0], rows: res.rows, fee_schedule: feeSchedule });
 }
 
 export async function POST(request) {
@@ -50,6 +77,26 @@ export async function POST(request) {
   }
 
   const mode = body.mode === 'estimate' ? 'estimate' : 'result';
+
+  // Fee schedule: an explicit tiered schedule wins; a bare buyer_premium_pct
+  // still works and normalizes to a single flat tier.
+  let feeSchedule;
+  try {
+    feeSchedule = normalizeFeeSchedule(
+      body.fee_schedule != null && body.fee_schedule !== '' ? body.fee_schedule : body.buyer_premium_pct
+    );
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 400 });
+  }
+  const lotCategory = normalizeCategory(body.lot_category);
+  // A schedule that has no row for this lot's category (and no catch-all) would
+  // silently save the lot without a premium — say so instead.
+  if (feeSchedule && !tierSetForCategory(feeSchedule, lotCategory)) {
+    return NextResponse.json(
+      { error: `No buyer premium tier for lot category '${lotCategory}' in this fee schedule` },
+      { status: 400 }
+    );
+  }
 
   if (!body.make || !body.model) {
     return NextResponse.json({ error: 'make and model are required' }, { status: 400 });
@@ -96,11 +143,30 @@ export async function POST(request) {
     payload.ended_at = body.ended_at || body.sale_date || new Date().toISOString().slice(0, 10);
     if (outcome === 'sold') {
       payload.price = Number(body.price);
-      if (body.buyer_premium_pct != null && body.buyer_premium_pct !== '') {
-        payload.buyer_premium_pct = Number(body.buyer_premium_pct);
+      const fee = computePremium(payload.price, feeSchedule, lotCategory);
+      if (fee) {
+        // buyer_premium_pct carries the blended rate this lot actually paid, so
+        // a single number still describes the sale; the tiers that produced it
+        // ride along for audit (and to reload the schedule in the UI).
+        payload.buyer_premium_pct = fee.effective_pct;
+        payload.price_all_in = fee.price_all_in;
+        payload.fee_schedule = feeSchedule;
+        payload.fee_applied = {
+          category: fee.category,
+          mode: fee.mode,
+          premium: fee.premium,
+          effective_pct: fee.effective_pct,
+          breakdown: fee.breakdown,
+        };
       }
+      // An explicitly supplied all-in price still wins — an admin correcting
+      // one odd lot (a house discount, a charity lot) shouldn't have to edit
+      // the schedule. The rate then describes the override, not the tiers.
       if (body.price_all_in != null && body.price_all_in !== '') {
         payload.price_all_in = Number(body.price_all_in);
+        payload.buyer_premium_pct =
+          Math.round(((payload.price_all_in - payload.price) / payload.price) * 1e6) / 1e4;
+        if (payload.fee_applied) payload.fee_applied.overridden = true;
       }
     } else if (body.price != null && body.price !== '') {
       payload.current_bid = Number(body.price); // RNM high bid, never a price
