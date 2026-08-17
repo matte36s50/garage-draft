@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Search, RefreshCw, ExternalLink, TrendingUp, TrendingDown } from 'lucide-react';
 import { api } from '../lib/adminApi';
+import { logTicks, usd as fmtUsd, usdShort as fmtUsdShort } from '../lib/chartScales';
 
 /**
  * Comparables — the bucket drill-down: "what is this specific car worth?"
@@ -33,15 +34,6 @@ const SERIES = {
   rnm: '#94a3b8',
 };
 
-const fmtUsd = (v) =>
-  v == null ? '—' : `$${Math.round(Number(v)).toLocaleString('en-US')}`;
-const fmtUsdShort = (v) => {
-  if (v == null) return '—';
-  const n = Number(v);
-  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  if (Math.abs(n) >= 1000) return `$${Math.round(n / 1000)}k`;
-  return `$${Math.round(n)}`;
-};
 const fmtDate = (v) => (v ? String(v).slice(0, 10) : '—');
 const bucketName = (b) =>
   [b.make, b.model, b.generation].filter(Boolean).join(' ') +
@@ -59,37 +51,6 @@ function useWidth() {
     return () => ro.disconnect();
   }, []);
   return [ref, w];
-}
-
-/**
- * Log-scale ticks spanning [lo, hi].
- *
- * Prefers 1/2/5 decades, but a single bucket often spans well under one decade
- * ($110k–$190k, say), which yields at most one such tick. Falling back to the
- * raw bounds prints ticks like "$101k"; instead we step evenly in log space and
- * round to two significant figures, which keeps the labels readable.
- */
-function logTicks(lo, hi) {
-  const nice = [];
-  for (let mag = Math.floor(Math.log10(lo)); mag <= Math.ceil(Math.log10(hi)); mag++) {
-    for (const m of [1, 2, 5]) {
-      const v = m * 10 ** mag;
-      if (v >= lo && v <= hi) nice.push(v);
-    }
-  }
-  if (nice.length >= 3) return nice;
-
-  const round2 = (v) => {
-    const mag = 10 ** (Math.floor(Math.log10(v)) - 1);
-    return Math.round(v / mag) * mag;
-  };
-  const steps = 4;
-  const out = [];
-  for (let i = 0; i < steps; i++) {
-    const v = round2(Math.exp(Math.log(lo) + ((Math.log(hi) - Math.log(lo)) * i) / (steps - 1)));
-    if (v >= lo && v <= hi && !out.includes(v)) out.push(v);
-  }
-  return out.length >= 2 ? out : [lo, hi];
 }
 
 function Tip({ tip }) {
