@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   RefreshCw, Download, Search, Plus, CheckCircle, XCircle, ExternalLink,
-  Gavel, ListChecks, Rows3, FolderTree, Radio, Sparkles, Pencil, Trash2, LineChart, Eye,
+  Gavel, ListChecks, Rows3, FolderTree, Radio, Sparkles, Pencil, Trash2, LineChart, Eye, Activity,
 } from 'lucide-react';
 import {
   DEFAULT_CATEGORY, FEE_CATEGORY_LABELS, categoryLabel, computePremium,
@@ -13,6 +13,7 @@ import BucketComparables from './BucketComparables';
 import LiveSales from './LiveSales';
 import ReconcilePanel from './ReconcilePanel';
 import DemandSignals from './DemandSignals';
+import MarketPulse from './MarketPulse';
 
 /**
  * Unified admin panel for the canonical auction store (plan §5, Phase 3 MVP).
@@ -1544,6 +1545,7 @@ const TABS = [
   { id: 'comparables', label: 'Comparables', icon: LineChart, el: <BucketComparables /> },
   { id: 'livesales', label: 'Live Sales', icon: Gavel, el: <LiveSales /> },
   { id: 'demand', label: 'Demand Signals', icon: Eye, el: <DemandSignals /> },
+  { id: 'pulse', label: 'Market Pulse', icon: Activity, el: <MarketPulse /> },
 ];
 
 export default function CanonicalStorePanel() {
