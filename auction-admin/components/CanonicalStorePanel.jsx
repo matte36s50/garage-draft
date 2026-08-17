@@ -11,6 +11,7 @@ import {
 import { api } from '../lib/adminApi';
 import BucketComparables from './BucketComparables';
 import LiveSales from './LiveSales';
+import ReconcilePanel from './ReconcilePanel';
 
 /**
  * Unified admin panel for the canonical auction store (plan §5, Phase 3 MVP).
@@ -114,6 +115,7 @@ function LiveBoard() {
 
   return (
     <div>
+      <ReconcilePanel />
       <div className="flex items-center justify-between mb-3">
         <p className="text-slate-400 text-sm">
           Upcoming + live listings across all sources, soonest ending first.
