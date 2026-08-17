@@ -10,6 +10,7 @@ import {
 } from '../lib/feeSchedule';
 import { api } from '../lib/adminApi';
 import BucketComparables from './BucketComparables';
+import LiveSales from './LiveSales';
 
 /**
  * Unified admin panel for the canonical auction store (plan §5, Phase 3 MVP).
@@ -1538,6 +1539,7 @@ const TABS = [
   { id: 'review', label: 'Review Queue', icon: ListChecks, el: <ReviewQueue /> },
   { id: 'buckets', label: 'Buckets', icon: FolderTree, el: <Buckets /> },
   { id: 'comparables', label: 'Comparables', icon: LineChart, el: <BucketComparables /> },
+  { id: 'livesales', label: 'Live Sales', icon: Gavel, el: <LiveSales /> },
 ];
 
 export default function CanonicalStorePanel() {
