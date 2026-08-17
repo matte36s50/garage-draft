@@ -2,12 +2,14 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   RefreshCw, Download, Search, Plus, CheckCircle, XCircle, ExternalLink,
-  Gavel, ListChecks, Rows3, FolderTree, Radio, Sparkles, Pencil, Trash2,
+  Gavel, ListChecks, Rows3, FolderTree, Radio, Sparkles, Pencil, Trash2, LineChart,
 } from 'lucide-react';
 import {
   DEFAULT_CATEGORY, FEE_CATEGORY_LABELS, categoryLabel, computePremium,
   describeTierSet, normalizeFeeSchedule,
 } from '../lib/feeSchedule';
+import { api } from '../lib/adminApi';
+import BucketComparables from './BucketComparables';
 
 /**
  * Unified admin panel for the canonical auction store (plan §5, Phase 3 MVP).
@@ -66,17 +68,7 @@ function useEventsById() {
   return eventsById;
 }
 
-async function api(path, opts) {
-  const res = await fetch(path, opts);
-  const data = await res.json().catch(() => ({}));
-  if (res.status === 401) {
-    // Admin session expired; the login page returns here via ?next= after re-auth.
-    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
-    throw new Error('Session expired — sending you to the login page…');
-  }
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  return data;
-}
+// Shared with the other admin panels — see lib/adminApi.js.
 
 function Badge({ children, className = 'bg-slate-700 text-slate-300' }) {
   return <span className={`px-2 py-0.5 rounded text-xs font-medium ${className}`}>{children}</span>;
@@ -1545,6 +1537,7 @@ const TABS = [
   { id: 'entry', label: 'Live Entry', icon: Gavel, el: <LiveEntry /> },
   { id: 'review', label: 'Review Queue', icon: ListChecks, el: <ReviewQueue /> },
   { id: 'buckets', label: 'Buckets', icon: FolderTree, el: <Buckets /> },
+  { id: 'comparables', label: 'Comparables', icon: LineChart, el: <BucketComparables /> },
 ];
 
 export default function CanonicalStorePanel() {
