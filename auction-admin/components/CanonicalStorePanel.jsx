@@ -596,6 +596,7 @@ function LiveEntry() {
   const [aiInput, setAiInput] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [staged, setStaged] = useState(null);
+  const [aiNote, setAiNote] = useState(null); // "read 6 of 9 slices" — a partial extraction
   const [importing, setImporting] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
 
@@ -699,7 +700,7 @@ function LiveEntry() {
   };
 
   const runExtract = async () => {
-    setAiBusy(true); setError(null); setStaged(null); setImportedCount(0);
+    setAiBusy(true); setError(null); setStaged(null); setAiNote(null); setImportedCount(0);
     try {
       const isUrl = /^https?:\/\//i.test(aiInput.trim());
       const data = await api('/api/store/extract', {
@@ -707,6 +708,9 @@ function LiveEntry() {
         body: JSON.stringify({ mode, [isUrl ? 'url' : 'text']: aiInput.trim() }),
       });
       setStaged(data.lots.map((l) => ({ ...l, _include: true })));
+      // A long catalog is read in slices; say so when only some of them landed,
+      // so a short list is not mistaken for the whole sale.
+      if (data.note) setAiNote(data.note);
       if (data.lots.length === 0) {
         setError('No lots found in that input. Many catalog pages load their lots with JavaScript, '
           + 'so the URL fetch sees an empty shell — open the page in your browser, let the lots render, '
@@ -978,6 +982,7 @@ function LiveEntry() {
             <span className="text-emerald-400 text-sm">{importedCount} imported ✓</span>
           )}
         </div>
+        {aiNote && <p className="text-amber-300/90 text-xs mt-2">{aiNote}</p>}
 
         {staged && (
           <div className="overflow-x-auto rounded-lg border border-slate-700 mt-3">
