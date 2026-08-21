@@ -21,9 +21,37 @@ import { normalizeCategory, normalizeFeeSchedule } from '../../../../lib/feeSche
  * Requires ANTHROPIC_API_KEY in the environment.
  */
 
-export const maxDuration = 300; // Claude extraction of a long page can take a while
+export const maxDuration = 300; // the platform ceiling; a run must finish inside it
 
 const MAX_INPUT_CHARS = 400_000; // ~100K tokens of page text, well within 1M context
+
+// One Claude call per slice of the page, a few slices in flight at a time.
+// A single call over a whole catalog (Mecum Monterey and friends run to
+// hundreds of lots) spends minutes writing one long JSON document and ran past
+// the 300s ceiling — the function was killed mid-flight and the browser got a
+// 504 with nothing to show for the wait. Slices finish in about the time of one
+// short call each, and whatever has come back is returned even if the rest
+// doesn't make it.
+const CHUNK_CHARS = Number(process.env.EXTRACT_CHUNK_CHARS || 45_000);
+const CHUNK_OVERLAP_CHARS = 1_200; // so a lot straddling a slice boundary survives
+const CHUNK_CONCURRENCY = Number(process.env.EXTRACT_CONCURRENCY || 4);
+
+// A deadline, not just a limit: once it passes, workers stop picking up slices
+// and the run returns what it has. It sits under maxDuration so the response is
+// always a real answer rather than a gateway timeout.
+const RUN_BUDGET_MS = Number(process.env.EXTRACT_BUDGET_MS || 230_000);
+
+// Extraction is mechanical — copying printed numbers into fields — so it runs
+// at medium effort. Both are env-overridable to retune without a deploy.
+const MODEL = process.env.EXTRACT_MODEL || 'claude-opus-4-8';
+const EFFORT = process.env.EXTRACT_EFFORT || 'medium';
+
+// Per slice, not per page: ~45K chars of catalog is well under 200 lots and
+// each lot is a short JSON object.
+const MAX_TOKENS_PER_CHUNK = 16_000;
+
+// Don't start a slice with less than this left on the clock.
+const MIN_SLICE_MS = 20_000;
 
 const EXTRACTION_SCHEMA = {
   type: 'object',
@@ -153,6 +181,139 @@ function htmlToText(html) {
     : text;
 }
 
+/**
+ * Split page text into slices of at most `size` chars, breaking on line
+ * boundaries and overlapping slightly so a lot whose block spans a boundary is
+ * seen whole by at least one slice. Duplicates from the overlap are merged by
+ * mergeLots below.
+ */
+function splitChunks(text, size) {
+  if (text.length <= size) return [text];
+  const chunks = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + size, text.length);
+    if (end < text.length) {
+      const brk = text.lastIndexOf('\n', end);
+      if (brk > start + size / 2) end = brk;
+    }
+    chunks.push(text.slice(start, end));
+    if (end >= text.length) break;
+    start = Math.max(end - CHUNK_OVERLAP_CHARS, start + 1);
+  }
+  return chunks;
+}
+
+const lotKey = (l) => [l.lot, l.year, l.make, l.model, l.trim]
+  .map((v) => String(v ?? '').trim().toLowerCase()).join('|');
+
+/**
+ * Fold per-slice lots into one list. The overlap between slices means the same
+ * lot can come back twice — and a lot cut in half by a boundary can come back
+ * once with its estimates and once without, so duplicates fill each other's
+ * gaps rather than the first copy simply winning.
+ */
+function mergeLots(perChunk) {
+  const byKey = new Map();
+  for (const lots of perChunk) {
+    for (const lot of lots) {
+      const key = lotKey(lot);
+      const seen = byKey.get(key);
+      if (!seen) { byKey.set(key, { ...lot }); continue; }
+      for (const [field, value] of Object.entries(lot)) {
+        if (seen[field] === null || seen[field] === undefined) seen[field] = value;
+      }
+    }
+  }
+  return [...byKey.values()];
+}
+
+// Event details usually sit in the page header, so the first slice that names
+// them wins; later slices only fill in what is still missing.
+function mergeEvent(perChunk) {
+  const event = {};
+  for (const ev of perChunk) {
+    for (const [field, value] of Object.entries(ev || {})) {
+      if (value !== null && value !== undefined && event[field] === undefined) event[field] = value;
+    }
+  }
+  return event;
+}
+
+/** One Claude call over one slice. Returns { event, lots } or throws. */
+async function extractChunk(client, prompt, signal) {
+  // Stream + finalMessage(): large max_tokens requires streaming (the SDK
+  // rejects long non-streaming requests to avoid HTTP timeouts). The signal is
+  // the hard stop — a call still running at the deadline is cut so the route
+  // answers with the slices that did land instead of being killed at 300s.
+  const stream = client.messages.stream({
+    model: MODEL,
+    max_tokens: MAX_TOKENS_PER_CHUNK,
+    thinking: { type: 'adaptive' },
+    output_config: { effort: EFFORT, format: { type: 'json_schema', schema: EXTRACTION_SCHEMA } },
+    messages: [{ role: 'user', content: prompt }],
+  }, { signal });
+  const response = await stream.finalMessage();
+
+  // Carry the status these two used to answer with, for the case where they
+  // sink the whole run rather than one slice of it.
+  if (response.stop_reason === 'refusal') {
+    throw Object.assign(new Error('Extraction was declined for this content'), { status: 422 });
+  }
+  if (response.stop_reason === 'max_tokens') {
+    throw Object.assign(
+      new Error('A slice of the page held more lots than one pass can return — paste a smaller section'),
+      { status: 422 }
+    );
+  }
+
+  const text = response.content.find((b) => b.type === 'text')?.text;
+  if (!text) throw new Error('No extraction output returned');
+  const data = JSON.parse(text);
+  return {
+    event: data.event || {},
+    lots: data.lots || [],
+    usage: response.usage,
+  };
+}
+
+/**
+ * Run the slices with a bounded number of calls in flight and a wall-clock
+ * deadline. Workers that find the deadline passed stop taking new slices, so
+ * the run returns partial results instead of being killed by the platform.
+ */
+async function runChunks(chunks, buildPrompt, deadline) {
+  const client = new Anthropic();
+  const results = new Array(chunks.length).fill(null); // by slice, so lots stay in page order
+  const failures = [];
+  let next = 0;
+  let attempted = 0;
+
+  const worker = async () => {
+    for (;;) {
+      const remaining = deadline - Date.now();
+      if (remaining < MIN_SLICE_MS) return; // no point starting one that cannot land
+      const i = next++;
+      if (i >= chunks.length) return;
+      attempted += 1;
+      try {
+        results[i] = await extractChunk(
+          client,
+          buildPrompt(chunks[i], i, chunks.length),
+          AbortSignal.timeout(remaining)
+        );
+      } catch (e) {
+        failures.push({ chunk: i, error: e });
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(CHUNK_CONCURRENCY, chunks.length) }, worker)
+  );
+  return { done: results.filter(Boolean), failures, attempted };
+}
+
 export async function POST(request) {
   const denied = verifyAdminRequest(request);
   if (denied) return denied;
@@ -210,7 +371,9 @@ export async function POST(request) {
 price (the sold/hammer amount, or the high bid for lots that did not sell) and outcome
 ('sold', 'reserve_not_met', or 'withdrawn'). Include estimates too when the page shows them.`;
 
-  const prompt = `Extract auction lot data from the following auction-house page text.
+  const chunks = splitChunks(pageText, CHUNK_CHARS);
+
+  const buildPrompt = (chunk, i, total) => `Extract auction lot data from the following auction-house page text.
 
 ${modeInstructions}
 
@@ -233,79 +396,103 @@ Rules:
 - The text may end with an "EMBEDDED PAGE DATA (JSON)" section (the page's data payload).
   Lots that appear only there count the same as lots in the visible text — but never
   double-count a lot present in both.
-
+${total > 1 ? `- This is slice ${i + 1} of ${total} of one long page, so it may start or end mid-lot
+  and mid-sentence, and the event header and fee table may sit in another slice.
+  Extract only the lots in this slice; skip a lot whose year/make/model is cut off.
+  Leave any event field this slice does not state as null.
+` : ''}
 PAGE TEXT:
-${pageText}`;
+${chunk}`;
 
+  const deadline = Date.now() + RUN_BUDGET_MS;
+  let done;
+  let failures;
+  let attempted;
   try {
-    const client = new Anthropic();
-    // Stream + finalMessage(): large max_tokens requires streaming (the SDK
-    // rejects long non-streaming requests to avoid HTTP timeouts).
-    const stream = client.messages.stream({
-      model: 'claude-opus-4-8',
-      max_tokens: 32000,
-      thinking: { type: 'adaptive' },
-      output_config: { format: { type: 'json_schema', schema: EXTRACTION_SCHEMA } },
-      messages: [{ role: 'user', content: prompt }],
-    });
-    const response = await stream.finalMessage();
-
-    if (response.stop_reason === 'refusal') {
-      return NextResponse.json({ error: 'Extraction was declined for this content' }, { status: 422 });
-    }
-    if (response.stop_reason === 'max_tokens') {
-      return NextResponse.json(
-        { error: 'Page too large to extract in one pass — paste a smaller section' },
-        { status: 422 }
-      );
-    }
-
-    const text = response.content.find((b) => b.type === 'text')?.text;
-    if (!text) return NextResponse.json({ error: 'No extraction output returned' }, { status: 502 });
-    const data = JSON.parse(text);
-
-    const VALID_OUTCOMES = new Set(['sold', 'reserve_not_met', 'withdrawn']);
-    const lots = (data.lots || []).map((l) => ({
-      ...l,
-      outcome: VALID_OUTCOMES.has(l.outcome) ? l.outcome : null,
-    }));
-
-    // Fold the extracted fee table into the canonical schedule shape the entry
-    // route and the panel share. A malformed table is dropped rather than
-    // failing the whole extraction — the admin can still type the tiers in.
-    const event = { ...(data.event || {}) };
-    let feeSchedule = null;
-    try {
-      const categories = {};
-      for (const c of event.fee_categories || []) {
-        categories[normalizeCategory(c.category)] = { mode: c.mode, tiers: c.tiers };
-      }
-      feeSchedule = Object.keys(categories).length
-        ? normalizeFeeSchedule({ categories })
-        : normalizeFeeSchedule(event.buyer_premium_pct);
-    } catch {
-      feeSchedule = null;
-    }
-    delete event.fee_categories;
-    event.fee_schedule = feeSchedule;
-
-    return NextResponse.json({
-      success: true,
-      mode,
-      event,
-      lots,
-      usage: { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens },
-    });
+    ({ done, failures, attempted } = await runChunks(chunks, buildPrompt, deadline));
   } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError) {
-      return NextResponse.json({ error: 'ANTHROPIC_API_KEY is invalid' }, { status: 503 });
-    }
-    if (error instanceof Anthropic.RateLimitError) {
-      return NextResponse.json({ error: 'Claude API rate limited — try again shortly' }, { status: 429 });
-    }
-    if (error instanceof Anthropic.APIError) {
-      return NextResponse.json({ error: `Claude API error: ${error.message}` }, { status: 502 });
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return anthropicError(error);
   }
+
+  // Nothing came back at all: report the first failure with its own status
+  // rather than an empty success.
+  if (!done.length) {
+    const real = failures.find((f) => !isAbort(f.error));
+    if (real) return anthropicError(real.error);
+    return NextResponse.json(
+      { error: 'Extraction ran out of time before finishing a single slice — paste a smaller section of the page' },
+      { status: 504 }
+    );
+  }
+
+  const VALID_OUTCOMES = new Set(['sold', 'reserve_not_met', 'withdrawn']);
+  const lots = mergeLots(done.map((d) => d.lots)).map((l) => ({
+    ...l,
+    outcome: VALID_OUTCOMES.has(l.outcome) ? l.outcome : null,
+  }));
+
+  // Fold the extracted fee table into the canonical schedule shape the entry
+  // route and the panel share. A malformed table is dropped rather than
+  // failing the whole extraction — the admin can still type the tiers in.
+  const event = mergeEvent(done.map((d) => d.event));
+  let feeSchedule = null;
+  try {
+    const categories = {};
+    for (const c of event.fee_categories || []) {
+      categories[normalizeCategory(c.category)] = { mode: c.mode, tiers: c.tiers };
+    }
+    feeSchedule = Object.keys(categories).length
+      ? normalizeFeeSchedule({ categories })
+      : normalizeFeeSchedule(event.buyer_premium_pct);
+  } catch {
+    feeSchedule = null;
+  }
+  delete event.fee_categories;
+  event.fee_schedule = feeSchedule;
+
+  // Say plainly when the page was only partly read, so a short lot list is not
+  // mistaken for the whole catalog.
+  const missed = chunks.length - done.length;
+  const ranOut = attempted < chunks.length || failures.some((f) => isAbort(f.error));
+  const realFailure = failures.find((f) => !isAbort(f.error));
+  const note = missed > 0
+    ? `Read ${done.length} of ${chunks.length} slices of the page`
+      + (ranOut ? ' before the time budget ran out' : '')
+      + (realFailure ? ` (a slice failed: ${realFailure.error.message})` : '')
+      + '. Import these, then paste the rest of the page and extract again.'
+    : null;
+
+  return NextResponse.json({
+    success: true,
+    mode,
+    event,
+    lots,
+    partial: missed > 0,
+    note,
+    chunks: { total: chunks.length, read: done.length, failed: failures.length },
+    usage: {
+      input_tokens: done.reduce((n, d) => n + (d.usage?.input_tokens || 0), 0),
+      output_tokens: done.reduce((n, d) => n + (d.usage?.output_tokens || 0), 0),
+    },
+  });
+}
+
+const isAbort = (error) => error instanceof Anthropic.APIUserAbortError
+  || error?.name === 'TimeoutError' || error?.name === 'AbortError';
+
+// Map an SDK error onto the response the panel shows.
+function anthropicError(error) {
+  if (error instanceof Anthropic.AuthenticationError) {
+    return NextResponse.json({ error: 'ANTHROPIC_API_KEY is invalid' }, { status: 503 });
+  }
+  if (error instanceof Anthropic.RateLimitError) {
+    return NextResponse.json({ error: 'Claude API rate limited — try again shortly' }, { status: 429 });
+  }
+  if (error instanceof Anthropic.APIError) {
+    return NextResponse.json({ error: `Claude API error: ${error.message}` }, { status: 502 });
+  }
+  if (typeof error?.status === 'number') {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+  return NextResponse.json({ error: error.message }, { status: 500 });
 }
