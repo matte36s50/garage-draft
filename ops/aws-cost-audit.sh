@@ -12,6 +12,10 @@
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
+# AWS CLI v2 (CloudShell's default) pipes long output through `less`, which
+# stalls an unattended sweep on the first metric listing tall enough to page.
+export AWS_PAGER=""
+
 command -v aws >/dev/null || { echo "aws CLI not found. brew install awscli"; exit 1; }
 
 LOOKBACK_DAYS=30
