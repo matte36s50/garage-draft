@@ -61,32 +61,56 @@ rather than mid-month. That has two possible causes and they matter very differe
 
 `InstanceCreateTime` in the audit output settles which one it is.
 
-## Evidence from the codebase
+## Evidence from the code — all seven repositories
 
-```
-grep -rniE "rds\.amazonaws|amazonaws\.com|aurora|DATABASE_URL|POSTGRES_URL|psycopg|pg\.Pool|5432"
-  --include=*.js --include=*.jsx --include=*.py --include=*.sql --include=*.md
-  --exclude-dir=ops .
-  -> no matches
-```
+Every repo on the `matte36s50` account was cloned and scanned over **full git
+history**, not just the current tree:
 
-- No `aws-sdk`, `pg`, `mysql`, or `boto3` dependency in either `package.json`.
-- No Terraform / CloudFormation / CDK / SAM / Serverless config anywhere in the repo.
-- `lambda/bat_scraper_finalize.py` reads `SUPABASE_URL` / `SUPABASE_KEY` and calls
-  `{SUPABASE_URL}/rest/v1/auctions` over HTTPS. It needs no VPC and no RDS.
-- The only AWS reference in the tree is `upload_to_s3()` in `updated_MII_Windsor.py`,
-  which uses S3 and matches the $0.04 S3 line.
-- Git history has never contained an RDS endpoint, a `DATABASE_URL`, or `boto3`
-  beyond that S3 helper (`git log --all -S` finds nothing).
+| Repo | Commits searched | RDS / DB endpoint | AWS services actually used |
+|---|---|---|---|
+| `garage-draft` | 431 | none | S3 (report upload) |
+| `market-interest-score-app` | 177 | none | S3 (reads CSVs over HTTPS) |
+| `car-scrapers` | 148 | none | S3 (via GitHub Actions) |
+| `cc-market-survey` | 108 | none | S3 (optional CSV download) |
+| `hypertrophy-tracker` | 21 | none | none |
+| `mii-reports` | 9 | none | S3 (static page reads a CSV) |
+| `pe-index` | empty repo | none | none |
+
+Searched terms: `rds.amazonaws`, `DATABASE_URL`, `POSTGRES_URL`, `PGHOST`,
+`psycopg`, `pg.Pool`, `PGPASSWORD`, `db.t3`, `db.t4g`, `create-db-instance`,
+`:5432`, `:3306`, `sqlalchemy`, `mysql.connector`, plus `git log --all -S` for
+each. **The only match anywhere is this document.**
+
+The estate is consistent and RDS-free:
+
+- **Databases are Supabase.** `garage-draft` is on Supabase project
+  `cjqycykfajaytbrqyncy`; `cc-market-survey` has its own Supabase project. The
+  repo's own `phase-0-audit.md` states the MII workflow "doesn't touch Supabase
+  at all — it's an S3 + CSV" pipeline.
+- **All AWS usage is S3**, against the bucket `my-mii-reports`.
+- No `pg`, `mysql`, `psycopg2`, or `sqlalchemy` dependency in any repo.
+- No Terraform / CloudFormation / CDK / SAM / Serverless config in any repo.
+- No GitHub Actions workflow references a database host, password, or
+  `DATABASE_URL`. The AWS secrets in `car-scrapers` workflows are for S3.
+- `lambda/bat_scraper_finalize.py` reaches Supabase over HTTPS REST. It needs
+  no VPC and no RDS.
+
+### Check every region, not just us-east-1
+
+The `my-mii-reports` bucket is in **us-east-2**, while the Cost Explorer
+screenshot was taken from the us-east-1 console. Work spans regions on this
+account, so **do not conclude the database does not exist because the RDS
+console looks empty** — that console shows one region at a time. Run the audit
+script with no arguments to sweep them all.
 
 ## What this audit does not prove
 
-The repository is not the whole account. Before deleting anything, rule out:
+All seven repos are now ruled out. What source control cannot see:
 
-- a second project, prototype, or notebook outside this repo pointing at the DB;
 - a Vercel or cron-job.org environment variable holding an RDS endpoint —
   check the Vercel dashboard env vars for the `auction-admin` project;
-- someone connecting by hand with a SQL client.
+- a local notebook, script, or SQL client on your own machine;
+- something built in the AWS console and never committed anywhere.
 
 The `DatabaseConnections` metric in step 1 answers all three at once.
 
