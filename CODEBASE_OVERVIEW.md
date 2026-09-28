@@ -267,14 +267,12 @@ Else:
 
 ### Leaderboard
 
-**Fetch Logic (`calculateUserScore`):**
+**Fetch Logic (`calculateUserScore` inside `LeaderboardScreen`, `src/App.js`):**
 1. Load player's garage and all cars
 2. For each car:
-   - Get purchase_price and final_price (or current_bid)
-   - Check if auction ended and reserve met
-   - Calculate percentage gain
-   - Sum totals
-3. Calculate bonus car score separately
+   - Value it with `carValue()` from `src/utils/carValue.js`, the same rule the Garage and Dashboard use
+   - Sum values, $ gain and % gain
+3. Add the bonus car prize if the player won it (`loadBonusOutcome()` → `decideBonus()` in `src/utils/bonusCar.js`)
 4. Compute average per-car percentage
 
 **Sort Options:**
@@ -554,9 +552,8 @@ We have **two cron jobs** configured on cronjob.org:
 - **Schedule:** Every hour (`0 * * * *`)
 - **Purpose:**
   - Calculates and updates league member scores
-  - Creates performance history snapshots for charts
-  - Updates rank positions for rank change indicators
-- **Note:** Dashboard works without this, but you won't get historical trend data or rank change arrows
+  - Writes `performance_history` snapshots and refreshes `rank` / `rank_change` (`calculate_league_ranks`)
+- **Note:** Nothing in the player app reads `performance_history` or `rank_change` today. They fed the old Dashboard's trend chart and rank arrows, which have been removed.
 
 #### 2. Auction Ending Soon Notifications (`/api/cron/notify-ending-soon`)
 - **URL:** `https://your-domain.vercel.app/api/cron/notify-ending-soon?secret=YOUR_CRON_SECRET`

@@ -48,8 +48,7 @@ Bid Prix is a two‑part application backed by **Supabase** (PostgreSQL + Auth):
 | **Player app** | `src/` | React 19 (Create React App) + Tailwind CSS |
 | **Admin portal** | `auction-admin/` | Next.js 15 + Tailwind CSS |
 
-Key dependencies: `@supabase/supabase-js`, `react`, `tailwindcss`, `lucide-react`,
-`framer-motion`, `recharts`, `date-fns`.
+Key dependencies: `@supabase/supabase-js`, `react`, `tailwindcss`, `lucide-react`, `date-fns`.
 
 ### Data model (Supabase)
 
