@@ -2323,7 +2323,13 @@ function ResetPasswordScreen() {
 function LeaguesScreen({ onNavigate, currentScreen }) {
   const { joinLeague, leagues, updateSelectedLeague, userLeagues } = useApp()
   const [activeFilter, setActiveFilter] = useState('DRAFTING')
-  const filters = ['DRAFTING', 'LIVE', 'ENTERED']
+  const filters = ['DRAFTING', 'UPCOMING', 'LIVE', 'ENTERED']
+  const emptyMessage = {
+    DRAFTING: 'NO EVENTS DRAFTING RIGHT NOW',
+    UPCOMING: 'NO UPCOMING EVENTS',
+    LIVE: 'NO LIVE EVENTS',
+    ENTERED: "YOU HAVEN'T ENTERED AN EVENT YET",
+  }
 
   // One event-lifecycle vocabulary everywhere: OPENS → DRAFTING → LIVE → FINISHED.
   // getDraftStatus → lifecycle: upcoming=OPENS, open=DRAFTING, closed=LIVE (auction
@@ -2332,25 +2338,29 @@ function LeaguesScreen({ onNavigate, currentScreen }) {
     const joined = userLeagues.some(ul => ul.id === l.id)
     const ds = getDraftStatus(l)
     if (ds.status === 'ended')   return { borderColor: C.amber,   pillColor: C.amber,   pillLabel: '🏁 FINISHED', btnBg: 'transparent', btnColor: C.amber, btnBorder: `1px solid ${C.amber}55`, btnLabel: 'RESULTS ▸' }
-    if (joined)                  return { borderColor: C.red,     pillColor: C.red,     pillLabel: '★ ENTERED',  btnBg: 'transparent', btnColor: C.red,   btnBorder: `1px solid ${C.red}55`, btnLabel: 'DRAFT ▸' }
-    if (ds.status === 'open')    return { borderColor: C.amber,   pillColor: C.amber,   pillLabel: '◉ DRAFTING', btnBg: C.red,         btnColor: C.text,  btnBorder: 'none',                  btnLabel: 'ENTER ▸' }
-    if (ds.status === 'closed')  return { borderColor: '#3a8aef', pillColor: '#3a8aef', pillLabel: '▸ LIVE',     btnBg: C.surfaceHi,   btnColor: C.muted, btnBorder: 'none',                  btnLabel: 'WATCH' }
-    return                       { borderColor: C.border,   pillColor: C.faint,   pillLabel: '○ OPENS',    btnBg: C.surfaceHi,   btnColor: C.muted, btnBorder: 'none',                  btnLabel: 'PREVIEW' }
+    if (ds.status === 'open')    return joined
+      ? { borderColor: C.red,     pillColor: C.red,     pillLabel: '★ ENTERED',  btnBg: 'transparent', btnColor: C.red,   btnBorder: `1px solid ${C.red}55`, btnLabel: 'DRAFT ▸' }
+      : { borderColor: C.amber,   pillColor: C.amber,   pillLabel: '◉ DRAFTING', btnBg: C.red,         btnColor: C.text,  btnBorder: 'none',                  btnLabel: 'ENTER ▸' }
+    if (ds.status === 'closed')  return joined
+      ? { borderColor: '#3a8aef', pillColor: '#3a8aef', pillLabel: '▸ LIVE · ENTERED', btnBg: 'transparent', btnColor: '#3a8aef', btnBorder: '1px solid #3a8aef55', btnLabel: 'VIEW ▸' }
+      : { borderColor: '#3a8aef', pillColor: '#3a8aef', pillLabel: '▸ LIVE',     btnBg: C.surfaceHi,   btnColor: C.muted, btnBorder: 'none',                  btnLabel: 'WATCH' }
+    return                       { borderColor: C.border,   pillColor: C.faint,   pillLabel: '○ OPENS',    btnLabel: null }
   }
 
   const handleRowAction = (l) => {
     const joined = userLeagues.some(ul => ul.id === l.id)
     const ds = getDraftStatus(l)
-    if (ds.status === 'ended') { updateSelectedLeague(l); onNavigate('leaderboard') } // RESULTS ▸
-    else if (joined) { updateSelectedLeague(l); onNavigate('cars') }   // DRAFT ▸
-    else if (ds.status === 'open') joinLeague(l)                       // ENTER ▸
-    else if (ds.status === 'closed') { updateSelectedLeague(l); onNavigate('dashboard') } // WATCH
+    if (ds.status === 'ended') { updateSelectedLeague(l); onNavigate('leaderboard') }      // RESULTS ▸
+    else if (ds.status === 'open' && joined) { updateSelectedLeague(l); onNavigate('cars') } // DRAFT ▸
+    else if (ds.status === 'open') joinLeague(l)                                          // ENTER ▸
+    else if (ds.status === 'closed') { updateSelectedLeague(l); onNavigate('dashboard') }  // VIEW ▸ / WATCH
   }
 
   const visibleLeagues = leagues.filter(l => {
     const joined = userLeagues.some(ul => ul.id === l.id)
     const ds = getDraftStatus(l)
     if (activeFilter === 'DRAFTING') return ds.status === 'open'
+    if (activeFilter === 'UPCOMING') return ds.status === 'upcoming'
     if (activeFilter === 'LIVE')     return ds.status === 'closed'
     if (activeFilter === 'ENTERED')  return joined
     return true
@@ -2363,8 +2373,6 @@ function LeaguesScreen({ onNavigate, currentScreen }) {
         <CBrand size={16} />
         <TopNav screen="leagues" onNavigate={onNavigate} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, cursor: 'pointer' }}>SEARCH</span>
-          <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.red, cursor: 'pointer' }}>+ NEW</span>
           <button onClick={() => supabase.auth.signOut()} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.faint, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', padding: '4px 8px', borderRadius: 2 }}>
             OUT
           </button>
@@ -2395,7 +2403,7 @@ function LeaguesScreen({ onNavigate, currentScreen }) {
       <div style={{ padding: '0 18px 32px' }}>
         {visibleLeagues.length === 0 && (
           <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, color: C.faint, textAlign: 'center', padding: '48px 0' }}>
-            NO EVENTS FOUND
+            {emptyMessage[activeFilter]}
           </div>
         )}
         {visibleLeagues.map(l => {
@@ -2429,9 +2437,13 @@ function LeaguesScreen({ onNavigate, currentScreen }) {
                   <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>{timeLabel}</div>
                   <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>{timeVal}</div>
                 </div>
-                <button onClick={() => handleRowAction(l)} style={{ height: 36, padding: '0 16px', borderRadius: 3, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 800, letterSpacing: 1.2, cursor: 'pointer', background: cfg.btnBg, color: cfg.btnColor, border: cfg.btnBorder }}>
-                  {cfg.btnLabel}
-                </button>
+                {cfg.btnLabel ? (
+                  <button onClick={() => handleRowAction(l)} style={{ height: 36, padding: '0 16px', borderRadius: 3, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 800, letterSpacing: 1.2, cursor: 'pointer', background: cfg.btnBg, color: cfg.btnColor, border: cfg.btnBorder }}>
+                    {cfg.btnLabel}
+                  </button>
+                ) : (
+                  <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, letterSpacing: 1.2, color: C.muted }}>NOT OPEN YET</span>
+                )}
               </div>
             </div>
           )
@@ -2532,6 +2544,7 @@ function CarsScreen({ onNavigate, currentScreen }) {
   const [glowIds, setGlowIds] = useState([])
   const [showBonus, setShowBonus] = useState(false)
   const [toast, setToast] = useState(null)
+  const [confirmRemoveId, setConfirmRemoveId] = useState(null)
 
   const animatedBudget = useCountUp(budget, 700)
   const garageIds = new Set(garage.map(c => c.id))
@@ -2568,7 +2581,14 @@ function CarsScreen({ onNavigate, currentScreen }) {
     showToastMsg(`${car.make || car.title} added ✓`)
   }
 
+  // "IN GARAGE ✓" reads like a status, so removing takes a second tap.
   function handleRemove(car) {
+    if (confirmRemoveId !== car.id) {
+      setConfirmRemoveId(car.id)
+      setTimeout(() => setConfirmRemoveId(id => (id === car.id ? null : id)), 3000)
+      return
+    }
+    setConfirmRemoveId(null)
     const gc = garage.find(c => c.id === car.id)
     if (gc) removeFromGarage(gc)
   }
@@ -2765,8 +2785,8 @@ function CarsScreen({ onNavigate, currentScreen }) {
                 </div>
                 <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, marginBottom: 8 }}>{car.timeLeft}</div>
                 {inGarage ? (
-                  <button onClick={() => handleRemove(car)} style={{ width: '100%', height: 32, borderRadius: 3, border: `1px solid ${C.red}55`, background: 'transparent', color: C.red, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, cursor: canPick ? 'pointer' : 'default' }}>
-                    IN GARAGE ✓
+                  <button onClick={() => handleRemove(car)} disabled={!canPick} style={{ width: '100%', height: 32, borderRadius: 3, border: `1px solid ${C.red}55`, background: confirmRemoveId === car.id ? C.red : 'transparent', color: confirmRemoveId === car.id ? C.text : C.red, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, cursor: canPick ? 'pointer' : 'default' }}>
+                    {confirmRemoveId === car.id ? 'TAP TO REMOVE' : 'IN GARAGE ✓'}
                   </button>
                 ) : (
                   <button onClick={() => handleAdd(car)} disabled={isAdding || isOver || isFull || !canPick} style={{ width: '100%', height: 32, borderRadius: 3, border: 'none', cursor: 'pointer', background: isOver || isFull || !canPick ? C.surfaceHi : C.red, color: isOver || isFull || !canPick ? C.faint : C.text, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: isAdding ? 0.7 : 1 }}>
@@ -3357,13 +3377,13 @@ if (!selectedLeague && !leagueLoading) {
 
       {/* Player rows */}
       {!loading && standings.length > 0 && (
-        <div style={{ padding: '0 18px 80px' }}>
+        <div style={{ padding: '0 18px 160px' }}>
           {standings.map((player, index) => {
             const rank = index + 1
             const isMe = player.userId === user?.id
             const positive = player.totalDollarGain >= 0
             return (
-              <div key={player.userId} style={{ display: 'grid', gridTemplateColumns: '32px 1fr auto 38px', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: `1px solid ${C.border}`, background: isMe ? `${C.red}10` : 'transparent', marginLeft: isMe ? -10 : 0, marginRight: isMe ? -10 : 0, paddingLeft: isMe ? 10 : 0, paddingRight: isMe ? 10 : 0 }}>
+              <div key={player.userId} style={{ display: 'grid', gridTemplateColumns: '32px 1fr auto', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: `1px solid ${C.border}`, background: isMe ? `${C.red}10` : 'transparent', marginLeft: isMe ? -10 : 0, marginRight: isMe ? -10 : 0, paddingLeft: isMe ? 10 : 0, paddingRight: isMe ? 10 : 0 }}>
                 <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 16, fontWeight: 800, color: rank === 1 ? C.amber : rank <= 3 ? C.text : C.muted, fontVariantNumeric: 'tabular-nums' }}>
                   P{String(rank).padStart(2,'0')}
                 </div>
@@ -3384,9 +3404,6 @@ if (!selectedLeague && !leagueLoading) {
                   <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: positive ? C.pos : C.neg, marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>
                     {positive ? '+' : ''}{fmtCompact(player.totalDollarGain || 0)}
                   </div>
-                </div>
-                <div style={{ textAlign: 'right', fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: C.faint, fontVariantNumeric: 'tabular-nums' }}>
-                  ·
                 </div>
               </div>
             )
