@@ -1719,7 +1719,7 @@ function BonusCarCard({ isWide }) {
   return (
     <div style={{ position: 'relative', background: C.surface, border: `1px solid ${C.amber}55`, borderTop: `3px solid ${C.amber}`, overflow: 'hidden' }}>
       {/* Header band */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px 12px', borderBottom: `1px solid ${C.border}`, background: `${C.amber}0e` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '13px 16px 12px', borderBottom: `1px solid ${C.border}`, background: `${C.amber}0e` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           <span style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 800, color: C.amber, letterSpacing: 1.4 }}>★ BONUS CAR</span>
           <span style={{ fontFamily: mono, fontSize: 10.5, fontWeight: 800, color: '#000', background: C.amber, padding: '2px 7px', borderRadius: 3, letterSpacing: 0.8 }}>{fmtUSD(prize)} PRIZE</span>
@@ -3330,7 +3330,7 @@ if (!selectedLeague && !leagueLoading) {
                   </div>
                   <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, marginTop: 2, letterSpacing: 0.5 }}>
                     {player.carsCount}/7 LOTS{player.totalPercentGain > 0 ? ` · +${player.totalPercentGain.toFixed(1)}%` : ''}
-                    {player.bonusPrizeWon > 0 && <span style={{ color: C.amber }}> · ★ BONUS +{fmtUSD(player.bonusPrizeWon)}</span>}
+                    {player.bonusPrizeWon > 0 && <div style={{ color: C.amber, marginTop: 2 }}>★ BONUS +{fmtUSD(player.bonusPrizeWon)}</div>}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
