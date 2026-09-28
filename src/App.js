@@ -2913,9 +2913,6 @@ function GarageScreen({ onNavigate, currentScreen }) {
             const carTitle = car.title && car.title.replace(`${car.year} `, '')
             return (
               <div key={car.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10, position: 'relative' }}>
-                <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 0.8, marginBottom: 5, position: 'absolute', top: 8, right: 8, zIndex: 1 }}>
-                  LOT {String(i + 1).padStart(2, '0')}
-                </div>
                 {(() => {
                   const st = carStatus(car)
                   return (
