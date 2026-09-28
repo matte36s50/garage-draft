@@ -17,6 +17,7 @@
 /**
  * One entry per house the watch reads.
  *   index        pages that list the house's upcoming sales
+ *   follow       links on the index to sale pages that in turn link to the catalogue
  *   catalogue    which links on those pages are sale catalogues
  *   lotLink      a lot's own page; the capture groups form its stable key
  *   titlePrefix  house name some sites put before the sale name in <title>
@@ -48,7 +49,9 @@ export const HOUSES = {
   },
   gooding: {
     name: "Gooding Christie's",
-    index: ['https://bid.goodingco.com/'],
+    // The bidding site lists no sales; goodingco.com's sale pages link to it.
+    index: ['https://bid.goodingco.com/', 'https://www.goodingco.com/'],
+    follow: /^https:\/\/www\.goodingco\.com\/auction\/[a-z0-9-]+\/?$/i,
     catalogue: /^https:\/\/bid\.goodingco\.com\/auctions\/\d-[a-z0-9]+\/[a-z0-9-]+$/i,
     lotLink: /\/lots\/(?:view\/)?(\d-[a-z0-9]+)(?=[/?#]|$)/i,
     premium: true,

@@ -109,22 +109,27 @@ async function widenPage(page) {
         return { select: true, size: Math.max(...sizes) };
       }
     }
-    // A size picker is a small group of sibling sizes ("VIEW 40 100 200") under
-    // a view / per-page label, not a row of page numbers.
+    // A size picker is a small group of sibling sizes: "VIEW 40 100 200" on
+    // RM, a 12/24/36/48/96 menu on the bidding sites. A row of page numbers
+    // counts up from 1, so it never qualifies.
     const groups = new Map();
     for (const el of document.querySelectorAll('a, button, [role=button], li, span')) {
       const n = Number(el.textContent.trim());
-      if (!vis(el) || !(n >= 20 && n <= 500) || el.children.length > 1) continue;
-      const box = el.parentElement?.closest('ul, ol, div, nav, fieldset') || el.parentElement;
-      if (!box || !/\b(view|per page|display|results per page)\b/i.test(box.parentElement?.textContent || box.textContent)) continue;
-      if (!groups.has(box)) groups.set(box, []);
-      groups.get(box).push({ el, n });
+      if (!vis(el) || !(n >= 10 && n <= 500) || el.children.length > 1) continue;
+      const box = el.closest('ul, ol, nav, fieldset, [role=menu], [role=listbox]') || el.parentElement;
+      if (!box) continue;
+      if (!groups.has(box)) groups.set(box, new Map());
+      const sizes = groups.get(box);
+      // The same size can be both an <li> and its link: keep the clickable one.
+      if (!sizes.has(n) || /^(A|BUTTON)$/.test(el.tagName)) sizes.set(n, el);
     }
-    const group = [...groups.values()].find((g) => g.length >= 2 && g.length <= 6);
-    if (!group) return null;
-    const best = group.sort((a, b) => b.n - a.n)[0];
-    best.el.setAttribute('data-cw-size', String(best.n));
-    return { select: false, size: best.n };
+    const picks = [...groups.values()]
+      .filter((g) => g.size >= 2 && g.size <= 8 && !g.has(1) && [...g.keys()].some((n) => n >= 20))
+      .sort((a, b) => b.size - a.size);
+    if (!picks.length) return null;
+    const [size, el] = [...picks[0].entries()].sort((a, b) => b[0] - a[0])[0];
+    el.setAttribute('data-cw-size', String(size));
+    return { select: false, size };
   }).catch(() => null);
   if (!picked) return null;
   try {
@@ -170,7 +175,9 @@ async function nextPage(page) {
     if (rel && !off(rel)) return { href: rel.href };
     const cands = [...document.querySelectorAll('a, button, [role=button]')].filter((el) => vis(el) && !off(el));
     let el = cands.find((e) => /^(go to )?next( page)?$/i.test((e.getAttribute('aria-label') || '').trim()))
-      || cands.find((e) => /^(next|next page|›|>|→)$/i.test(e.textContent.trim()));
+      || cands.find((e) => /^(next|next page|›|>|→)$/i.test(e.textContent.trim()))
+      // An arrow drawn by CSS: <button class="next btn"> (the bidding sites)
+      || cands.find((e) => /(^|\s)(next|page-next|pagination-next)(\s|$)/i.test(String(e.className || '')));
     if (!el) {
       // Numbered pages without an arrow: the number after the current one.
       const cur = document.querySelector('[aria-current="page"], .active, .current, .is-active, .selected');
@@ -426,13 +433,31 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
     const house = houses[houseId];
     console.log(`\n### ${house.name}`);
     const found = new Set();
+    const hops = [];
     for (const idx of house.index) {
       try {
         const o = await open(page, idx);
         if (o.wall) throw new Error('blocked by a bot wall');
-        (await links(page)).map((u) => u.split('?')[0]).filter((u) => house.catalogue.test(u)).forEach((u) => found.add(u));
+        const all = (await links(page)).map((u) => u.split('?')[0]);
+        all.filter((u) => house.catalogue.test(u)).forEach((u) => found.add(u));
+        if (house.follow) hops.push(...all.filter((u) => house.follow.test(u)));
       } catch (e) {
         problems.push(`${house.name}: index ${idx} unreadable (${e.message.split('\n')[0]})`);
+      }
+    }
+    // Sale pages that link on to the catalogue (Gooding: goodingco.com -> bid site).
+    for (const hop of [...new Set(hops)].slice(0, 8)) {
+      try {
+        await open(page, hop);
+        const all = (await links(page)).map((u) => u.split('?')[0]);
+        const hits = all.filter((u) => house.catalogue.test(u));
+        hits.forEach((u) => found.add(u));
+        if (!live && !hits.length) {
+          const near = all.filter((u) => /bid\.|\/lots?\b|catalog/i.test(u)).slice(0, 8);
+          console.log(`   ${hop}: no catalogue link${near.length ? `; nearby:\n${near.map((u) => `     ${u}`).join('\n')}` : ''}`);
+        }
+      } catch (e) {
+        console.log(`   ${hop}: unreadable (${e.message.split('\n')[0]})`);
       }
     }
     console.log(`   index: ${found.size} catalogue(s) listed`);
