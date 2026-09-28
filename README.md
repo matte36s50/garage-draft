@@ -22,20 +22,24 @@ value moves, and players are ranked by the total current value of their garage.
 
 ### Scoring
 
-Each car is scored on its percentage gain from the locked draft price:
+A player's **score** is the value of their garage, plus the bonus‑car prize if they made the closest
+prediction (see `src/utils/bonusCar.js`). Unspent budget doesn't count. Each car counts at:
 
-```
-If the auction has sold:
-  percentGain = (final_price - purchase_price) / purchase_price * 100
-Else if the reserve was not met:
-  percentGain = (current_bid * 0.25 - purchase_price) / purchase_price * 100   // penalty
-Else:
-  percentGain = (current_bid - purchase_price) / purchase_price * 100
-```
+| Auction | Car counts at |
+|---|---|
+| Still running | its current bid |
+| Sold | the hammer price (`final_price`) |
+| Reserve not met | 25% of the high bid |
+| Withdrawn (`final_price = 0`) | $0 |
+| Ended, result not recorded yet | the high bid, until the result is recorded |
 
-A player's **total score** is the sum of all car gains, plus the bonus‑car prize if they made the
-closest prediction (see `src/utils/bonusCar.js`). Players can sort the leaderboard by total % gain,
-total $ gain, or average %.
+Players with a full 7‑car garage rank above players with fewer cars, then by score. The NET and
+AVG % leaderboard tabs only reorder the list; they never change who wins. The car rule lives in
+`src/utils/carValue.js` (player app) and `auction-admin/lib/carValue.js` (score cron).
+
+An event closes and is written to History once every car, and the bonus car, has a recorded
+result. If a result is still missing 48 hours after its auction ended, the event closes anyway and
+that car keeps its high bid (`auction-admin/lib/eventCompletion.js`).
 
 ---
 
