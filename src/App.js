@@ -3677,7 +3677,8 @@ function HistoryScreenC({ onNavigate }) {
 function DraftResultsScreenC({ onNavigate }) {
   const { selectedLeague } = useApp()
   const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
-  const isDraftOpen = draftStatus.status === 'open'
+  // Hidden while drafting (or before the draft opens); revealed once it closes.
+  const picksHidden = draftStatus.status === 'open' || draftStatus.status === 'upcoming'
   return (
     <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 96 }}>
       <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -3685,7 +3686,7 @@ function DraftResultsScreenC({ onNavigate }) {
         <TopNav screen="draft-results" onNavigate={onNavigate} />
       </div>
       <CheckerBar height={3} />
-      {isDraftOpen ? (
+      {picksHidden ? (
         <div style={{ padding: '60px 32px', textAlign: 'center' }}>
           <div style={{ fontFamily: mono, fontSize: 48, fontWeight: 800, color: C.red, marginBottom: 12 }}>🔒</div>
           <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 800, letterSpacing: -0.8, textTransform: 'uppercase', marginBottom: 8 }}>PICKS HIDDEN</div>
@@ -3702,7 +3703,7 @@ function DraftResultsScreenC({ onNavigate }) {
       ) : (
         <>
           <div style={{ padding: '14px 18px 10px' }}>
-            <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 1.6, marginBottom: 4 }}>{'//'} DRAFT CLOSED</div>
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 1.6, marginBottom: 4 }}>{'//'} {draftStatus.status === 'ended' ? 'EVENT FINISHED' : 'DRAFT CLOSED'}</div>
             <div style={{ fontFamily: mono, fontSize: 40, fontWeight: 800, letterSpacing: -1.6, textTransform: 'uppercase' }}>DRAFT PICKS</div>
           </div>
           <DraftResults supabase={supabase} selectedLeague={selectedLeague} draftStatus={draftStatus} getDefaultCarImage={getDefaultCarImage} />

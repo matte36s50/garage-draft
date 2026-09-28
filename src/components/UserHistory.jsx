@@ -85,6 +85,26 @@ export default function UserHistory({ supabase, user }) {
     return `${startDate.toLocaleDateString('en-US', options)} - ${endDate.toLocaleDateString('en-US', options)}`;
   };
 
+  // final_score is the garage's dollar value (the score the hourly cron stores).
+  // Events that finished before scoring switched to dollars stored a percentage
+  // gain instead; those are tiny next to the money spent, so tell them apart by scale.
+  const describeScore = (result) => {
+    const score = Number(result.final_score) || 0;
+    const spent = Number(result.total_spent) || 0;
+    if (spent > 0 && Math.abs(score) < spent * 0.1) {
+      return {
+        main: `${score >= 0 ? '+' : ''}${score.toFixed(1)}%`, mainColor: score >= 0 ? C.pos : C.neg,
+        sub: `$${spent.toLocaleString()} SPENT`, subColor: C.faint,
+      };
+    }
+    const net = score - spent;
+    return {
+      main: `$${Math.round(score).toLocaleString()}`, mainColor: C.text,
+      sub: `${net >= 0 ? '+' : '-'}$${Math.abs(Math.round(net)).toLocaleString()} NET`,
+      subColor: net >= 0 ? C.pos : C.neg,
+    };
+  };
+
   // Get best performing car from snapshot
   const getBestCar = (carsSnapshot) => {
     if (!carsSnapshot || carsSnapshot.length === 0) return null;
@@ -169,7 +189,7 @@ export default function UserHistory({ supabase, user }) {
             const podium = result.final_rank <= 3;
             const accent = result.is_winner ? C.amber : podium ? C.pos : C.border;
             const rankColor = result.is_winner ? C.amber : podium ? C.pos : C.text;
-            const scoreColor = result.final_score >= 0 ? C.pos : C.neg;
+            const score = describeScore(result);
             const cars = Array.isArray(result.cars_snapshot) ? result.cars_snapshot : [];
 
             return (
@@ -196,11 +216,11 @@ export default function UserHistory({ supabase, user }) {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontFamily: mono, fontSize: 18, fontWeight: 800, color: scoreColor, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                      {result.final_score >= 0 ? '+' : ''}{result.final_score.toFixed(1)}%
+                    <div style={{ fontFamily: mono, fontSize: 18, fontWeight: 800, color: score.mainColor, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+                      {score.main}
                     </div>
-                    <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
-                      ${result.total_spent?.toLocaleString() || 0} SPENT
+                    <div style={{ fontFamily: mono, fontSize: 11, color: score.subColor, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
+                      {score.sub}
                     </div>
                   </div>
                 </div>

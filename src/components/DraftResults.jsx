@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Users, Car, Lock, RefreshCw } from 'lucide-react'
+import { carValue } from '../utils/carValue'
 
 function DraftResults({ supabase, selectedLeague, draftStatus, getDefaultCarImage }) {
   const [view, setView] = useState('byAuction') // 'byAuction' | 'byPlayer'
@@ -8,7 +9,8 @@ function DraftResults({ supabase, selectedLeague, draftStatus, getDefaultCarImag
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  const isDraftClosed = draftStatus?.status === 'closed'
+  // Picks are revealed once the draft has closed, and stay visible after the event ends.
+  const isDraftClosed = draftStatus?.status === 'closed' || draftStatus?.status === 'ended'
 
   useEffect(() => {
     if (isDraftClosed && selectedLeague) {
@@ -30,7 +32,7 @@ function DraftResults({ supabase, selectedLeague, draftStatus, getDefaultCarImag
             purchase_price,
             auctions!garage_cars_auction_id_fkey(
               auction_id, title, make, model, year,
-              image_url, url, current_bid, final_price, timestamp_end
+              image_url, url, current_bid, final_price, reserve_not_met, timestamp_end
             )
           )
         `)
@@ -91,16 +93,19 @@ function DraftResults({ supabase, selectedLeague, draftStatus, getDefaultCarImag
     return null
   }
 
+  // Same auction states as the Garage (see utils/carValue.js)
   function getStatus(auction) {
     const now = Math.floor(Date.now() / 1000)
-    if (auction.final_price != null) {
-      return auction.final_price > 0
-        ? { label: 'Sold', value: formatPrice(auction.final_price), color: 'text-green-700' }
-        : { label: 'Reserve Not Met', value: '', color: 'text-bpRed' }
-    }
-    if (auction.timestamp_end && now > auction.timestamp_end) {
-      return { label: 'Ended', value: formatPrice(auction.current_bid), color: 'text-bpGray' }
-    }
+    const { status } = carValue({
+      finalPrice: auction.final_price,
+      reserveNotMet: auction.reserve_not_met,
+      ended: auction.timestamp_end && now > auction.timestamp_end,
+      currentBid: auction.current_bid,
+    })
+    if (status === 'sold') return { label: 'Sold', value: formatPrice(auction.final_price), color: 'text-green-700' }
+    if (status === 'withdrawn') return { label: 'Withdrawn', value: '', color: 'text-bpRed' }
+    if (status === 'no_sale') return { label: 'No sale, high bid', value: formatPrice(auction.current_bid), color: 'text-bpRed' }
+    if (status === 'pending') return { label: 'Result pending, high bid', value: formatPrice(auction.current_bid), color: 'text-bpGray' }
     return { label: 'Live', value: formatPrice(auction.current_bid), color: 'text-bpInk' }
   }
 
