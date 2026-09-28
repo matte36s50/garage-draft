@@ -243,15 +243,13 @@ Located at `/home/user/garage-draft/auction-admin/`
 
 ### Scoring System
 
-**Per-Car Score:**
+**Per-Car Value** (`src/utils/carValue.js`, mirrored in `auction-admin/lib/carValue.js` for the score cron):
 ```
-If final_price exists:
-  percentGain = (final_price - purchase_price) / purchase_price * 100
-Else if reserve_not_met:
-  effectivePrice = current_bid * 0.25  (penalty)
-  percentGain = (effectivePrice - purchase_price) / purchase_price * 100
-Else:
-  percentGain = (current_bid - purchase_price) / purchase_price * 100
+If final_price > 0:            value = final_price          (sold)
+Else if final_price = 0:       value = 0                    (withdrawn)
+Else if reserve_not_met:       value = current_bid * 0.25   (no sale)
+Else if the auction has ended: value = current_bid          (result not recorded yet)
+Else:                          value = current_bid          (live)
 ```
 
 **Bonus Car Prize:**
@@ -262,25 +260,29 @@ Else:
 - Rule lives in `src/utils/bonusCar.js` (player app) and `auction-admin/lib/bonusCar.js` (score cron)
 
 **Total Score:**
-- Sum of all car values
-- Plus the bonus car prize for the closest prediction
+- Sum of all car values, plus the bonus car prize for the closest prediction
+- Unspent budget doesn't count
+- Complete 7-car rosters rank above incomplete ones, then by total score
+
+**Event Completion** (`auction-admin/lib/eventCompletion.js`, run by the hourly score cron):
+- An event closes and is written to History (`complete_league`) once its draft is over and every
+  drafted car and the bonus car have a recorded result
+- A result still missing 48 hours after its auction ended stops holding the event open: it closes
+  with that car at its high bid (override with the `RESULT_GRACE_HOURS` env var)
+- The cron decides from the rows it just scored, and waits a run if any read or score write failed
 
 ### Leaderboard
 
 **Fetch Logic (`calculateUserScore`):**
 1. Load player's garage and all cars
-2. For each car:
-   - Get purchase_price and final_price (or current_bid)
-   - Check if auction ended and reserve met
-   - Calculate percentage gain
-   - Sum totals
+2. Value each car with `carValue` (above) and sum the values
 3. Calculate bonus car score separately
 4. Compute average per-car percentage
 
 **Sort Options:**
-- `total_percent` - Total % gain across all cars (primary ranking)
-- `total_dollar` - Total $ gain
-- `avg_percent` - Average % per car
+- `total_value` - VALUE: complete rosters first, then total value (the official ranking)
+- `total_dollar` - NET: $ gain over the draft prices (reorders the list only)
+- `total_percent` - AVG %: % gain (reorders the list only)
 
 **Display Fields:**
 - Rank
@@ -556,7 +558,8 @@ We have **two cron jobs** configured on cronjob.org:
   - Calculates and updates league member scores
   - Creates performance history snapshots for charts
   - Updates rank positions for rank change indicators
-- **Note:** Dashboard works without this, but you won't get historical trend data or rank change arrows
+  - Closes finished events and writes them to History once their results are in
+- **Note:** The live leaderboard works without this, but History doesn't: events only close when it runs
 
 #### 2. Auction Ending Soon Notifications (`/api/cron/notify-ending-soon`)
 - **URL:** `https://your-domain.vercel.app/api/cron/notify-ending-soon?secret=YOUR_CRON_SECRET`

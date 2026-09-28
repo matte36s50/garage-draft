@@ -148,23 +148,3 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION complete_league(UUID) TO service_role;
-
--- =====================================================
--- OPTIONAL: re-rank events that have already finished, using the car count and
--- score frozen in league_results. This can change who is recorded as the
--- winner of past events, so review before running.
---
--- WITH ranked AS (
---     SELECT id,
---            ROW_NUMBER() OVER (
---                PARTITION BY league_id
---                ORDER BY (car_count >= 7) DESC, final_score DESC
---            )::INTEGER AS new_rank
---     FROM league_results
--- )
--- UPDATE league_results r
--- SET final_rank = ranked.new_rank,
---     is_winner = (ranked.new_rank = 1)
--- FROM ranked
--- WHERE r.id = ranked.id;
--- =====================================================
