@@ -810,6 +810,7 @@ export default function BidPrixApp() {
   // eslint-disable-next-line no-unused-vars
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [recentUpdates, setRecentUpdates] = useState([])
+  const [marketTick, setMarketTick] = useState(0)  // bumps on each live bid for this event's cars
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [authLinkError, setAuthLinkError] = useState('')
   const authLinkErrorRef = useRef(false)
@@ -1472,28 +1473,27 @@ export default function BidPrixApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Data loads are keyed on ids, not objects, so a refreshed user or league object
+  // for the same player/event doesn't refetch everything.
   useEffect(() => {
     if (user) {
       fetchLeagues()
       fetchUserLeagues()  // Fetch leagues user has joined
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
-  
+  }, [user?.id])
+
   useEffect(() => {
+    // Restore the saved event; the effect below loads its data.
     const stored = loadSelectedLeague()
     if (stored && user) {
       setSelectedLeague(stored)
-      fetchUserGarage(stored.id)
-      fetchAuctions()
-      fetchBonusCar(stored.id)
-      fetchUserPrediction(stored.id)
     }
     setLeagueLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
-  
-  useEffect(() => { 
+  }, [user?.id])
+
+  useEffect(() => {
   if (selectedLeague && user) {
     fetchUserGarage(selectedLeague.id)
     fetchAuctions()
@@ -1501,82 +1501,80 @@ export default function BidPrixApp() {
     fetchUserPrediction(selectedLeague.id)
    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [selectedLeague, user])
+}, [selectedLeague?.id, user?.id])
+
+  // Live bids, for the cars this player can see: the event's pool, their garage
+  // and the bonus car. Keyed on that id list, so the channel is only rebuilt when
+  // the set changes, not on every bid.
+  const liveAuctionIds = useMemo(() => {
+    const ids = new Set(auctions.map(a => a.id))
+    garage.forEach(car => ids.add(car.id))
+    if (bonusCar) ids.add(bonusCar.id)
+    return [...ids].filter(Boolean).sort().join(',')
+  }, [auctions, garage, bonusCar])
+  const garageRef = useRef(garage)
+  garageRef.current = garage
+  const channelSeq = useRef(0)
 
   useEffect(() => {
-    if (!selectedLeague || !user) return
+    if (!selectedLeague || !user || !liveAuctionIds) return
 
     console.log('🔌 Setting up real-time subscriptions...')
     setConnectionStatus('connecting')
 
-    const auctionChannel = supabase
-      .channel(`league-${selectedLeague.id}-auctions`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'auctions',
-        },
-        (payload) => {
-          console.log('📊 Auction updated:', payload.new.auction_id)
-          setLastUpdated(new Date())
-          
-          setAuctions(prev => prev.map(car => {
-            if (car.id === payload.new.auction_id) {
-              const now = Math.floor(Date.now() / 1000)
-              const auctionEnded = payload.new.timestamp_end < now
-              return {
-                ...car,
-                currentBid: parseFloat(payload.new.current_bid),
-                finalPrice: payload.new.final_price ? parseFloat(payload.new.final_price) : null,
-                timeLeft: calculateTimeLeft(new Date(payload.new.timestamp_end * 1000)),
-                auctionEnded: auctionEnded,
-                reserveNotMet: auctionEnded && !payload.new.final_price,
-              }
-            }
-            return car
-          }))
+    const onAuctionUpdate = (payload) => {
+      const row = payload.new
+      console.log('📊 Auction updated:', row.auction_id)
+      setLastUpdated(new Date())
+      setMarketTick(t => t + 1)
 
-          setGarage(prev => prev.map(car => {
-            if (car.id === payload.new.auction_id) {
-              const oldBid = car.currentBid
-              const newBid = parseFloat(payload.new.current_bid)
-              const now = Math.floor(Date.now() / 1000)
-              const auctionEnded = payload.new.timestamp_end < now
+      const now = Math.floor(Date.now() / 1000)
+      const auctionEnded = row.timestamp_end < now
+      const live = {
+        currentBid: parseFloat(row.current_bid),
+        finalPrice: row.final_price ? parseFloat(row.final_price) : null,
+        timeLeft: calculateTimeLeft(new Date(row.timestamp_end * 1000)),
+        auctionEnded: auctionEnded,
+        reserveNotMet: auctionEnded && !row.final_price,
+      }
 
-              if (newBid > oldBid) {
-                const increase = newBid - oldBid
-                addRecentUpdate({
-                  type: 'bid_increase',
-                  carTitle: payload.new.title,
-                  amount: increase,
-                  carId: car.id
-                })
-              }
+      const owned = garageRef.current.find(car => car.id === row.auction_id)
+      if (owned && live.currentBid > owned.currentBid) {
+        addRecentUpdate({
+          type: 'bid_increase',
+          carTitle: row.title,
+          amount: live.currentBid - owned.currentBid,
+          carId: owned.id
+        })
+      }
 
-              return {
-                ...car,
-                currentBid: newBid,
-                finalPrice: payload.new.final_price ? parseFloat(payload.new.final_price) : null,
-                timeLeft: calculateTimeLeft(new Date(payload.new.timestamp_end * 1000)),
-                auctionEnded: auctionEnded,
-                reserveNotMet: auctionEnded && !payload.new.final_price,
-              }
-            }
-            return car
-          }))
+      setAuctions(prev => prev.map(car => (car.id === row.auction_id ? { ...car, ...live } : car)))
+      setGarage(prev => prev.map(car => (car.id === row.auction_id ? { ...car, ...live } : car)))
+      setBonusCar(prev => (prev && prev.id === row.auction_id ? {
+        ...prev,
+        currentBid: live.currentBid,
+        finalPrice: row.final_price,
+        timeLeft: live.timeLeft,
+        endTime: new Date(row.timestamp_end * 1000),
+      } : prev))
+    }
 
-          if (bonusCar && bonusCar.id === payload.new.auction_id) {
-            setBonusCar(prev => ({
-              ...prev,
-              currentBid: parseFloat(payload.new.current_bid),
-              finalPrice: payload.new.final_price,
-              timeLeft: calculateTimeLeft(new Date(payload.new.timestamp_end * 1000))
-            }))
-          }
-        }
-      )
+    // A fresh topic each time: supabase.channel() hands back a same-named channel
+    // that is still closing, and subscribing to that one silently does nothing.
+    const auctionChannel = supabase.channel(`league-${selectedLeague.id}-auctions-${++channelSeq.current}`)
+    const ids = liveAuctionIds.split(',')
+    const change = { event: 'UPDATE', schema: 'public', table: 'auctions' }
+    if (ids.every(id => /^[\w.:-]+$/.test(id))) {
+      // Supabase caps an `in` filter at 100 values, so bind in chunks.
+      for (let i = 0; i < ids.length; i += 100) {
+        auctionChannel.on('postgres_changes', { ...change, filter: `auction_id=in.(${ids.slice(i, i + 100).join(',')})` }, onAuctionUpdate)
+      }
+    } else {
+      // An id the filter syntax can't carry: fall back to every auction update.
+      auctionChannel.on('postgres_changes', change, onAuctionUpdate)
+    }
+
+    auctionChannel
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('✅ Connected to auction updates')
@@ -1594,7 +1592,8 @@ export default function BidPrixApp() {
       supabase.removeChannel(auctionChannel)
       setConnectionStatus('disconnected')
     }
-  }, [selectedLeague, user, bonusCar])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLeague?.id, user?.id, liveAuctionIds])
 
   // The screens live at module scope and read app state from AppContext. Declared
   // inside this component they were new component types on every render, so React
@@ -1602,7 +1601,7 @@ export default function BidPrixApp() {
   // refetch storms).
   const app = {
     addToGarage, auctions, authLinkError, bonusCar, budget, garage, isChatOpen, joinLeague,
-    leagueLoading, leagues, loading, recentUpdates, removeFromGarage, selectedLeague,
+    leagueLoading, leagues, loading, marketTick, recentUpdates, removeFromGarage, selectedLeague,
     setAuthLinkError, setIsChatOpen, setShowPredictionModal, setUser, showPredictionModal,
     submitPrediction, updateCurrentScreen, updateSelectedLeague, user, userLeagues,
     userPrediction,
@@ -2873,12 +2872,16 @@ function GarageScreen({ onNavigate, currentScreen }) {
 }
 
 function LeaderboardScreen({ onNavigate, currentScreen }) {
-  const { isChatOpen, leagueLoading, selectedLeague, setIsChatOpen, user } = useApp()
+  const { isChatOpen, leagueLoading, marketTick, selectedLeague, setIsChatOpen, user } = useApp()
   const [standings, setStandings] = useState([])
   const [loading, setLoading] = useState(true)
   const [sortBy, setSortBy] = useState('total_value')
   const [showConfetti, setShowConfetti] = useState(false)
   const [confettiDone, setConfettiDone] = useState(false)
+  const fetchSeq = useRef(0)
+  const lastFetchRef = useRef(0)
+  const sortByRef = useRef(sortBy)
+  sortByRef.current = sortBy
   const isFinal = selectedLeague ? getDraftStatus(selectedLeague).status === 'ended' : false
 
   // Fire the checkered-flag confetti once, when the final results first land.
@@ -2895,7 +2898,18 @@ function LeaderboardScreen({ onNavigate, currentScreen }) {
     fetchLeaderboard()
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [selectedLeague])
+}, [selectedLeague?.id])
+
+  // Live standings: when bids land on this event's cars, recompute in place at
+  // most once a minute rather than on every bid.
+  useEffect(() => {
+    if (!marketTick || !selectedLeague) return
+    const wait = Math.max(0, 60000 - (Date.now() - lastFetchRef.current))
+    const t = setTimeout(() => fetchLeaderboard({ quiet: true }), wait)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marketTick, selectedLeague?.id])
+
 if (!selectedLeague && !leagueLoading) {
   return (
     <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -2917,10 +2931,14 @@ if (!selectedLeague && !leagueLoading) {
   )
 }
 
-  const fetchLeaderboard = async () => {
+  // quiet: refresh in place (no skeleton, keep the table on errors). Only the
+  // latest load may write, so a slow earlier one can't overwrite it.
+  const fetchLeaderboard = async ({ quiet = false } = {}) => {
     if (!selectedLeague) return
 
-    setLoading(true)
+    const seq = ++fetchSeq.current
+    lastFetchRef.current = Date.now()
+    if (!quiet) setLoading(true)
     try {
       const { data: members, error: membersError } = await supabase
         .from('league_members')
@@ -2934,8 +2952,7 @@ if (!selectedLeague && !leagueLoading) {
       if (membersError) throw membersError
 
       if (!members || members.length === 0) {
-        setStandings([])
-        setLoading(false)
+        if (seq === fetchSeq.current) setStandings([])
         return
       }
 
@@ -2950,15 +2967,16 @@ if (!selectedLeague && !leagueLoading) {
       })
 
       const calculatedStandings = await Promise.all(standingsPromises)
+      if (seq !== fetchSeq.current) return
 
-      const sorted = sortStandings(calculatedStandings, sortBy)
+      const sorted = sortStandings(calculatedStandings, sortByRef.current)
       setStandings(sorted)
 
     } catch (error) {
       console.error('Error fetching leaderboard:', error)
-      setStandings([])
+      if (!quiet && seq === fetchSeq.current) setStandings([])
     } finally {
-      setLoading(false)
+      if (seq === fetchSeq.current) setLoading(false)
     }
   }
 
@@ -3287,7 +3305,7 @@ if (!selectedLeague && !leagueLoading) {
               {tab.label}
             </button>
           ))}
-          <button onClick={fetchLeaderboard} style={{ marginLeft: 'auto', padding: '8px 10px', fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.faint, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 1 }}>
+          <button onClick={() => fetchLeaderboard()} style={{ marginLeft: 'auto', padding: '8px 10px', fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.faint, background: 'none', border: 'none', cursor: 'pointer', letterSpacing: 1 }}>
             ↻ REFRESH
           </button>
         </div>
