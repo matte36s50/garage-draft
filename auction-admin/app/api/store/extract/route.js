@@ -118,8 +118,9 @@ const EXTRACTION_SCHEMA = {
           price: { type: ['number', 'null'], description: 'Result amount: hammer/sold price, or high bid for not-sold lots' },
           outcome: { type: ['string', 'null'], description: "One of 'sold', 'reserve_not_met', 'withdrawn'; null if the lot has not run yet" },
           currency: { type: ['string', 'null'], description: 'ISO code like USD, EUR, GBP if stated' },
+          lot_url: { type: ['string', 'null'], description: "The lot's own page, when the text marks it as [lot: URL]" },
         },
-        required: ['lot', 'year', 'make', 'model', 'trim', 'estimate_low', 'estimate_high', 'price', 'outcome', 'currency'],
+        required: ['lot', 'year', 'make', 'model', 'trim', 'estimate_low', 'estimate_high', 'price', 'outcome', 'currency', 'lot_url'],
         additionalProperties: false,
       },
     },
@@ -171,8 +172,11 @@ function splitChunks(text, size) {
   return chunks;
 }
 
-const lotKey = (l) => [l.lot, l.year, l.make, l.model, l.trim]
-  .map((v) => String(v ?? '').trim().toLowerCase()).join('|');
+// A lot's own page link identifies it outright (pages rendered by the
+// catalogue watch carry one); otherwise its number and identity do.
+const lotKey = (l) => (l.lot_url
+  ? `url|${String(l.lot_url).trim()}`
+  : [l.lot, l.year, l.make, l.model, l.trim].map((v) => String(v ?? '').trim().toLowerCase()).join('|'));
 
 /**
  * Fold per-slice lots into one list. The overlap between slices means the same
@@ -352,6 +356,8 @@ Rules:
    {category:'motorcycles', mode:'marginal', tiers:[{up_to:null,pct:20}]}].
   Only use mode 'bracket' when the page says the rate applies to the whole hammer price
   once it passes a threshold. If no fee table is on the page, fee_categories is null.
+- Text rendered by the catalogue watch marks each lot's own page as [lot: URL] just before
+  that lot. Copy the URL into lot_url exactly as written; without a marker, lot_url is null.
 - If a value is not on the page, use null. Never guess amounts.
 - The text may end with an "EMBEDDED PAGE DATA (JSON)" section (the page's data payload).
   Lots that appear only there count the same as lots in the visible text — but never
@@ -431,6 +437,7 @@ ${chunk}`;
     note,
     chunks: { total: chunks.length, read: done.length, failed: failures.length },
     usage: {
+      model: MODEL,
       input_tokens: done.reduce((n, d) => n + (d.usage?.input_tokens || 0), 0),
       output_tokens: done.reduce((n, d) => n + (d.usage?.output_tokens || 0), 0),
     },
