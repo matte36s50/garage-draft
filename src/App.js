@@ -813,6 +813,9 @@ export default function BidPrixApp() {
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [authLinkError, setAuthLinkError] = useState('')
   const authLinkErrorRef = useRef(false)
+  const userIdRef = useRef(null)          // who the last auth event was for
+  const initialSessionRef = useRef(false) // page-load placement done (INITIAL_SESSION)
+  const recoveryRef = useRef(false)       // on the password-reset form; don't navigate away
 
   // Auth screens are transient: persisting them to localStorage re-opens the
   // reset form on a later visit without a recovery session ("Auth session missing!").
@@ -1410,51 +1413,60 @@ export default function BidPrixApp() {
       authLinkErrorRef.current = true
       updateCurrentScreen('forgot-password')
     }
-    supabase.auth.getSession().then(async ({ data: { session }}) => {
-      if (session) {
-        setUser(session.user)
-        // Magic link: check for pending league from URL param first
-        const handled = await handlePendingLeague(session.user)
-        if (!handled) {
-          // Smart navigation: go to dashboard if user has a saved league, otherwise leagues
-          const savedLeague = loadSelectedLeague()
-          const savedScreen = loadCurrentScreen()
-          if (savedLeague && savedScreen && savedScreen !== 'landing' && savedScreen !== 'login') {
-            updateCurrentScreen(savedScreen)
-          } else if (savedLeague) {
-            updateCurrentScreen('dashboard')
-          } else {
-            updateCurrentScreen('leagues')
-          }
+    // Where a signed-in player lands: a pending invite link wins, then (on a page
+    // load) the screen they were on, else their event dashboard or the events list.
+    const landSignedIn = (sessionUser, restoreSavedScreen) => {
+      const go = () => {
+        if (recoveryRef.current) return
+        const savedLeague = loadSelectedLeague()
+        const savedScreen = loadCurrentScreen()
+        if (restoreSavedScreen && savedLeague && savedScreen && savedScreen !== 'landing' && savedScreen !== 'login') {
+          updateCurrentScreen(savedScreen)
+        } else {
+          updateCurrentScreen(savedLeague ? 'dashboard' : 'leagues')
         }
       }
-    })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setUser(session?.user || null)
+      if (!sessionStorage.getItem(PENDING_LEAGUE_KEY)) return go()
+      // Supabase calls made inside the auth callback deadlock, so join the invited
+      // event once the callback has returned.
+      setTimeout(async () => { if (!(await handlePendingLeague(sessionUser))) go() }, 0)
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const nextUser = session?.user || null
+      const prevUserId = userIdRef.current
+      userIdRef.current = nextUser?.id || null
+      if (event === 'INITIAL_SESSION') initialSessionRef.current = true
+      // Keep the same user object for repeat events so nothing keyed on it re-runs.
+      setUser(prev => (prev && nextUser && prev.id === nextUser.id && event !== 'USER_UPDATED' ? prev : nextUser))
+
       if (event === 'PASSWORD_RECOVERY') {
         // User clicked the password reset link - send them to the reset form
+        recoveryRef.current = true
         updateCurrentScreen('reset-password')
         return
       }
-      if (session) {
-        // Magic link: check for pending league from URL param first
-        const handled = await handlePendingLeague(session.user)
-        if (!handled) {
-          // Smart navigation on auth change
-          const savedLeague = loadSelectedLeague()
-          if (savedLeague) {
-            updateCurrentScreen('dashboard')
-          } else {
-            updateCurrentScreen('leagues')
-          }
+      if (event === 'USER_UPDATED') recoveryRef.current = false
+
+      if (!nextUser) {
+        recoveryRef.current = false
+        if (authLinkErrorRef.current) {
+          // Keep the forgot-password screen visible after a failed auth link;
+          // the no-session INITIAL_SESSION event would otherwise bounce to landing.
+          authLinkErrorRef.current = false
+        } else {
+          updateCurrentScreen('landing')
         }
-      } else if (authLinkErrorRef.current) {
-        // Keep the forgot-password screen visible after a failed auth link;
-        // the no-session INITIAL_SESSION event would otherwise bounce to landing.
-        authLinkErrorRef.current = false
-      } else {
-        updateCurrentScreen('landing')
+        return
       }
+
+      // Only a page load (INITIAL_SESSION) or a genuine new sign-in moves the player.
+      // supabase-js also sends SIGNED_IN while restoring a saved session on load
+      // (before INITIAL_SESSION), whenever the tab regains focus, and TOKEN_REFRESHED
+      // hourly; those must leave them on the screen they're using.
+      if (recoveryRef.current) return
+      if (event === 'INITIAL_SESSION') landSignedIn(nextUser, true)
+      else if (event === 'SIGNED_IN' && initialSessionRef.current && prevUserId !== nextUser.id) landSignedIn(nextUser, false)
     })
     return () => subscription.unsubscribe()
   // eslint-disable-next-line react-hooks/exhaustive-deps
