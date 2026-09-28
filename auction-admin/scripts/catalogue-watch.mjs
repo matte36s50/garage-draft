@@ -87,6 +87,16 @@ async function links(page) {
   return [...new Set(hrefs.map(cleanUrl).filter(Boolean))];
 }
 
+/** A lot's identity: its page's origin and path (as the "[lot: ...]" markers carry it). */
+function lotUrl(href) {
+  try {
+    const u = new URL(href);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
 function cleanUrl(href) {
   try {
     const u = new URL(href);
@@ -229,11 +239,11 @@ async function nextPage(page) {
 async function markedText(page, lotRe) {
   return page.evaluate(({ src, flags, marker }) => {
     const re = new RegExp(src, flags);
+    // A lot is its page: origin and path. Query strings carry list context
+    // (Gooding appends the catalogue's filters), not identity.
     const clean = (href) => {
       const u = new URL(href);
-      u.hash = '';
-      for (const k of [...u.searchParams.keys()]) if (/^utm_/i.test(k)) u.searchParams.delete(k);
-      return u.toString();
+      return `${u.origin}${u.pathname}`;
     };
     let anchors = [...document.querySelectorAll('a[href]')].filter((a) => {
       try { return re.test(new URL(a.href).pathname); } catch { return false; }
@@ -315,7 +325,7 @@ async function readCatalogue(page, url, house) {
     // Lists re-rendered in place can lag the click: wait for new lots.
     for (let t = 0; t < 16; t++) {
       const now = await page.$$eval('a[href]', (as) => as.map((a) => a.href)).catch(() => []);
-      const firstNow = now.map(cleanUrl).find((u) => { try { return house.lotLink.test(new URL(u).pathname); } catch { return false; } });
+      const firstNow = now.map(lotUrl).find((u) => { try { return house.lotLink.test(new URL(u).pathname); } catch { return false; } });
       if (firstNow && firstNow !== lastFirst) break;
       await page.waitForTimeout(500);
     }
@@ -569,6 +579,18 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
       if (!live) {
         row.action = `would read ${mode === 'result' ? 'results' : 'estimates'}${note}: ${cap.reason}`;
         console.log(`      sample: ${sendSegs[0].slice(0, 240).replace(/\s+/g, ' ')}`);
+        if (!withEst && cat.lots.size) {
+          const first = [...cat.lots.keys()][0];
+          try {
+            await open(page, first);
+            const body = await page.innerText('body');
+            const at = body.search(/estimate|est\./i);
+            console.log(`      cards show no estimates; the first lot's page ${at >= 0 ? 'says' : 'starts'}: `
+              + `${body.slice(Math.max(0, at - 150), (at >= 0 ? at : 0) + 250).replace(/\s+/g, ' ')}`);
+          } catch (e) {
+            console.log(`      cards show no estimates; the first lot's page is unreadable (${e.message.split('\n')[0]})`);
+          }
+        }
         if (cat.pager?.length) console.log(`      stopped after one page; paging controls seen:\n${cat.pager.map((h) => `        ${h}`).join('\n')}`);
         continue;
       }
