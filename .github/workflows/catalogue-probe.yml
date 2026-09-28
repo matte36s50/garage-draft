@@ -1,0 +1,38 @@
+name: Catalogue probe
+
+# Reads each auction house's catalogue pages the way Live Entry's extractor
+# does and reports which ones are readable (see
+# auction-admin/scripts/catalogue-probe.mjs). Read-only: no Claude calls, no
+# writes, no secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      houses:
+        description: 'Only these houses (space-separated: rm gooding broadarrow bonhams mecum bj); blank for all'
+        required: false
+        default: ''
+  push:
+    branches: ['claude/**']
+    paths:
+      - 'auction-admin/scripts/catalogue-probe.mjs'
+      - 'auction-admin/lib/pageText.js'
+      - '.github/workflows/catalogue-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe catalogue pages
+        working-directory: auction-admin
+        env:
+          HOUSES: ${{ github.event.inputs.houses }}
+        run: node scripts/catalogue-probe.mjs $HOUSES
