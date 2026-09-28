@@ -273,10 +273,10 @@ Else:                          value = current_bid          (live)
 
 ### Leaderboard
 
-**Fetch Logic (`calculateUserScore`):**
+**Fetch Logic (`calculateUserScore` inside `LeaderboardScreen`, `src/App.js`):**
 1. Load player's garage and all cars
 2. Value each car with `carValue` (above) and sum the values
-3. Calculate bonus car score separately
+3. Add the bonus car prize if the player won it (`loadBonusOutcome()` → `decideBonus()` in `src/utils/bonusCar.js`)
 4. Compute average per-car percentage
 
 **Sort Options:**
@@ -556,10 +556,11 @@ We have **two cron jobs** configured on cronjob.org:
 - **Schedule:** Every hour (`0 * * * *`)
 - **Purpose:**
   - Calculates and updates league member scores
-  - Creates performance history snapshots for charts
-  - Updates rank positions for rank change indicators
+  - Writes `performance_history` snapshots and refreshes `rank` / `rank_change` (`calculate_league_ranks`)
   - Closes finished events and writes them to History once their results are in
-- **Note:** The live leaderboard works without this, but History doesn't: events only close when it runs
+- **Note:** The live leaderboard works without this, but History doesn't: events only close when it runs.
+  Nothing in the player app reads `performance_history` or `rank_change` today; they fed the old
+  Dashboard's trend chart and rank arrows, which have been removed.
 
 #### 2. Auction Ending Soon Notifications (`/api/cron/notify-ending-soon`)
 - **URL:** `https://your-domain.vercel.app/api/cron/notify-ending-soon?secret=YOUR_CRON_SECRET`
