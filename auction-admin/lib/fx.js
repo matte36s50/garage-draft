@@ -36,3 +36,17 @@ export async function getUsdRate(currency, dateISO) {
   cache.set(key, rate);
   return rate;
 }
+
+/**
+ * Units of `to` per 1 unit of `from` on a date, crossed through USD
+ * (ECB rates are quoted per base currency, and every store row has a USD
+ * rate). Same currency is exactly 1, with no lookup. `usdRate` is injectable
+ * for tests.
+ */
+export async function crossRate(from, to, dateISO, usdRate = getUsdRate) {
+  const f = String(from || 'USD').toUpperCase();
+  const t = String(to || 'USD').toUpperCase();
+  if (f === t) return 1;
+  const [fromUsd, toUsd] = await Promise.all([usdRate(f, dateISO), usdRate(t, dateISO)]);
+  return fromUsd / toUsd;
+}

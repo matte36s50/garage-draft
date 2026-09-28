@@ -3,7 +3,7 @@ import { verifyAdminRequest } from '../../../../../lib/adminAuth';
 import { canonicalRpc } from '../../../../../lib/canonicalStore';
 import { fetchEvent, fetchEventLots, lotSummary, rpcErrorMessage } from '../../../../../lib/storeSales';
 import { matchLots } from '../../../../../lib/lotMatch';
-import { getUsdRate } from '../../../../../lib/fx';
+import { crossRate } from '../../../../../lib/fx';
 
 /**
  * POST /api/store/sales/estimates — attach catalogue estimates to lots an
@@ -20,8 +20,10 @@ import { getUsdRate } from '../../../../../lib/fx';
  * Body { event_id, accept, apply: true, sale_date? }
  *                                    -> write. accept = [{ listing_id,
  *                                       estimate_low, estimate_high, currency }];
- *                                       non-USD converts at the sale-date ECB
- *                                       rate, like Live Entry.
+ *                                       estimates are written in each lot's own
+ *                                       currency (the one its price is in),
+ *                                       converted at the sale-date ECB rate
+ *                                       when the catalogue quotes another.
  * Writes go through auction_upsert_listings as manual edits, so the game
  * mirror can never overwrite them; each row's needs_review is passed through
  * unchanged so unbucketed lots stay in the review queue.
@@ -92,13 +94,16 @@ async function apply(body, event, eventLots) {
     }
     if (low != null && high != null && high < low) [low, high] = [high, low];
 
-    const currency = String(a.currency || 'USD').toUpperCase();
-    if (currency !== 'USD') {
+    // Estimates are stored in the lot's own currency, next to its price, so a
+    // lot priced in EUR gets EUR estimates even from a USD-quoted catalogue.
+    const from = String(a.currency || 'USD').toUpperCase();
+    const to = String(row.currency || 'USD').toUpperCase();
+    if (from !== to) {
       const date = body.sale_date || event.starts_on
         || String(row.ended_at || row.ends_at || '').slice(0, 10) || null;
       let rate;
       try {
-        rate = await getUsdRate(currency, date);
+        rate = await crossRate(from, to, date);
       } catch (e) {
         return NextResponse.json({ error: e.message }, { status: 502 });
       }

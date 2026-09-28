@@ -258,7 +258,8 @@ function EstimatesPanel({ event, onDone, onClose }) {
       <p className="text-xs text-slate-400 mb-3">
         {event.lots} lot(s) in this sale, {event.with_estimate} with an estimate. Paste the catalogue or results page URL
         (or its text). Estimates are written onto the lots already here. Nothing new is created, so lots that came from
-        the game are not duplicated.
+        the game are not duplicated. Each estimate is saved in its lot&apos;s own currency, converted at the sale-date rate
+        when the catalogue quotes another.
       </p>
       <div className="flex gap-2 mb-3">
         <textarea className={`${inputCls} flex-1 h-20 font-mono`} value={input} onChange={(e) => setInput(e.target.value)}
