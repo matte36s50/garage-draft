@@ -16,8 +16,8 @@ test('a confirmed no-sale counts 25% of the high bid', () => {
   expect(carValue({ finalPrice: null, reserveNotMet: true, currentBid: 22000, ended: true })).toEqual({ status: 'no_sale', value: 5500 })
 })
 
-test('an ended car with no recorded result counts as a no-sale until a sale is recorded', () => {
-  expect(carValue({ finalPrice: null, reserveNotMet: false, currentBid: 38500, ended: true })).toEqual({ status: 'pending', value: 9625 })
+test('an ended car with no recorded result counts its high bid until the result is recorded', () => {
+  expect(carValue({ finalPrice: null, reserveNotMet: false, currentBid: 38500, ended: true })).toEqual({ status: 'pending', value: 38500 })
 })
 
 test('a withdrawn car is worth nothing', () => {
