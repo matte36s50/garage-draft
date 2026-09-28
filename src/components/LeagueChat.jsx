@@ -152,7 +152,7 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
       <button
         onClick={onToggle}
         className="
-          fixed bottom-20 sm:bottom-4 right-4 z-30
+          fixed bottom-[calc(96px+env(safe-area-inset-bottom))] md:bottom-4 right-4 z-30
           flex items-center gap-2 px-4 py-3
           bg-bpNavy border-2 border-bpGold/50 rounded-full
           text-bpCream hover:border-bpGold
@@ -179,7 +179,7 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
   // Expanded state - full chat panel
   return (
     <div className="
-      fixed bottom-20 sm:bottom-4 right-4 z-30
+      fixed bottom-[calc(96px+env(safe-area-inset-bottom))] md:bottom-4 right-4 z-30
       w-[calc(100%-2rem)] sm:w-96 h-[400px] sm:h-[500px] max-h-[60vh] sm:max-h-[70vh]
       bg-bpNavy border-2 border-bpGold/30 rounded-2xl
       shadow-2xl flex flex-col overflow-hidden

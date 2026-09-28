@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { decideBonus } from '@/lib/bonusCar';
 
 /**
  * PERFORMANCE TRACKING API ENDPOINT
@@ -66,7 +67,7 @@ export async function GET(request) {
     // Get all leagues (regardless of status - we want to track performance for all)
     const { data: leagues, error: leaguesError } = await supabase
       .from('leagues')
-      .select('id, name, use_manual_auctions, draft_starts_at');
+      .select('id, name, use_manual_auctions, draft_starts_at, bonus_auction_id, spending_limit');
 
     if (leaguesError) throw leaguesError;
 
@@ -148,6 +149,26 @@ export async function GET(request) {
 
         if (membersError) throw membersError;
 
+        // Bonus car: decided once per league (see lib/bonusCar.js)
+        let bonus = null;
+        if (league.bonus_auction_id) {
+          const [{ data: bonusAuction }, { data: predictions }] = await Promise.all([
+            supabase
+              .from('auctions')
+              .select('current_bid, final_price, reserve_not_met')
+              .eq('auction_id', league.bonus_auction_id)
+              .maybeSingle(),
+            supabase
+              .from('bonus_predictions')
+              .select('user_id, predicted_price')
+              .eq('league_id', league.id),
+          ]);
+          // Only members' calls count
+          const memberIds = new Set((members || []).map(m => m.user_id));
+          const memberCalls = (predictions || []).filter(p => memberIds.has(p.user_id));
+          bonus = decideBonus({ auction: bonusAuction, predictions: memberCalls, budget: league.spending_limit });
+        }
+
         // Calculate scores for each member and update league_members
         // NEW SCORING: Total dollar value instead of percentage gain
         const scoreUpdates = await Promise.all(
@@ -218,77 +239,15 @@ export async function GET(request) {
               });
             }
 
-            // Bonus car scoring - winner gets 3x the sale price
-            let bonusPoints = 0;
-            let bonusValue = 0;
-            let isWinner = false;
-
-            // Get the bonus auction for this league
-            const { data: leagueData } = await supabase
-              .from('leagues')
-              .select('bonus_auction_id')
-              .eq('id', league.id)
-              .single();
-
-            if (leagueData?.bonus_auction_id) {
-              // Get the bonus auction's final price
-              const { data: bonusAuction } = await supabase
-                .from('auctions')
-                .select('current_bid, final_price')
-                .eq('auction_id', leagueData.bonus_auction_id)
-                .single();
-
-              if (bonusAuction) {
-                const actualPrice = bonusAuction.final_price
-                  ? parseFloat(bonusAuction.final_price)
-                  : parseFloat(bonusAuction.current_bid);
-
-                // Get all predictions for this league
-                const { data: allPredictions } = await supabase
-                  .from('bonus_predictions')
-                  .select('user_id, predicted_price')
-                  .eq('league_id', league.id);
-
-                if (allPredictions && allPredictions.length > 0) {
-                  // Find the winner (smallest prediction error)
-                  let smallestError = Infinity;
-                  let winnerId = null;
-
-                  allPredictions.forEach(pred => {
-                    const error = Math.abs(parseFloat(pred.predicted_price) - actualPrice);
-                    if (error < smallestError) {
-                      smallestError = error;
-                      winnerId = pred.user_id;
-                    }
-                  });
-
-                  // If this user is the winner, they get 3x the sale price
-                  if (winnerId === member.user_id) {
-                    isWinner = true;
-                    bonusValue = actualPrice * 3;
-                    totalFinalValue += bonusValue;
-                    console.log(`[Cron] BONUS CAR WINNER: ${member.user_id} gets $${bonusValue} (3x $${actualPrice})`);
-                  }
-
-                  // Calculate legacy bonus points based on prediction accuracy
-                  const userPrediction = allPredictions.find(p => p.user_id === member.user_id);
-                  if (userPrediction) {
-                    const percentOff = (Math.abs(parseFloat(userPrediction.predicted_price) - actualPrice) / actualPrice) * 100;
-                    if (percentOff <= 5) {
-                      bonusPoints = 25;
-                    } else if (percentOff <= 10) {
-                      bonusPoints = 15;
-                    } else if (percentOff <= 15) {
-                      bonusPoints = 10;
-                    } else if (percentOff <= 20) {
-                      bonusPoints = 5;
-                    }
-                  }
-                }
-              }
+            // Bonus car prize, once the bonus auction has a confirmed result
+            const isWinner = !!bonus && bonus.winners.includes(member.user_id);
+            const bonusValue = isWinner ? bonus.share : 0;
+            if (isWinner) {
+              totalFinalValue += bonusValue;
+              console.log(`[Cron] BONUS CAR WINNER: ${member.user_id} gets $${bonusValue} (call closest to $${bonus.price})`);
             }
 
-            // Score is total dollar value (including 3x bonus for winner)
+            // Score is total dollar value (including the bonus prize for the winner)
             const finalScore = parseFloat(totalFinalValue.toFixed(2));
 
             return {
@@ -297,7 +256,6 @@ export async function GET(request) {
               total_spent: totalSpent,
               car_count: garageCars?.length || 0,
               garage_cars: garageCars,
-              bonus_points: bonusPoints,
               bonus_value: bonusValue,
               is_bonus_winner: isWinner
             };

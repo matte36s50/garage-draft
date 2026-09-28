@@ -14,8 +14,9 @@ value moves, and players are ranked by the total current value of their garage.
 1. **Join a league** during its draft window. You get a $175,000 budget and an empty 7‑car garage.
 2. **Draft up to 7 cars** from the auctions ending in the draft window. Each car's *draft price* is
    locked at the 48‑hour mark (`price_at_48h`).
-3. **Predict the bonus car** — one shared auction per league. The closest prediction earns a **2×**
-   scoring multiplier.
+3. **Predict the bonus car** — one shared auction per league. The closest prediction wins a prize
+   worth **5% of the league budget** ($10,000 on a $200,000 budget), added once the auction's result
+   is in. Tied predictions split the prize.
 4. **Watch the market move.** Bids update in real time and the leaderboard re‑ranks players by the
    current value of their garage.
 
@@ -32,8 +33,9 @@ Else:
   percentGain = (current_bid - purchase_price) / purchase_price * 100
 ```
 
-A player's **total score** is the sum of all car gains plus the bonus‑car gain (doubled for the
-closest prediction). Players can sort the leaderboard by total % gain, total $ gain, or average %.
+A player's **total score** is the sum of all car gains, plus the bonus‑car prize if they made the
+closest prediction (see `src/utils/bonusCar.js`). Players can sort the leaderboard by total % gain,
+total $ gain, or average %.
 
 ---
 
