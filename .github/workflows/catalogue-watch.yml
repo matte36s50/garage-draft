@@ -1,0 +1,78 @@
+name: Catalogue watch
+
+# Daily: reads the auction houses' catalogues in a headless browser and has the
+# admin app's extractor put their estimates (before each sale) and results
+# (after it) into the canonical store. See
+# auction-admin/scripts/catalogue-watch.mjs.
+#
+# Needs the repository secret CRON_SECRET (the admin app's cron secret, the
+# same value as in Vercel). The app address defaults to the production admin
+# app; set the repository variable CATALOGUE_WATCH_APP_URL to point elsewhere.
+# Without the secret it only reads and reports (dry run).
+
+on:
+  schedule:
+    # 07:07 UTC: after US evening sales have ended, before European sales start,
+    # and before Data Pipelines builds MAI (07:41 UTC, market-interest-score-app).
+    - cron: '7 7 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Read and report only: no Claude calls, no writes'
+        type: boolean
+        default: false
+      houses:
+        description: 'Only these houses (space-separated: rm broadarrow gooding mecum); blank for all'
+        required: false
+        default: ''
+  push:
+    branches: ['claude/**']
+    paths:
+      - 'auction-admin/scripts/catalogue-watch.mjs'
+      - 'auction-admin/lib/catalogueWatch.js'
+      - '.github/workflows/catalogue-watch.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: catalogue-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # For this run only; Playwright is not an app dependency.
+      - name: Install Playwright and Chromium
+        working-directory: auction-admin
+        run: |
+          npm install --no-save --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+      # The watch's record of what it captured. Losing it costs one extra
+      # capture per sale; sales still owed results are read back from the store.
+      - name: Restore the watch's record
+        uses: actions/cache/restore@v4
+        with:
+          path: auction-admin/.catalogue-watch
+          key: catalogue-watch-${{ github.run_id }}
+          restore-keys: catalogue-watch-
+      - name: Watch catalogues
+        working-directory: auction-admin
+        env:
+          CATALOGUE_WATCH_APP_URL: ${{ vars.CATALOGUE_WATCH_APP_URL || 'https://bid-prix-admin.vercel.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DRY_RUN: ${{ github.event_name == 'push' || github.event.inputs.dry_run == 'true' }}
+          HOUSES: ${{ github.event.inputs.houses }}
+        run: node scripts/catalogue-watch.mjs $([ "$DRY_RUN" = true ] && echo --dry-run) $HOUSES
+      - name: Save the watch's record
+        if: always() && hashFiles('auction-admin/.catalogue-watch/state.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: auction-admin/.catalogue-watch
+          key: catalogue-watch-${{ github.run_id }}

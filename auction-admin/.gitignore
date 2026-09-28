@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# catalogue watch state (kept in the Actions cache, not the repo)
+/.catalogue-watch/
