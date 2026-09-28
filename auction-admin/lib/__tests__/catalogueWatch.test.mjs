@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   watchListingId, eventNameFromTitle, parseSaleDates, shouldCapture, resultsDue,
-  estimatesOnly, buildIngestItems, LOT_MARKER,
+  estimatesOnly, buildIngestItems, LOT_MARKER, HOUSES,
 } from '../catalogueWatch.js';
 
 test('a lot is keyed by the house\'s own lot id, the same before and after the sale', () => {
@@ -128,4 +128,17 @@ test('results pass: all-in price where the house publishes it, high bid for a no
   });
   assert.equal(mecum.items[0].payload.price, 1650000);
   assert.equal(mecum.items[0].payload.premium_basis, 'unconfirmed');
+});
+
+test('Gooding: a sale\'s catalogue is the lots list filtered to it, named from the filter', () => {
+  const H = HOUSES;
+  const linked = 'https://www.goodingco.com/lots/?filtersInput%5BauctionType%5D%5B0%5D=Live%20Auction&filtersInput%5BauctionYear%5D%5B0%5D=2027'
+    + '&filtersInput%5BliveAuctionVenue%5D%5B0%5D=R%C3%A9tromobile%20Paris&sortBy=ENDING_SOONEST';
+  assert.ok(H.gooding.catalogue.test(linked));
+  const canonical = H.gooding.catalogueUrl(linked);
+  assert.doesNotMatch(canonical, /sortBy/);
+  assert.equal(H.gooding.catalogueUrl(`${linked}&page=2`), canonical);
+  assert.equal(H.gooding.eventName(canonical), 'Rétromobile Paris 2027');
+  assert.ok(H.gooding.follow.test('https://www.goodingco.com/auction/retromobile-new-york-auctions-2026'));
+  assert.ok(!H.gooding.follow.test('https://www.goodingco.com/auction/realized/retromobile-paris-2026'));
 });

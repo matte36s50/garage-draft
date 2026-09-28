@@ -18,7 +18,11 @@
  * One entry per house the watch reads.
  *   index        pages that list the house's upcoming sales
  *   follow       links on the index to sale pages that in turn link to the catalogue
- *   catalogue    which links on those pages are sale catalogues
+ *   catalogue    which links on those pages are sale catalogues (tested with the
+ *                query string only when catalogueUrl is given, which also
+ *                trims it to the parts that identify the sale)
+ *   eventName    the sale's name from its catalogue URL, where the page title
+ *                doesn't carry it
  *   lotLink      a lot's own page; the capture groups form its stable key
  *   titlePrefix  house name some sites put before the sale name in <title>
  *   premium      true: results are published including buyer's premium, so
@@ -49,11 +53,24 @@ export const HOUSES = {
   },
   gooding: {
     name: "Gooding Christie's",
-    // The bidding site lists no sales; goodingco.com's sale pages link to it.
-    index: ['https://bid.goodingco.com/', 'https://www.goodingco.com/'],
-    follow: /^https:\/\/www\.goodingco\.com\/auction\/[a-z0-9-]+\/?$/i,
-    catalogue: /^https:\/\/bid\.goodingco\.com\/auctions\/\d-[a-z0-9]+\/[a-z0-9-]+$/i,
-    lotLink: /\/lots\/(?:view\/)?(\d-[a-z0-9]+)(?=[/?#]|$)/i,
+    // A sale's catalogue is the lots list filtered to its venue and year,
+    // linked from goodingco.com and its sale pages.
+    index: ['https://www.goodingco.com/'],
+    follow: /^https:\/\/www\.goodingco\.com\/auction\/(?!realized\/)[a-z0-9-]+\/?$/i,
+    catalogue: /^https:\/\/www\.goodingco\.com\/lots\/?\?.*liveAuctionVenue/i,
+    catalogueUrl: (u) => {
+      const url = new URL(u);
+      const keep = new URLSearchParams();
+      for (const k of ['filtersInput[auctionType][0]', 'filtersInput[auctionYear][0]', 'filtersInput[liveAuctionVenue][0]']) {
+        if (url.searchParams.get(k)) keep.set(k, url.searchParams.get(k));
+      }
+      return `https://www.goodingco.com/lots/?${keep.toString()}`;
+    },
+    eventName: (u) => {
+      const q = new URL(u).searchParams;
+      return [q.get('filtersInput[liveAuctionVenue][0]'), q.get('filtersInput[auctionYear][0]')].filter(Boolean).join(' ');
+    },
+    lotLink: /\/lot\/([a-z0-9-]+)\/?$/i,
     premium: true,
     maxPages: 10,
   },

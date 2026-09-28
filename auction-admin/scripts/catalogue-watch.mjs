@@ -100,7 +100,35 @@ function cleanUrl(href) {
 
 /** Pick the largest "per page" / "view" size a catalogue offers, if any. */
 async function widenPage(page) {
-  const picked = await page.evaluate(() => {
+  let picked = await pickSize(page);
+  if (!picked) {
+    // A closed size menu: its toggle shows the current size ("36").
+    const opened = await page.evaluate(() => {
+      const t = [...document.querySelectorAll('button, [role=button], .dropdown-toggle')]
+        .find((el) => /^\d{2,3}$/.test(el.textContent.trim()) && (el.offsetParent || el.getClientRects().length));
+      if (!t) return false;
+      t.setAttribute('data-cw-toggle', '1');
+      return true;
+    }).catch(() => false);
+    if (opened) {
+      await page.click('[data-cw-toggle]', { timeout: 5_000 }).catch(() => {});
+      await page.waitForTimeout(500);
+      picked = await pickSize(page);
+    }
+  }
+  if (!picked) return null;
+  try {
+    if (picked.select) await page.selectOption('select[data-cw-size]', String(picked.size));
+    else await page.click('[data-cw-size]', { timeout: 5_000 });
+    await settle(page);
+    return picked.size;
+  } catch {
+    return null;
+  }
+}
+
+async function pickSize(page) {
+  return page.evaluate(() => {
     const vis = (el) => !!(el.offsetParent || el.getClientRects().length);
     for (const sel of document.querySelectorAll('select')) {
       const sizes = [...sel.options].map((o) => Number(o.value || o.textContent)).filter((n) => n >= 20 && n <= 500);
@@ -131,15 +159,6 @@ async function widenPage(page) {
     el.setAttribute('data-cw-size', String(size));
     return { select: false, size };
   }).catch(() => null);
-  if (!picked) return null;
-  try {
-    if (picked.select) await page.selectOption('select[data-cw-size]', String(picked.size));
-    else await page.click('[data-cw-size]', { timeout: 5_000 });
-    await settle(page);
-    return picked.size;
-  } catch {
-    return null;
-  }
 }
 
 /** Scroll and press "load more" until no new lot links appear. */
@@ -293,6 +312,13 @@ async function readCatalogue(page, url, house) {
     for (const [k, v] of seg.lots) if (!lots.has(k)) lots.set(k, v);
     pages += 1;
     if (!(await nextPage(page))) break;
+    // Lists re-rendered in place can lag the click: wait for new lots.
+    for (let t = 0; t < 16; t++) {
+      const now = await page.$$eval('a[href]', (as) => as.map((a) => a.href)).catch(() => []);
+      const firstNow = now.map(cleanUrl).find((u) => { try { return house.lotLink.test(new URL(u).pathname); } catch { return false; } });
+      if (firstNow && firstNow !== lastFirst) break;
+      await page.waitForTimeout(500);
+    }
   }
   const pager = pages === 1 && lots.size >= 24 ? await pagerHints(page) : null;
   return { ...opened, head, lots, pages, widened, auto, pager, ms: Date.now() - t0 };
@@ -318,10 +344,10 @@ async function pagerHints(page) {
 }
 
 /** Sale dates: the catalogue's header, else its lots, else the sale's own page. */
-async function saleDates(page, url, cat) {
+async function saleDates(page, url, cat, salePage) {
   const found = parseSaleDates(cat.head) || parseSaleDates([...cat.lots.values()].slice(0, 20).join('\n'));
   if (found) return found;
-  const landing = url.replace(/lots\/?$/, '');
+  const landing = salePage || url.replace(/lots\/?$/, '');
   if (landing === url) return null;
   try {
     await open(page, landing);
@@ -434,12 +460,18 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
     console.log(`\n### ${house.name}`);
     const found = new Set();
     const hops = [];
+    const referrer = new Map(); // catalogue -> the sale page that links to it
+    // Catalogue links on the current page, as their canonical URLs.
+    const catalogueLinks = async () => (await links(page))
+      .map((u) => (house.catalogueUrl ? u : u.split('?')[0]))
+      .filter((u) => house.catalogue.test(u))
+      .map((u) => (house.catalogueUrl ? house.catalogueUrl(u) : u));
     for (const idx of house.index) {
       try {
         const o = await open(page, idx);
         if (o.wall) throw new Error('blocked by a bot wall');
+        (await catalogueLinks()).forEach((u) => found.add(u));
         const all = (await links(page)).map((u) => u.split('?')[0]);
-        all.filter((u) => house.catalogue.test(u)).forEach((u) => found.add(u));
         if (house.follow) hops.push(...all.filter((u) => house.follow.test(u)));
       } catch (e) {
         problems.push(`${house.name}: index ${idx} unreadable (${e.message.split('\n')[0]})`);
@@ -449,11 +481,13 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
     for (const hop of [...new Set(hops)].slice(0, 8)) {
       try {
         await open(page, hop);
-        const all = (await links(page)).map((u) => u.split('?')[0]);
-        const hits = all.filter((u) => house.catalogue.test(u));
-        hits.forEach((u) => found.add(u));
+        const hits = await catalogueLinks();
+        for (const u of hits) {
+          found.add(u);
+          if (!referrer.has(u)) referrer.set(u, hop);
+        }
         if (!live && !hits.length) {
-          const near = all.filter((u) => /bid\.|\/lots?\b|catalog/i.test(u)).slice(0, 8);
+          const near = (await links(page)).filter((u) => /bid\.|\/lots?\b|catalog/i.test(u)).slice(0, 8);
           console.log(`   ${hop}: no catalogue link${near.length ? `; nearby:\n${near.map((u) => `     ${u}`).join('\n')}` : ''}`);
         }
       } catch (e) {
@@ -484,9 +518,9 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
       } catch (e) {
         cat = { error: e.message.split('\n')[0], lots: new Map(), head: '', pages: 0 };
       }
-      const name = entry.name || eventNameFromTitle(cat.title, houseId);
+      const name = entry.name || (house.eventName ? house.eventName(url) : eventNameFromTitle(cat.title, houseId));
       const dates = (entry.starts_on && { starts_on: entry.starts_on, ends_on: entry.ends_on })
-        || (cat.error ? null : await saleDates(page, url, cat))
+        || (cat.error ? null : await saleDates(page, url, cat, referrer.get(url)))
         || (fromStore && { starts_on: fromStore.starts_on, ends_on: fromStore.starts_on });
       const lotSegs = [...cat.lots.values()];
       const withEst = lotSegs.filter((s) => MONEY_RANGE.test(s)).length;
