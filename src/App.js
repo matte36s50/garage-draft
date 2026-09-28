@@ -817,7 +817,7 @@ const CAR_STATUS = {
 // What VALUE means, stated the same way under every total.
 function valueFootnote(eventOver) {
   return eventOver
-    ? "VALUE = your cars at their final prices (a no-sale counts 25% of its high bid) + any bonus prize. Unspent budget doesn't count."
+    ? "VALUE = your cars at their final prices (no sale: 25% of the high bid, result not in yet: the high bid) + any bonus prize. Unspent budget doesn't count."
     : "VALUE = your cars at their live bids (sold: hammer price, no sale: 25% of the high bid) + any bonus prize. Unspent budget doesn't count."
 }
 
@@ -2907,7 +2907,7 @@ function GarageScreen({ onNavigate, currentScreen }) {
             const gainPct = car.purchasePrice > 0 ? ((gain / car.purchasePrice) * 100).toFixed(1) : '0.0'
             const valueLabel = status === 'live' ? 'NOW' : status === 'sold' ? 'SOLD' : 'COUNTS'
             const valueNote = status === 'no_sale' ? `25% of the ${fmtK(car.currentBid)} high bid`
-              : status === 'pending' ? '25% until a sale is recorded'
+              : status === 'pending' ? 'high bid until the result is in'
               : null
             const hasAuctionLink = car.auctionUrl && car.auctionUrl !== '#'
             const carTitle = car.title && car.title.replace(`${car.year} `, '')
@@ -2982,6 +2982,7 @@ function GarageScreen({ onNavigate, currentScreen }) {
 function LeaderboardScreen({ onNavigate, currentScreen }) {
   const { isChatOpen, leagueLoading, marketTick, selectedLeague, setIsChatOpen, user } = useApp()
   const [standings, setStandings] = useState([])
+  const [resultsToCome, setResultsToCome] = useState(0)
   const [loading, setLoading] = useState(true)
   const [sortBy, setSortBy] = useState('total_value')
   const [showConfetti, setShowConfetti] = useState(false)
@@ -3077,6 +3078,12 @@ if (!selectedLeague && !leagueLoading) {
       const calculatedStandings = await Promise.all(standingsPromises)
       if (seq !== fetchSeq.current) return
 
+      // Lots whose result can still move the standings: drafted cars still live
+      // or waiting on a recorded result, and an unsettled bonus car.
+      const openLots = new Set(calculatedStandings.flatMap(s => s.openLots || []))
+      if (bonus && !bonus.settled) openLots.add('bonus')
+      setResultsToCome(openLots.size)
+
       const sorted = sortStandings(calculatedStandings, sortByRef.current)
       setStandings(sorted)
 
@@ -3108,7 +3115,8 @@ if (!selectedLeague && !leagueLoading) {
           carsCount: 0,
           totalSpent: 0,
           avgPercentPerCar: 0,
-          isRosterComplete: false
+          isRosterComplete: false,
+          openLots: []
         }
       }
 
@@ -3133,6 +3141,7 @@ if (!selectedLeague && !leagueLoading) {
       let totalDollarGain = 0
       let carsCount = 0
       let totalSpent = 0
+      const openLots = []
 
       if (cars && cars.length > 0) {
         cars.forEach(car => {
@@ -3142,7 +3151,7 @@ if (!selectedLeague && !leagueLoading) {
           const purchasePrice = parseFloat(car.purchase_price)
           const now = Math.floor(Date.now() / 1000)
           // Sold, no sale, withdrawn or live: the shared rule in utils/carValue.js
-          const { value: finalValue } = carValue({
+          const { status, value: finalValue } = carValue({
             finalPrice: auction.final_price,
             reserveNotMet: auction.reserve_not_met,
             ended: auction.timestamp_end < now,
@@ -3151,6 +3160,7 @@ if (!selectedLeague && !leagueLoading) {
           })
 
           totalFinalValue += finalValue
+          if (status === 'live' || status === 'pending') openLots.push(auction.auction_id)
 
           // Keep percentage gain for backward compatibility
           const percentGain = purchasePrice > 0 ? ((finalValue - purchasePrice) / purchasePrice) * 100 : 0
@@ -3181,7 +3191,8 @@ if (!selectedLeague && !leagueLoading) {
         carsCount,
         totalSpent: parseFloat(totalSpent.toFixed(2)),
         avgPercentPerCar: parseFloat(avgPercentPerCar.toFixed(2)),
-        isRosterComplete
+        isRosterComplete,
+        openLots
       }
 
     } catch (error) {
@@ -3195,7 +3206,8 @@ if (!selectedLeague && !leagueLoading) {
         carsCount: 0,
         totalSpent: 0,
         avgPercentPerCar: 0,
-        isRosterComplete: false
+        isRosterComplete: false,
+        openLots: []
       }
     }
   }
@@ -3273,7 +3285,9 @@ if (!selectedLeague && !leagueLoading) {
         </div>
         {isFinal && (
           <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, marginTop: 6, letterSpacing: 0.3 }}>
-            Every auction has ended — these results are locked in.
+            {resultsToCome > 0
+              ? `${resultsToCome} ${resultsToCome === 1 ? 'result' : 'results'} still to come. Standings can change until ${resultsToCome === 1 ? "it's" : "they're"} in.`
+              : 'Every auction has ended — these results are locked in.'}
           </div>
         )}
       </div>
