@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { decideBonus } from '@/lib/bonusCar';
+import { carValue } from '@/lib/carValue';
+import { eventCompletion } from '@/lib/eventCompletion';
 
 /**
  * PERFORMANCE TRACKING API ENDPOINT
@@ -33,6 +35,9 @@ import { decideBonus } from '@/lib/bonusCar';
  * Option 3: Accept Limitations
  * - Simply don't run this endpoint
  * - Dashboard will work fine, just without historical trends
+ *
+ * History does depend on it, though: it stores the scores History records and
+ * closes finished events once their results are in (see lib/eventCompletion.js).
  */
 
 // Helper to create supabase client with service role key for cron job
@@ -67,12 +72,13 @@ export async function GET(request) {
     // Get all leagues (regardless of status - we want to track performance for all)
     const { data: leagues, error: leaguesError } = await supabase
       .from('leagues')
-      .select('id, name, use_manual_auctions, draft_starts_at, bonus_auction_id, spending_limit');
+      .select('id, name, use_manual_auctions, draft_starts_at, draft_ends_at, completed_at, bonus_auction_id, spending_limit');
 
     if (leaguesError) throw leaguesError;
 
     let totalUpdated = 0;
     const results = [];
+    const completions = [];
 
     for (const league of leagues || []) {
       try {
@@ -83,7 +89,7 @@ export async function GET(request) {
         // Try to get auctions from league_auctions table first
         const { data: leagueAuctions } = await supabase
           .from('league_auctions')
-          .select('auction_id, auctions(auction_id, current_bid, final_price, price_at_48h, timestamp_end)')
+          .select('auction_id, auctions(auction_id, current_bid, final_price, reserve_not_met, price_at_48h, timestamp_end)')
           .eq('league_id', league.id);
 
         if (leagueAuctions && leagueAuctions.length > 0) {
@@ -101,7 +107,7 @@ export async function GET(request) {
 
           const { data: windowAuctions } = await supabase
             .from('auctions')
-            .select('auction_id, current_bid, final_price, price_at_48h, timestamp_end')
+            .select('auction_id, current_bid, final_price, reserve_not_met, price_at_48h, timestamp_end')
             .gte('timestamp_end', minEndTime)
             .lte('timestamp_end', maxEndTime)
             .not('price_at_48h', 'is', null);
@@ -120,16 +126,13 @@ export async function GET(request) {
             const baselinePrice = parseFloat(auction.price_at_48h);
             if (!baselinePrice || baselinePrice <= 0) return;
 
-            const currentPrice = auction.final_price
-              ? parseFloat(auction.final_price)
-              : parseFloat(auction.current_bid || baselinePrice);
-
-            const auctionEnded = auction.timestamp_end < now;
-            const reserveNotMet = auctionEnded && !auction.final_price;
-            let effectivePrice = currentPrice;
-            if (reserveNotMet) {
-              effectivePrice = currentPrice * 0.25;
-            }
+            const { value: effectivePrice } = carValue({
+              finalPrice: auction.final_price,
+              reserveNotMet: auction.reserve_not_met,
+              ended: auction.timestamp_end <= now,
+              currentBid: auction.current_bid,
+              purchasePrice: baselinePrice,
+            });
 
             const percentGain = ((effectivePrice - baselinePrice) / baselinePrice) * 100;
             totalPercentGain += percentGain;
@@ -151,11 +154,13 @@ export async function GET(request) {
 
         // Bonus car: decided once per league (see lib/bonusCar.js)
         let bonus = null;
+        let bonusAuction = null;
+        let bonusLoadFailed = false;
         if (league.bonus_auction_id) {
-          const [{ data: bonusAuction }, { data: predictions }] = await Promise.all([
+          const [{ data: bonusLot, error: bonusLotError }, { data: predictions, error: predictionsError }] = await Promise.all([
             supabase
               .from('auctions')
-              .select('current_bid, final_price, reserve_not_met')
+              .select('current_bid, final_price, reserve_not_met, timestamp_end')
               .eq('auction_id', league.bonus_auction_id)
               .maybeSingle(),
             supabase
@@ -163,6 +168,8 @@ export async function GET(request) {
               .select('user_id, predicted_price')
               .eq('league_id', league.id),
           ]);
+          bonusAuction = bonusLot;
+          bonusLoadFailed = !!(bonusLotError || predictionsError);
           // Only members' calls count
           const memberIds = new Set((members || []).map(m => m.user_id));
           const memberCalls = (predictions || []).filter(p => memberIds.has(p.user_id));
@@ -174,7 +181,7 @@ export async function GET(request) {
         const scoreUpdates = await Promise.all(
           (members || []).map(async (member) => {
             // First, get the user's garage for this league
-            const { data: garage } = await supabase
+            const { data: garage, error: garageError } = await supabase
               .from('garages')
               .select('id')
               .eq('user_id', member.user_id)
@@ -182,9 +189,10 @@ export async function GET(request) {
               .maybeSingle();
 
             let garageCars = [];
+            let carsError = null;
             if (garage) {
               // Get garage cars with auction data
-              const { data: cars } = await supabase
+              const { data: cars, error } = await supabase
                 .from('garage_cars')
                 .select(`
                   purchase_price,
@@ -192,12 +200,14 @@ export async function GET(request) {
                     auction_id,
                     current_bid,
                     final_price,
+                    reserve_not_met,
                     timestamp_end
                   )
                 `)
                 .eq('garage_id', garage.id);
 
               garageCars = cars || [];
+              carsError = error;
             }
 
             let totalFinalValue = 0;
@@ -209,30 +219,16 @@ export async function GET(request) {
                 if (!auction) return;
 
                 const purchasePrice = parseFloat(car.purchase_price);
-                const currentBid = parseFloat(auction.current_bid || purchasePrice);
-                const finalPrice = auction.final_price !== null ? parseFloat(auction.final_price) : null;
-
                 const now = Math.floor(Date.now() / 1000);
-                const auctionEnded = auction.timestamp_end < now;
 
-                let finalValue;
-
-                // Withdrawn: final_price is explicitly set to 0
-                if (finalPrice === 0) {
-                  finalValue = 0;
-                }
-                // Sold: final_price is set and > 0
-                else if (finalPrice !== null && finalPrice > 0) {
-                  finalValue = finalPrice;
-                }
-                // Reserve not met: auction ended but no final_price
-                else if (auctionEnded && finalPrice === null) {
-                  finalValue = currentBid * 0.25;
-                }
-                // Pending: auction still active - use current bid
-                else {
-                  finalValue = currentBid;
-                }
+                // Same rule as the player app (lib/carValue.js)
+                const { value: finalValue } = carValue({
+                  finalPrice: auction.final_price,
+                  reserveNotMet: auction.reserve_not_met,
+                  ended: auction.timestamp_end <= now,
+                  currentBid: auction.current_bid,
+                  purchasePrice,
+                });
 
                 totalFinalValue += finalValue;
                 totalSpent += purchasePrice;
@@ -257,15 +253,16 @@ export async function GET(request) {
               car_count: garageCars?.length || 0,
               garage_cars: garageCars,
               bonus_value: bonusValue,
-              is_bonus_winner: isWinner
+              is_bonus_winner: isWinner,
+              load_failed: !!(garageError || carsError)
             };
           })
         );
 
         // Update total_score for all members
-        await Promise.all(
+        const scoreWrites = await Promise.all(
           scoreUpdates.map(async (update) => {
-            await supabase
+            return supabase
               .from('league_members')
               .update({ total_score: update.total_score })
               .eq('league_id', league.id)
@@ -318,28 +315,37 @@ export async function GET(request) {
             results.push({ league: league.name, status: 'success', snapshots: snapshots.length });
           }
         }
+
+        // Close the event and write it to History once its results are in. This
+        // is judged on the same rows just scored, so the score History records
+        // includes every result that let the event close. If a read or score
+        // write failed this run, it waits for the next run instead.
+        if (!league.completed_at) {
+          const cars = scoreUpdates.flatMap(u => (u.garage_cars || []).map(c => c.auctions).filter(Boolean));
+          const verdict = eventCompletion({ draftEndsAt: league.draft_ends_at, cars, bonusAuction });
+          const loadFailed = bonusLoadFailed || scoreUpdates.some(u => u.load_failed) || scoreWrites.some(w => w.error);
+          if (verdict.ready && loadFailed) {
+            completions.push({ league: league.name, status: 'deferred', reason: 'load_error' });
+          } else if (verdict.ready) {
+            const { data: completed, error: completeError } = await supabase
+              .rpc('complete_league', { p_league_id: league.id });
+            const ok = !completeError && completed?.success;
+            completions.push({
+              league: league.name,
+              status: ok ? 'completed' : 'failed',
+              reason: verdict.reason,
+              missing_results: verdict.missing,
+              error: ok ? undefined : completeError?.message || completed?.error,
+            });
+            if (ok) console.log(`[Cron] Completed league ${league.name} (${verdict.reason})`);
+          } else if (verdict.reason === 'awaiting_results') {
+            completions.push({ league: league.name, status: 'awaiting_results', missing_results: verdict.missing });
+          }
+        }
       } catch (leagueError) {
         console.error(`Error processing league ${league.name}:`, leagueError);
         results.push({ league: league.name, status: 'error', error: leagueError.message });
       }
-    }
-
-    // Check and auto-complete leagues where all auctions have ended
-    let completedLeagues = null;
-    try {
-      const { data: completionResult, error: completionError } = await supabase
-        .rpc('check_and_complete_leagues');
-
-      if (completionError) {
-        console.error('Error checking league completion:', completionError);
-      } else {
-        completedLeagues = completionResult;
-        if (completionResult?.leagues_completed > 0) {
-          console.log(`Auto-completed ${completionResult.leagues_completed} leagues`);
-        }
-      }
-    } catch (completionErr) {
-      console.error('League completion check failed:', completionErr);
     }
 
     return NextResponse.json({
@@ -348,7 +354,10 @@ export async function GET(request) {
       leagues: leagues?.length || 0,
       totalSnapshots: totalUpdated,
       results,
-      leagueCompletion: completedLeagues
+      leagueCompletion: {
+        leagues_completed: completions.filter(c => c.status === 'completed').length,
+        results: completions,
+      }
     });
 
   } catch (error) {
