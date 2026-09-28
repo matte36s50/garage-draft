@@ -103,6 +103,30 @@ run via **[cron-job.org](https://cron-job.org)** hitting protected API endpoints
 `/api/cron/*`. Each endpoint requires a `secret` query parameter matching the `CRON_SECRET`
 environment variable. See [`CODEBASE_OVERVIEW.md`](CODEBASE_OVERVIEW.md) §12 for details.
 
+### Catalogue watch
+
+A daily GitHub Actions job ([`.github/workflows/catalogue-watch.yml`](.github/workflows/catalogue-watch.yml))
+puts live-auction catalogues into the canonical store without anyone pasting pages. It reads
+RM Sotheby's, Broad Arrow and Gooding Christie's. Mecum is set up but switched off, because its
+catalogue pages show no estimates:
+
+- **Before each sale**, estimates as the lots appear. RM Sotheby's deletes estimates from sold
+  lots, so this is the only time to read them.
+- **After it**, results.
+
+It renders each catalogue in headless Chromium and has the admin app's Live Entry extractor read
+it. Claude is only paid for when a page has changed, at most weekly until 8 days before the sale,
+then daily, plus a results pass. Lots are written as scraper writes, keyed by each lot's own page,
+so a correction made by hand in the admin panel always stands. Each run's summary lists every
+sale, what the job did and what it cost. A run fails, and GitHub emails, when a house's pages
+can't be read.
+
+Setup: add the admin app's `CRON_SECRET` as a repository secret with the same name
+(Settings → Secrets and variables → Actions). Without it the job only reads and reports. Run it
+by hand from the Actions tab with **dry_run** ticked to see what it would do. Bonhams isn't
+covered, because its site blocks automated browsers; paste its catalogues into Live Entry.
+Details are in [`auction-admin/scripts/catalogue-watch.mjs`](auction-admin/scripts/catalogue-watch.mjs).
+
 ---
 
 ## Design

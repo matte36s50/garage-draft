@@ -11,6 +11,9 @@ test('a lot is keyed by the house\'s own lot id, the same before and after the s
   const after = { ...before, lot: '112', lot_url: 'https://rmsothebys.com/auctions/lf26/lots/r0005-2004-porsche-carrera-gt/?view=results' };
   assert.equal(watchListingId('rm', before, 'The London Auction 2026'), 'cw-rm-lf26-r0005');
   assert.equal(watchListingId('rm', after, 'The London Auction 2026'), 'cw-rm-lf26-r0005');
+  assert.equal(watchListingId('rm', { lot_url: 'https://rmsothebys.com/auctions/hf26/lots/c0061-otto-fennel/' }, 'x'), 'cw-rm-hf26-c0061');
+  assert.equal(watchListingId('broadarrow', { lot_url: 'https://bid.broadarrowauctions.com/lots/view/1-DGKK9P/1987-mercedes-benz-560-sl' }, 'x'),
+    'cw-broadarrow-1-dgkk9p');
   assert.equal(watchListingId('mecum', { lot_url: 'https://www.mecum.com/lots/1234567/1963-ferrari/' }, 'x'), 'cw-mecum-1234567');
 });
 

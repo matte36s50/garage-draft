@@ -26,13 +26,15 @@
  *   estimatesOnly  only lots that show an estimate go to Claude (catalogues
  *                of thousands of lots where only the top few carry one)
  *   maxPages     catalogue pages read per pass
+ *   enabled      false: read only when named on the command line
  */
 export const HOUSES = {
   rm: {
     name: "RM Sotheby's",
     index: ['https://rmsothebys.com/upcoming/'],
     catalogue: /^https:\/\/rmsothebys\.com\/auctions\/[a-z0-9]+\/lots\/$/i,
-    lotLink: /\/auctions\/([a-z0-9]+)\/lots\/(r\d+)(?=[-/]|$)/i,
+    // r0037 cars; c0061, n2035 automobilia and memorabilia (the extractor skips those)
+    lotLink: /\/auctions\/([a-z0-9]+)\/lots\/([a-z]\d{3,})(?=[-/]|$)/i,
     premium: true,
     maxPages: 10,
   },
@@ -52,7 +54,11 @@ export const HOUSES = {
     premium: true,
     maxPages: 10,
   },
+  // Off: Mecum's lot cards show no estimates (none on 2,900 lots across nine
+  // sales, September 2026); where it publishes one, it is only in its search
+  // feed. Reading 20 pages a sale for nothing took most of the run.
   mecum: {
+    enabled: false,
     name: 'Mecum',
     index: ['https://www.mecum.com/auctions/'],
     catalogue: /^https:\/\/www\.mecum\.com\/auctions\/[a-z0-9-]+-\d{4}\/lots\/$/i,

@@ -287,7 +287,27 @@ async function readCatalogue(page, url, house) {
     pages += 1;
     if (!(await nextPage(page))) break;
   }
-  return { ...opened, head, lots, pages, widened, auto, ms: Date.now() - t0 };
+  const pager = pages === 1 && lots.size >= 24 ? await pagerHints(page) : null;
+  return { ...opened, head, lots, pages, widened, auto, pager, ms: Date.now() - t0 };
+}
+
+/** What looks like paging on a page, for the dry-run report. */
+async function pagerHints(page) {
+  return page.evaluate(() => {
+    const vis = (el) => !!(el.offsetParent || el.getClientRects().length);
+    return [...document.querySelectorAll('a, button, [role=button], li, span, i')]
+      .filter((el) => vis(el) && el.children.length <= 2)
+      .filter((el) => {
+        const t = el.textContent.trim();
+        const label = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.className || ''}`;
+        return /^(\d{1,3}|[<>‹›«»→←]|next|prev(ious)?|more|load more|show more)$/i.test(t)
+          || /next|pagination|pager|page-link|load-?more/i.test(label);
+      })
+      .slice(-15)
+      .map((el) => `${el.tagName.toLowerCase()}${el.className ? `.${String(el.className).trim().split(/\s+/).slice(0, 2).join('.')}` : ''}`
+        + ` "${el.textContent.trim().slice(0, 20)}"${el.getAttribute('aria-label') ? ` aria="${el.getAttribute('aria-label')}"` : ''}`
+        + `${el.getAttribute('href') ? ` href=${el.getAttribute('href').slice(0, 80)}` : ''}`);
+  }).catch(() => []);
 }
 
 /** Sale dates: the catalogue's header, else its lots, else the sale's own page. */
@@ -380,7 +400,8 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
   const live = !args.dryRun && APP_URL && SECRET;
   if (!args.dryRun && !live) console.log('::warning::CATALOGUE_WATCH_APP_URL or CRON_SECRET not set: dry run.');
   const today = new Date().toISOString().slice(0, 10);
-  const houseIds = Object.keys(houses).filter((h) => !args.houses.length || args.houses.includes(h));
+  const houseIds = Object.keys(houses)
+    .filter((h) => (args.houses.length ? args.houses.includes(h) : houses[h].enabled !== false));
   const state = loadState();
   const rows = [];
   const problems = [];
@@ -415,7 +436,13 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
       }
     }
     console.log(`   index: ${found.size} catalogue(s) listed`);
-    if (!found.size) problems.push(`${house.name}: no catalogues found on the index page(s)`);
+    if (!found.size) {
+      problems.push(`${house.name}: no catalogues found on the index page(s)`);
+      if (!live) {
+        const sample = (await links(page).catch(() => [])).filter((u) => /auction|lots|catalog/i.test(u)).slice(0, 15);
+        console.log(`   auction-looking links on the index:\n${sample.map((u) => `     ${u}`).join('\n') || '     (none)'}`);
+      }
+    }
 
     const urls = new Set(found);
     for (const [u, s] of Object.entries(state.sales)) if (s.house === houseId && !s.done) urls.add(u);
@@ -483,6 +510,7 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
       if (!live) {
         row.action = `would read ${mode === 'result' ? 'results' : 'estimates'}${note}: ${cap.reason}`;
         console.log(`      sample: ${sendSegs[0].slice(0, 240).replace(/\s+/g, ' ')}`);
+        if (cat.pager?.length) console.log(`      stopped after one page; paging controls seen:\n${cat.pager.map((h) => `        ${h}`).join('\n')}`);
         continue;
       }
       if (captures >= MAX_CAPTURES) {
