@@ -11,6 +11,8 @@
  * - Users must draft exactly 7 cars for a complete roster
  */
 
+import { decideBonus } from './bonusCar';
+
 const MAX_GARAGE_CARS = 7;
 
 /**
@@ -179,24 +181,15 @@ export async function calculateUserScore(supabase, userId, leagueId) {
       });
     }
 
-    // Get bonus car score
-    // Winner of bonus car prediction gets 3x the sale price added to their total
+    // Bonus car prize (see bonusCar.js), once the bonus auction has a result
     const bonusScore = await calculateBonusCarScore(supabase, userId, leagueId);
-    if (bonusScore) {
-      console.log(`[Score Calc] Bonus car score: +${bonusScore.bonusPoints} points`);
-      totalPercentGain += bonusScore.bonusPoints;
-
-      // If this user is the bonus car winner, add 3x the sale price to their total
-      if (bonusScore.isWinner && bonusScore.bonusValue > 0) {
-        console.log(`[Score Calc] BONUS CAR WINNER! Adding ${bonusScore.bonusValue} (3x sale price) to total`);
-        totalFinalValue += bonusScore.bonusValue;
-        totalDollarGain += bonusScore.bonusValue; // Also counts as dollar gain
-      }
+    if (bonusScore?.isWinner && bonusScore.bonusValue > 0) {
+      console.log(`[Score Calc] BONUS CAR WINNER! Adding ${bonusScore.bonusValue} prize to total`);
+      totalFinalValue += bonusScore.bonusValue;
+      totalDollarGain += bonusScore.bonusValue; // Also counts as dollar gain
     }
 
-    // Calculate average per car (including bonus car if exists)
-    const totalCars = carsCount + (bonusScore ? 1 : 0);
-    const avgPercentPerCar = totalCars > 0 ? totalPercentGain / totalCars : 0;
+    const avgPercentPerCar = carsCount > 0 ? totalPercentGain / carsCount : 0;
 
     // Roster is complete when user has exactly 7 cars
     const isRosterComplete = carsCount >= MAX_GARAGE_CARS;
@@ -251,7 +244,8 @@ export async function calculateUserScore(supabase, userId, leagueId) {
 
 /**
  * Calculate bonus car prediction score
- * Winner (closest prediction) gets 3x the sale price added to their total score
+ * Winner (closest prediction) gets the bonus prize (5% of the event budget) added
+ * to their total score, once the auction has a confirmed result. See bonusCar.js.
  * @param {Object} supabase - Supabase client
  * @param {string} userId - User ID
  * @param {string} leagueId - League ID
@@ -262,7 +256,7 @@ export async function calculateBonusCarScore(supabase, userId, leagueId) {
     // Get league bonus auction ID
     const { data: league } = await supabase
       .from('leagues')
-      .select('bonus_auction_id')
+      .select('bonus_auction_id, spending_limit')
       .eq('id', leagueId)
       .single();
 
@@ -281,7 +275,7 @@ export async function calculateBonusCarScore(supabase, userId, leagueId) {
     // Get bonus auction data
     const { data: bonusAuction } = await supabase
       .from('auctions')
-      .select('current_bid, final_price, price_at_48h, title, image_url')
+      .select('current_bid, final_price, reserve_not_met, price_at_48h, title, image_url')
       .eq('auction_id', league.bonus_auction_id)
       .single();
 
@@ -303,40 +297,9 @@ export async function calculateBonusCarScore(supabase, userId, leagueId) {
       .select('user_id, predicted_price')
       .eq('league_id', leagueId);
 
-    let isWinner = false;
-    let bonusValue = 0;
-
-    if (allPredictions && allPredictions.length > 0) {
-      // Find the prediction with smallest error
-      let smallestError = Infinity;
-      let winnerId = null;
-
-      allPredictions.forEach(pred => {
-        const error = Math.abs(parseFloat(pred.predicted_price) - finalPrice);
-        if (error < smallestError) {
-          smallestError = error;
-          winnerId = pred.user_id;
-        }
-      });
-
-      // If this user is the winner, they get 3x the sale price
-      if (winnerId === userId) {
-        isWinner = true;
-        bonusValue = finalPrice * 3;
-      }
-    }
-
-    // Legacy bonus points for backward compatibility
-    let bonusPoints = 0;
-    if (percentError <= 5) {
-      bonusPoints = 25;
-    } else if (percentError <= 10) {
-      bonusPoints = 15;
-    } else if (percentError <= 15) {
-      bonusPoints = 10;
-    } else if (percentError <= 20) {
-      bonusPoints = 5;
-    }
+    const outcome = decideBonus({ auction: bonusAuction, predictions: allPredictions || [], budget: league.spending_limit });
+    const isWinner = outcome.winners.includes(userId);
+    const bonusValue = isWinner ? outcome.share : 0;
 
     // Calculate base percent gain for display (guard against division by zero)
     const baseline = parseFloat(bonusAuction.price_at_48h || finalPrice);
@@ -347,9 +310,8 @@ export async function calculateBonusCarScore(supabase, userId, leagueId) {
       actual: finalPrice,
       error: predictionError,
       percentError: parseFloat(percentError.toFixed(2)),
-      bonusPoints,
-      bonusValue: parseFloat(bonusValue.toFixed(2)),  // NEW: 3x sale price for winner
-      isWinner,                                        // NEW: True if closest prediction
+      bonusValue,                                      // Prize won (0 until the result is in)
+      isWinner,                                        // True if closest prediction
       basePercentGain: parseFloat(basePercentGain.toFixed(2)),
       title: bonusAuction.title,
       imageUrl: bonusAuction.image_url,

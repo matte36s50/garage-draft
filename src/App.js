@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import LeagueChat from './components/LeagueChat'
 import UserHistory from './components/UserHistory'
 import DraftResults from './components/DraftResults'
+import { bonusPrize, decideBonus } from './utils/bonusCar'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
@@ -898,6 +899,8 @@ export default function BidPrixApp() {
   // prediction per player per event, editable until the lot closes.
   function BonusCarCard({ isWide }) {
     const car = bonusCar
+    const prize = bonusPrize(selectedLeague?.spending_limit || 200000)
+    const closed = car.endTime ? car.endTime <= new Date() : !!car.auctionEnded
     const lo = Math.round(car.currentBid) || 0
     // Quick-pick slider range: current bid → 2× current bid. Typed exact amounts
     // have no upper cap — the slider max stretches to follow a higher typed call.
@@ -912,13 +915,23 @@ export default function BidPrixApp() {
     // Sticky extended max: typing a call above 2× stretches the slider and it
     // stays stretched, so dragging back down doesn't re-scale the track.
     const [hiExt, setHiExt] = useState(() => Math.round(userPrediction || 0))
-    const locked = userPrediction != null && !editing
-    const hiSlider = Math.max(hi, hiExt, pred)
-    const pct = hiSlider > lo ? Math.min(1, (pred - lo) / (hiSlider - lo)) : 0
-    const overBid = pred - car.currentBid
+    const locked = closed || (userPrediction != null && !editing)
+    // A locked card shows the saved call, even if it was saved below today's bid.
+    const call = locked && userPrediction != null ? Math.round(userPrediction) : pred
+    const noCall = closed && userPrediction == null
+    const hiSlider = Math.max(hi, hiExt, call)
+    const pct = hiSlider > lo ? Math.min(1, Math.max(0, (call - lo) / (hiSlider - lo))) : 0
+    const overBid = call - car.currentBid
     const model = car.title && car.year ? car.title.replace(`${car.year} `, '') : car.title
     const lock = () => { submitPrediction(pred); setEditing(false) }
-    const edit = () => setEditing(true)
+    const edit = () => {
+      if (userPrediction != null) {
+        const saved = Math.max(lo, Math.round(userPrediction))
+        setPred(saved)
+        setHiExt(prev => Math.max(prev, saved))
+      }
+      setEditing(true)
+    }
     const applyTyped = () => {
       const v = Math.round(parseFloat(typed.replace(/[^0-9.]/g, '')))
       if (!isNaN(v) && v > 0) {
@@ -936,9 +949,11 @@ export default function BidPrixApp() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px 12px', borderBottom: `1px solid ${C.border}`, background: `${C.amber}0e` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <span style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 800, color: C.amber, letterSpacing: 1.4 }}>★ BONUS CAR</span>
-            <span style={{ fontFamily: mono, fontSize: 10.5, fontWeight: 800, color: '#000', background: C.amber, padding: '2px 7px', borderRadius: 3, letterSpacing: 0.8 }}>2× POINTS</span>
+            <span style={{ fontFamily: mono, fontSize: 10.5, fontWeight: 800, color: '#000', background: C.amber, padding: '2px 7px', borderRadius: 3, letterSpacing: 0.8 }}>{fmtUSD(prize)} PRIZE</span>
           </div>
-          {car.timeLeft && <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1 }}>CLOSES {car.timeLeft}</span>}
+          {closed
+            ? <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1 }}>CALLS CLOSED</span>
+            : car.timeLeft && <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1 }}>CLOSES {car.timeLeft}</span>}
         </div>
 
         {/* Cinematic image with overlaid title */}
@@ -954,26 +969,26 @@ export default function BidPrixApp() {
         {/* Mechanic + prediction */}
         <div style={{ padding: 16 }}>
           <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5, marginBottom: 16 }}>
-            You don't own this lot — <strong style={{ color: C.text }}>call its final hammer price</strong>. The closest prediction in your event scores a <strong style={{ color: C.amber }}>2× points bonus</strong>.
+            You don't own this lot — <strong style={{ color: C.text }}>call its final hammer price</strong>. The closest call in your event wins <strong style={{ color: C.amber }}>{fmtUSD(prize)}</strong>, added to their score once the result is in.
           </div>
 
           {/* Your call vs current bid */}
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
             <div>
               <div style={{ fontFamily: mono, fontSize: 10.5, color: C.amber, letterSpacing: 1.3, marginBottom: 4 }}>YOUR CALL</div>
-              <div style={{ fontFamily: mono, fontSize: 34, fontWeight: 800, color: C.amber, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>{fmtUSD(pred)}</div>
+              <div style={{ fontFamily: mono, fontSize: 34, fontWeight: 800, color: C.amber, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>{noCall ? '—' : fmtUSD(call)}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>CURRENT BID</div>
               <div style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmtUSD(car.currentBid)}</div>
-              <div style={{ fontFamily: mono, fontSize: 11, color: overBid >= 0 ? C.pos : C.neg, marginTop: 3 }}>{overBid >= 0 ? '+' : ''}{fmtK(overBid)} vs now</div>
+              {!noCall && <div style={{ fontFamily: mono, fontSize: 11, color: overBid >= 0 ? C.pos : C.neg, marginTop: 3 }}>{overBid >= 0 ? '+' : ''}{fmtK(overBid)} vs now</div>}
             </div>
           </div>
 
           {/* Slider — quick pick between current bid and 2× current bid */}
           <input
             type="range" className="bp-slider"
-            min={lo} max={hiSlider} step={500} value={pred}
+            min={lo} max={hiSlider} step={500} value={call}
             disabled={locked}
             onChange={e => setPred(parseInt(e.target.value, 10))}
             style={{ background: `linear-gradient(90deg, ${C.amber} 0%, ${C.amber} ${pct * 100}%, ${C.border} ${pct * 100}%, ${C.border} 100%)`, opacity: locked ? 0.55 : 1 }}
@@ -1009,10 +1024,14 @@ export default function BidPrixApp() {
           )}
 
           {/* Action */}
-          {locked ? (
+          {noCall ? (
+            <div style={{ marginTop: 16, padding: '12px 14px', background: C.surfaceHi, border: `1px solid ${C.border}`, borderRadius: 4, fontFamily: mono, fontSize: 13, fontWeight: 700, color: C.muted, letterSpacing: 0.6 }}>
+              CALLS CLOSED · NO CALL MADE
+            </div>
+          ) : locked ? (
             <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: `${C.pos}12`, border: `1px solid ${C.pos}44`, borderRadius: 4 }}>
               <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: C.pos, letterSpacing: 0.6 }}>✓ CALL LOCKED · {fmtUSD(userPrediction)}</span>
-              <button onClick={edit} style={{ fontFamily: mono, fontSize: 11.5, fontWeight: 700, color: C.muted, background: 'none', border: `1px solid ${C.border}`, borderRadius: 3, padding: '6px 12px', letterSpacing: 0.8, cursor: 'pointer' }}>EDIT</button>
+              {!closed && <button onClick={edit} style={{ fontFamily: mono, fontSize: 11.5, fontWeight: 700, color: C.muted, background: 'none', border: `1px solid ${C.border}`, borderRadius: 3, padding: '6px 12px', letterSpacing: 0.8, cursor: 'pointer' }}>EDIT</button>}
             </div>
           ) : (
             <button onClick={lock} style={{ marginTop: 16, width: '100%', height: 50, borderRadius: 4, border: 'none', background: C.amber, color: '#000', fontFamily: mono, fontSize: 13, fontWeight: 800, letterSpacing: 1.4, cursor: 'pointer', textTransform: 'uppercase' }}>
@@ -1123,7 +1142,11 @@ export default function BidPrixApp() {
       alert('Missing required data')
       return false
     }
-    
+    if (bonusCar.endTime && bonusCar.endTime <= new Date()) {
+      alert('Predictions are closed: this auction has ended.')
+      return false
+    }
+
     try {
       const { error } = await supabase
         .from('bonus_predictions')
@@ -2330,9 +2353,9 @@ export default function BidPrixApp() {
               <strong>How it works:</strong>
             </p>
             <ul className="text-xs sm:text-sm text-bpInk/70 space-y-1 list-disc list-inside">
-              <li>Everyone gets this car's percentage gain</li>
-              <li>Closest prediction gets <strong>DOUBLE</strong> the percentage gain</li>
-              <li>You can change your prediction anytime during the draft</li>
+              <li>The closest prediction wins <strong>{fmtUSD(bonusPrize(selectedLeague?.spending_limit || 200000))}</strong>, added to your score</li>
+              <li>Paid once the auction's result is in; if the car doesn't sell, its high bid counts</li>
+              <li>You can change your prediction until the auction ends</li>
             </ul>
           </div>
 
@@ -2798,7 +2821,6 @@ export default function BidPrixApp() {
     const [standings, setStandings] = useState([])
     const [loading, setLoading] = useState(true)
     const [sortBy, setSortBy] = useState('total_value')
-    const [, setBonusWinner] = useState(null)
     const [showConfetti, setShowConfetti] = useState(false)
     const [confettiDone, setConfettiDone] = useState(false)
     const isFinal = selectedLeague ? getDraftStatus(selectedLeague).status === 'ended' : false
@@ -2861,18 +2883,18 @@ export default function BidPrixApp() {
           return
         }
         
+        const bonus = await loadBonusOutcome(selectedLeague.id, members.map(m => m.user_id))
         const standingsPromises = members.map(async (member) => {
-          const score = await calculateUserScore(member.user_id, selectedLeague.id)
+          const score = await calculateUserScore(member.user_id, selectedLeague.id, bonus)
           return {
             userId: member.user_id,
             username: member.users?.username || member.users?.email?.split('@')[0] || 'Unknown',
             ...score
           }
         })
-        
+
         const calculatedStandings = await Promise.all(standingsPromises)
-        await findBonusCarWinner(selectedLeague.id, calculatedStandings)
-        
+
         const sorted = sortStandings(calculatedStandings, sortBy)
         setStandings(sorted)
         
@@ -2885,7 +2907,7 @@ export default function BidPrixApp() {
     }
 
     // NEW SCORING: Total dollar value instead of percentage gain
-    const calculateUserScore = async (userId, leagueId) => {
+    const calculateUserScore = async (userId, leagueId, bonus) => {
       try {
         const { data: garage } = await supabase
           .from('garages')
@@ -2900,7 +2922,7 @@ export default function BidPrixApp() {
             totalFinalValue: 0,
             totalPercentGain: 0,
             totalDollarGain: 0,
-            bonusCarScore: null,
+            bonusPrizeWon: 0,
             carsCount: 0,
             totalSpent: 0,
             avgPercentPerCar: 0,
@@ -2974,18 +2996,12 @@ export default function BidPrixApp() {
           })
         }
 
-        const bonusScore = await calculateBonusCarScore(userId, leagueId)
-        if (bonusScore) {
-          totalPercentGain += bonusScore.percentGain
+        // Bonus car prize (see utils/bonusCar.js), once the bonus auction has a result
+        const bonusPrizeWon = bonus && bonus.winners.includes(userId) ? bonus.share : 0
+        totalFinalValue += bonusPrizeWon
+        totalDollarGain += bonusPrizeWon
 
-          // If this user is the bonus car winner, add 3x the sale price to their total
-          if (bonusScore.isWinner && bonusScore.bonusValue > 0) {
-            totalFinalValue += bonusScore.bonusValue
-            totalDollarGain += bonusScore.bonusValue
-          }
-        }
-
-        const avgPercentPerCar = carsCount > 0 ? totalPercentGain / (carsCount + (bonusScore ? 1 : 0)) : 0
+        const avgPercentPerCar = carsCount > 0 ? totalPercentGain / carsCount : 0
         const isRosterComplete = carsCount >= 7
 
         return {
@@ -2993,7 +3009,7 @@ export default function BidPrixApp() {
           totalFinalValue: parseFloat(totalFinalValue.toFixed(2)),
           totalPercentGain: parseFloat(totalPercentGain.toFixed(2)),
           totalDollarGain: parseFloat(totalDollarGain.toFixed(2)),
-          bonusCarScore: bonusScore,
+          bonusPrizeWon,
           carsCount,
           totalSpent: parseFloat(totalSpent.toFixed(2)),
           avgPercentPerCar: parseFloat(avgPercentPerCar.toFixed(2)),
@@ -3007,7 +3023,7 @@ export default function BidPrixApp() {
           totalFinalValue: 0,
           totalPercentGain: 0,
           totalDollarGain: 0,
-          bonusCarScore: null,
+          bonusPrizeWon: 0,
           carsCount: 0,
           totalSpent: 0,
           avgPercentPerCar: 0,
@@ -3016,138 +3032,36 @@ export default function BidPrixApp() {
       }
     }
 
-    const calculateBonusCarScore = async (userId, leagueId) => {
+    // The bonus car outcome for this event: who called its price closest, and the
+    // prize each winner gets. Only members' calls count; nothing is paid until the
+    // bonus auction has a confirmed result.
+    const loadBonusOutcome = async (leagueId, memberIds) => {
       try {
         const { data: league } = await supabase
           .from('leagues')
-          .select('bonus_auction_id')
+          .select('bonus_auction_id, spending_limit')
           .eq('id', leagueId)
           .single()
 
         if (!league?.bonus_auction_id) return null
 
-        const { data: prediction } = await supabase
-          .from('bonus_predictions')
-          .select('predicted_price')
-          .eq('league_id', leagueId)
-          .eq('user_id', userId)
-          .maybeSingle()
+        const [{ data: auction }, { data: predictions }] = await Promise.all([
+          supabase
+            .from('auctions')
+            .select('current_bid, final_price, reserve_not_met')
+            .eq('auction_id', league.bonus_auction_id)
+            .maybeSingle(),
+          supabase
+            .from('bonus_predictions')
+            .select('user_id, predicted_price')
+            .eq('league_id', leagueId),
+        ])
 
-        if (!prediction) return null
-
-        const { data: bonusAuction } = await supabase
-          .from('auctions')
-          .select('current_bid, final_price, price_at_48h')
-          .eq('auction_id', league.bonus_auction_id)
-          .single()
-
-        if (!bonusAuction) return null
-
-        const baseline = parseFloat(bonusAuction.price_at_48h)
-        const finalPrice = bonusAuction.final_price
-          ? parseFloat(bonusAuction.final_price)
-          : parseFloat(bonusAuction.current_bid)
-
-        const basePercentGain = ((finalPrice - baseline) / baseline) * 100
-
-        const predictedPrice = parseFloat(prediction.predicted_price)
-        const predictionError = Math.abs(predictedPrice - finalPrice)
-        const percentError = (predictionError / finalPrice) * 100
-
-        // Check if this user is the bonus car winner (closest prediction)
-        const { data: allPredictions } = await supabase
-          .from('bonus_predictions')
-          .select('user_id, predicted_price')
-          .eq('league_id', leagueId)
-
-        let isWinner = false
-        let bonusValue = 0
-
-        if (allPredictions && allPredictions.length > 0) {
-          let smallestError = Infinity
-          let winnerId = null
-
-          allPredictions.forEach(pred => {
-            const error = Math.abs(parseFloat(pred.predicted_price) - finalPrice)
-            if (error < smallestError) {
-              smallestError = error
-              winnerId = pred.user_id
-            }
-          })
-
-          if (winnerId === userId) {
-            isWinner = true
-            bonusValue = finalPrice * 3
-          }
-        }
-
-        return {
-          predicted: predictedPrice,
-          actual: finalPrice,
-          error: predictionError,
-          percentError: parseFloat(percentError.toFixed(2)),
-          percentGain: parseFloat(basePercentGain.toFixed(2)),
-          bonusValue: parseFloat(bonusValue.toFixed(2)),
-          isWinner,
-          hasPrediction: true
-        }
-
+        const memberCalls = (predictions || []).filter(p => memberIds.includes(p.user_id))
+        return decideBonus({ auction, predictions: memberCalls, budget: league.spending_limit || 200000 })
       } catch (error) {
-        console.error('Error calculating bonus car score:', error)
+        console.error('Error loading bonus car outcome:', error)
         return null
-      }
-    }
-
-    const findBonusCarWinner = async (leagueId, standings) => {
-      try {
-        const { data: league } = await supabase
-          .from('leagues')
-          .select('bonus_auction_id')
-          .eq('id', leagueId)
-          .single()
-        
-        if (!league?.bonus_auction_id) {
-          setBonusWinner(null)
-          return
-        }
-        
-        const { data: bonusAuction } = await supabase
-          .from('auctions')
-          .select('final_price, current_bid')
-          .eq('auction_id', league.bonus_auction_id)
-          .single()
-        
-        if (!bonusAuction) {
-          setBonusWinner(null)
-          return
-        }
-        
-        const actualPrice = bonusAuction.final_price 
-          ? parseFloat(bonusAuction.final_price)
-          : parseFloat(bonusAuction.current_bid)
-        
-        const playersWithPredictions = standings.filter(s => s.bonusCarScore?.hasPrediction)
-        
-        if (playersWithPredictions.length === 0) {
-          setBonusWinner(null)
-          return
-        }
-        
-        const winner = playersWithPredictions.reduce((closest, current) => {
-          if (!closest) return current
-          return current.bonusCarScore.error < closest.bonusCarScore.error ? current : closest
-        }, null)
-        
-        setBonusWinner({
-          username: winner.username,
-          predicted: winner.bonusCarScore.predicted,
-          actual: actualPrice,
-          error: winner.bonusCarScore.error
-        })
-        
-      } catch (error) {
-        console.error('Error finding bonus winner:', error)
-        setBonusWinner(null)
       }
     }
 
@@ -3342,6 +3256,7 @@ export default function BidPrixApp() {
                     </div>
                     <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, marginTop: 2, letterSpacing: 0.5 }}>
                       {player.carsCount}/7 LOTS{player.totalPercentGain > 0 ? ` · +${player.totalPercentGain.toFixed(1)}%` : ''}
+                      {player.bonusPrizeWon > 0 && <span style={{ color: C.amber }}> · ★ BONUS +{fmtUSD(player.bonusPrizeWon)}</span>}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>

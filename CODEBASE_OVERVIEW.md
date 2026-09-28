@@ -101,7 +101,7 @@ const maxEndTime = now + fiveDaysInSeconds;
 - Batch CSV import (50 auctions at a time)
 
 ### Bonus Car (Special Auction)
-One auction per league is designated as the "bonus car" - a shared auction where all players predict the final price for 2x scoring.
+One auction per league is designated as the "bonus car" - a shared auction where all players predict the final price. The closest prediction wins a prize worth 5% of the league budget.
 
 ---
 
@@ -254,19 +254,16 @@ Else:
   percentGain = (current_bid - purchase_price) / purchase_price * 100
 ```
 
-**Bonus Car Score (2x multiplier):**
-- All players get the same bonus auction
-- Players predict final price
-- Closest prediction gets DOUBLE percentage gain
-- Calculation in `calculateBonusCarScore()`:
-  - Gets player's prediction from `bonus_predictions`
-  - Gets actual final price from auction
-  - Calculates percentage gain
-  - Stores error margin for ranking
+**Bonus Car Prize:**
+- All players get the same bonus auction and predict its final price
+- The closest prediction wins a prize worth 5% of the league budget (`spending_limit`)
+- Paid only once the auction has a confirmed result: a sale (`final_price`), or a no-sale
+  (`reserve_not_met`, judged on the high bid). A withdrawn lot pays nothing. Ties split the prize.
+- Rule lives in `src/utils/bonusCar.js` (player app) and `auction-admin/lib/bonusCar.js` (score cron)
 
 **Total Score:**
-- Sum of all car percentage gains
-- Plus bonus car percentage gain (2x if closest)
+- Sum of all car values
+- Plus the bonus car prize for the closest prediction
 
 ### Leaderboard
 
