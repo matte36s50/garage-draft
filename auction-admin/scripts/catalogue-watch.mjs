@@ -43,7 +43,8 @@ import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import {
-  HOUSES, LOT_MARKER, estimatesOnly, eventNameFromTitle, parseSaleDates, resultsDue, shouldCapture,
+  HOUSES, LOT_MARKER, chooseSaleDates, daysBetween, estimatesOnly, eventNameFromTitle, parseSaleDates, resultsDue,
+  resultsPosted, shouldCapture,
 } from '../lib/catalogueWatch.js';
 import { CHROME_UA, isWall } from './probe-lib.mjs';
 
@@ -529,9 +530,11 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
         cat = { error: e.message.split('\n')[0], lots: new Map(), head: '', pages: 0 };
       }
       const name = entry.name || (house.eventName ? house.eventName(url) : eventNameFromTitle(cat.title, houseId));
-      const dates = (entry.starts_on && { starts_on: entry.starts_on, ends_on: entry.ends_on })
-        || (cat.error ? null : await saleDates(page, url, cat, referrer.get(url)))
-        || (fromStore && { starts_on: fromStore.starts_on, ends_on: fromStore.starts_on });
+      const dates = chooseSaleDates({
+        page: cat.error ? null : await saleDates(page, url, cat, referrer.get(url)),
+        recorded: entry,
+        store: fromStore,
+      });
       const lotSegs = [...cat.lots.values()];
       const withEst = lotSegs.filter((s) => MONEY_RANGE.test(s)).length;
       const hash = fingerprint(cat.head, cat.lots);
@@ -601,6 +604,24 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
       captures += 1;
       try {
         const got = await extract(cat.head, sendSegs, mode);
+        if (mode === 'result' && !resultsPosted(got.lots)) {
+          // Bidding still open or results not up yet: writing this would mark
+          // every lot unsold. Hold it and read again when the page changes.
+          const cost = costOf(got.usage);
+          row.cost = cost;
+          spent.input_tokens += got.usage.input_tokens;
+          spent.output_tokens += got.usage.output_tokens;
+          spent.cost += cost || 0;
+          row.action = `results not posted yet: no lot shows as sold; nothing written, will re-read when the page changes (${cap.reason})`;
+          state.sales[url] = {
+            ...entry, house: houseId, name, ...dates, lots: cat.lots.size, withEstimates: withEst,
+            lastSeen: today, firstSeen: entry.firstSeen || today, resultsHeldHash: hash, resultsHeldAt: today,
+          };
+          if (dates?.ends_on && daysBetween(dates.ends_on, today) > 14) {
+            problems.push(`${house.name} · ${row.name}: still no results ${daysBetween(dates.ends_on, today)} days after the sale`);
+          }
+          continue;
+        }
         const event = {
           name,
           location: entry.location || got.event.location || undefined,

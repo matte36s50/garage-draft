@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  watchListingId, eventNameFromTitle, parseSaleDates, shouldCapture, resultsDue,
+  watchListingId, eventNameFromTitle, parseSaleDates, shouldCapture, resultsDue, resultsPosted, chooseSaleDates,
   estimatesOnly, buildIngestItems, LOT_MARKER, HOUSES,
 } from '../catalogueWatch.js';
 
@@ -141,4 +141,43 @@ test('Gooding: a sale\'s catalogue is the lots list filtered to it, named from t
   assert.equal(H.gooding.eventName(canonical), 'Rétromobile Paris 2027');
   assert.ok(H.gooding.follow.test('https://www.goodingco.com/auction/retromobile-new-york-auctions-2026'));
   assert.ok(!H.gooding.follow.test('https://www.goodingco.com/auction/realized/retromobile-paris-2026'));
+});
+
+test('online sales: a stated closing date is the end, so results wait for bidding to close', () => {
+  // Broad Arrow's Global Icons: Zoute Online 2026 opened 5 October and closed on the 14th.
+  assert.deepEqual(
+    parseSaleDates('Global Icons: Zoute Online 2026 Opens 5 October 2026. Bidding begins to close at 17:00 CET on Wednesday, 14 October.'),
+    { starts_on: '2026-10-05', ends_on: '2026-10-14' });
+  assert.deepEqual(parseSaleDates('Online 5 October 2026 | Closes 14 October 2026'), { starts_on: '2026-10-05', ends_on: '2026-10-14' });
+  // As Broad Arrow's upcoming-sales page words it.
+  assert.deepEqual(parseSaleDates('Global Icons: Zoute Online 2026 · 5 October 2026 · Online · Closing at 5 PM CEST on 14 October 2026'),
+    { starts_on: '2026-10-05', ends_on: '2026-10-14' });
+  assert.deepEqual(parseSaleDates('Sale 28 December 2026, bidding closes 3 January'), { starts_on: '2026-12-28', ends_on: '2027-01-03' });
+  // Dates in a lot's history are not a closing date, nor is one more than two months on.
+  assert.deepEqual(parseSaleDates('Monterey 14 & 15 August 2026. Raced until it ended its career 4 May 1970'),
+    { starts_on: '2026-08-14', ends_on: '2026-08-15' });
+  assert.deepEqual(parseSaleDates('Opens 5 October 2026 closing 20 December 2026'), { starts_on: '2026-10-05', ends_on: '2026-10-05' });
+});
+
+test('sale dates for a run: the page first, so a wrongly recorded end is corrected; the store only as a start', () => {
+  const recorded = { starts_on: '2026-10-05', ends_on: '2026-10-05' };
+  const page = { starts_on: '2026-10-05', ends_on: '2026-10-14' };
+  assert.deepEqual(chooseSaleDates({ page, recorded }), page);
+  assert.deepEqual(chooseSaleDates({ page: null, recorded }), recorded);
+  assert.deepEqual(chooseSaleDates({ page: null, recorded: {}, store: { starts_on: '2026-10-05' } }),
+    { starts_on: '2026-10-05', ends_on: '2026-10-05' });
+  assert.equal(chooseSaleDates({ page: null, recorded: {} }), null);
+});
+
+test('a results page where nothing sold is held, and re-read only when the page changes', () => {
+  assert.equal(resultsPosted([{ outcome: 'reserve_not_met' }, { outcome: null }]), false);
+  assert.equal(resultsPosted([]), false);
+  assert.equal(resultsPosted([{ outcome: 'reserve_not_met' }, { outcome: 'sold', price: 1 }]), true);
+
+  const sale = { starts_on: '2026-10-05', ends_on: '2026-10-05' };
+  const held = { resultsHeldHash: 'coming-soon' };
+  assert.equal(resultsDue(held, { hash: 'coming-soon', today: '2026-10-08', sale }).due, false);
+  assert.equal(resultsDue(held, { hash: 'results-up', today: '2026-10-15', sale }).due, true);
+  // Held well past the usual two-week window, a changed page is still read.
+  assert.equal(resultsDue(held, { hash: 'results-up', today: '2026-11-20', sale }).due, true);
 });

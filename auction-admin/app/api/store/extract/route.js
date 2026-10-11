@@ -333,7 +333,10 @@ export async function POST(request) {
 (estimate_low / estimate_high). Lots have not run yet, so price and outcome must be null.`
     : `This is a POST-AUCTION results page. Extract every vehicle lot with its result:
 price (the sold/hammer amount, or the high bid for lots that did not sell) and outcome
-('sold', 'reserve_not_met', or 'withdrawn'). Include estimates too when the page shows them.`;
+('sold', 'reserve_not_met', or 'withdrawn'). Include estimates too when the page shows them.
+Only record an outcome the page states. If a lot shows no result (bidding still open, a
+current bid or countdown, "results coming soon"), set its price and outcome to null: a lot
+still taking bids has not failed to sell.`;
 
   const chunks = splitChunks(pageText, CHUNK_CHARS);
 
