@@ -143,9 +143,40 @@ function isoDate(y, m, d) {
   return dt.toISOString().slice(0, 10);
 }
 
+// A closing date for an online sale: "Bidding closes 14 October 2026",
+// "lots begin to close at 17:00 CET on Wednesday, 14 October", "Ends Oct 14".
+// The year may be left off; it is taken from the sale's first date.
+const CLOSE_CUE = /\b(?:clos(?:e|es|ing)|bidding\s+ends?|ends?|ending)\b/gi;
+const CLOSE_DAY_FIRST = new RegExp(String.raw`\b(\d{1,2})${ORD}\s+${MONTH}(?:,?\s+(\d{4}))?\b`, 'i');
+const CLOSE_MONTH_FIRST = new RegExp(String.raw`\b${MONTH}\s+(\d{1,2})${ORD}(?:,?\s+(\d{4}))?\b`, 'i');
+const CLOSE_WINDOW = 90; // characters after the cue
+const MAX_ONLINE_DAYS = 60;
+
+function closingDate(text, start) {
+  let latest = null;
+  for (const cue of String(text || '').matchAll(CLOSE_CUE)) {
+    const after = text.slice(cue.index + cue[0].length, cue.index + cue[0].length + CLOSE_WINDOW);
+    const a = after.match(CLOSE_DAY_FIRST);
+    const b = after.match(CLOSE_MONTH_FIRST);
+    const pick = [a && { at: a.index, d: a[1], m: a[2], y: a[3] }, b && { at: b.index, d: b[2], m: b[1], y: b[3] }]
+      .filter(Boolean).sort((x, y) => x.at - y.at)[0];
+    if (!pick) continue;
+    const startYear = Number(start.slice(0, 4));
+    let day = isoDate(pick.y || startYear, monthIndex(pick.m), pick.d);
+    if (day && !pick.y && day < start) day = isoDate(startYear + 1, monthIndex(pick.m), pick.d);
+    if (!day || day < start || daysBetween(start, day) > MAX_ONLINE_DAYS) continue;
+    if (!latest || day > latest) latest = day;
+  }
+  return latest;
+}
+
 /**
  * The first sale date or date range a page states, as ISO days:
- * { starts_on, ends_on } or null. Only dates with a year count.
+ * { starts_on, ends_on } or null. Only dates with a year count for the
+ * start. An online sale often shows only its opening date up front, so a
+ * stated closing date ("closes 14 October") later in the text, up to two
+ * months on, becomes ends_on: reading results on the opening day would
+ * record every lot still taking bids as unsold.
  */
 export function parseSaleDates(text) {
   const found = [];
@@ -167,7 +198,8 @@ export function parseSaleDates(text) {
   }
   if (!found.length) return null;
   const first = found.sort((a, b) => a.at - b.at)[0];
-  return { starts_on: first.starts_on, ends_on: first.ends_on };
+  const closes = closingDate(text, first.starts_on);
+  return { starts_on: first.starts_on, ends_on: closes && closes > first.ends_on ? closes : first.ends_on };
 }
 
 const DAY_MS = 86_400_000;
@@ -195,11 +227,16 @@ export function shouldCapture(entry, { hash, today, sale }) {
 /**
  * Whether a finished sale's page should be read for results: the first run
  * after its last day, then again whenever the page changes in the two weeks
- * after (late "sold after auction" updates).
+ * after (late "sold after auction" updates). A read that found no results
+ * posted yet (see resultsPosted) waits for the page to change, so a
+ * "results coming soon" page costs one extraction, not one a day.
  */
 export function resultsDue(entry, { hash, today, sale }) {
   if (!sale?.ends_on || today <= sale.ends_on) return { due: false, reason: 'not finished' };
-  if (!entry?.resultsAt) return { due: true, reason: 'sale finished' };
+  if (!entry?.resultsAt && entry?.resultsHeldHash === hash) {
+    return { due: false, reason: 'waiting for results to be posted (page unchanged)' };
+  }
+  if (!entry?.resultsAt) return { due: true, reason: entry?.resultsHeldHash ? 'page changed since results were pending' : 'sale finished' };
   if (entry.resultsHash !== hash && daysBetween(sale.ends_on, today) <= 14) {
     return { due: true, reason: 'results page changed' };
   }
@@ -221,6 +258,29 @@ export function estimatesOnly(text) {
   const head = parts.shift();
   const kept = parts.filter((p) => MONEY_RANGE.test(p));
   return { text: [head, ...kept.map((p) => `${LOT_MARKER}${p}`)].join('\n'), kept: kept.length, dropped: parts.length - kept.length };
+}
+
+/**
+ * Whether an extracted results page actually carries results. A sale where
+ * no lot sold is, in practice, a page without results: bidding still open,
+ * or "results coming soon". Writing it would mark every lot unsold, so the
+ * caller holds it and reads again when the page changes.
+ */
+export function resultsPosted(lots) {
+  return (lots || []).some((l) => l?.outcome === 'sold');
+}
+
+/**
+ * The sale's dates for this run. The page is the authority whenever it states
+ * them, so a closing date read wrongly before (an online sale's opening day)
+ * is corrected; then what the watch recorded; then the store's date, which is
+ * a start date only.
+ */
+export function chooseSaleDates({ page, recorded, store }) {
+  if (page) return page;
+  if (recorded?.starts_on) return { starts_on: recorded.starts_on, ends_on: recorded.ends_on || recorded.starts_on };
+  if (store?.starts_on) return { starts_on: store.starts_on, ends_on: store.starts_on };
+  return null;
 }
 
 const OUTCOMES = new Set(['sold', 'reserve_not_met', 'withdrawn']);
