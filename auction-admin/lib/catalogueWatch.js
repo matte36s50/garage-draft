@@ -264,7 +264,9 @@ export function resultsDue(entry, { hash, today, sale }) {
  *             URL -> fingerprint of its text when Claude last read it)
  * candidates  lot URLs eligible this pass (all lots, or the subset the house
  *             config allows), in page order
- * hashes      Map of lot URL -> fingerprint of its text now
+ * hashes      Map of lot URL -> fingerprint of its text now, taken over
+ *             stableLotText for this kind of pass, so a ticking countdown
+ *             or a new bid is not a change
  * Returns { urls, partial, why }: partial is true when unchanged lots were
  * left out, so the caller knows the extraction is not the whole page.
  */
@@ -289,6 +291,38 @@ export function lotsToSend({ entry, mode, sale, today, candidates, hashes }) {
   }
   const urls = candidates.filter((u) => prev[u] !== hashes.get(u));
   return { urls, partial: true, why: `${urls.length} of ${candidates.length} lots new or changed` };
+}
+
+// What a lot card shows that changes by the minute during bidding and is
+// never extracted. Countdowns: "1d 18h 28m 33s left", "18h 28m", "5m 30s",
+// "02:14:09", "Closes in 3 days". Bid counts: "12 bids".
+// Same-line only ([ \t], never \s), so nothing on the next line is touched.
+const COUNTDOWNS = [
+  /\b\d+[ \t]*d(?:ays?)?[ \t]+\d+[ \t]*h(?:rs?|ours?)?(?:[ \t]+\d+[ \t]*m(?:in(?:utes?)?)?)?(?:[ \t]+\d+[ \t]*s(?:ec(?:onds?)?)?)?/gi,
+  /\b\d+[ \t]*h(?:rs?|ours?)?[ \t]+\d+[ \t]*m(?:in(?:utes?)?)?(?:[ \t]+\d+[ \t]*s(?:ec(?:onds?)?)?)?/gi,
+  /\b\d+[ \t]*m(?:in(?:utes?)?)?[ \t]+\d+[ \t]*s(?:ec(?:onds?)?)?/gi,
+  /\b\d{1,2}:\d{2}:\d{2}\b/g,
+];
+// "Closes in 3 days", "opens in 2 weeks": only the amounts of time go, never
+// what follows them ("Closes in 3 days · Est. €12,000 - €18,000").
+const IN_HOW_LONG = /\b((?:closes?|closing|ends?|ending|opens?|opening|starts?|starting)[ \t]+in)(?:[ \t]*,?[ \t]*\d+[ \t]*(?:weeks?|w|days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\b)+/gi;
+const BID_COUNT = /\b\d+[ \t]+bids?\b/gi;
+// The amount after any "bid" label (current, high, leading, starting...).
+const BID_AMOUNT = /(\bbid\b[^\n\d]{0,20}?)\d[\d,.']*/gi;
+
+/**
+ * A lot's text as far as a pass of this kind cares, for telling whether the
+ * lot changed since Claude last read it. Countdowns and bid counts never
+ * matter. For estimates, bid amounts don't either (the price is not read
+ * before the sale); for results they do (a no-sale's high bid is recorded).
+ * Only for comparison: Claude is always sent the text as shown.
+ */
+export function stableLotText(text, mode = 'estimate') {
+  let t = String(text || '');
+  for (const re of COUNTDOWNS) t = t.replace(re, ' ');
+  t = t.replace(IN_HOW_LONG, '$1').replace(BID_COUNT, ' ');
+  if (mode === 'estimate') t = t.replace(BID_AMOUNT, '$1');
+  return t.replace(/\s+/g, ' ').trim();
 }
 
 /** The currency most of a sale's lots state, upper-cased; undefined if none do. */

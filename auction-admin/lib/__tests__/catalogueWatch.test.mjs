@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   watchListingId, eventNameFromTitle, parseSaleDates, shouldCapture, resultsDue, resultsPosted, chooseSaleDates,
-  estimatesOnly, buildIngestItems, lotsToSend, majorityCurrency, LOT_MARKER, HOUSES,
+  estimatesOnly, buildIngestItems, lotsToSend, majorityCurrency, stableLotText, LOT_MARKER, HOUSES,
 } from '../catalogueWatch.js';
 
 test('a lot is keyed by the house\'s own lot id, the same before and after the sale', () => {
@@ -230,4 +230,43 @@ test('the sale currency is what most lots state', () => {
   assert.equal(majorityCurrency([{ currency: 'chf' }, { currency: 'CHF' }, { currency: 'EUR' }, { currency: null }]), 'CHF');
   assert.equal(majorityCurrency([{ currency: null }, {}]), undefined);
   assert.equal(majorityCurrency(undefined), undefined);
+});
+
+test('a lot card is the same lot whatever its countdown and running bid say', () => {
+  // Broad Arrow online, as the watch read it on 12 October 2026, and a day later.
+  const card = (left, bid) => `[lot: https://bid.broadarrowauctions.com/lots/view/1-DH4AXC/1980-bmw-328-junior-stimula]
+1980 BMW 328 Junior Stimula
+101
+${left}
+1980 BMW 328 JUNIOR STIMULA
+Est. 
+€12,000 - €18,000
+Current bid: ${bid}
+PLACE BID`;
+  const today = card('1d 18h 28m 33s left', '€4,800');
+  const tomorrow = card('18h 4m 2s left', '€6,100');
+  assert.equal(stableLotText(today), stableLotText(tomorrow));
+  assert.match(stableLotText(today), /€12,000 - €18,000/); // the estimate is kept
+  // A revised estimate is a change.
+  assert.notEqual(stableLotText(today), stableLotText(today.replace('€12,000 - €18,000', '€14,000 - €20,000')));
+
+  // Other wordings: bid counts, high/starting bids, clock countdowns, "closes in".
+  assert.equal(stableLotText('Lot 7 | Est. $80,000 - $100,000 | High Bid $41,000 | 9 bids | Closes in 3 days'),
+    stableLotText('Lot 7 | Est. $80,000 - $100,000 | High Bid $57,500 | 14 bids | Closes in 2 days'));
+  assert.equal(stableLotText('Lot 8 | Starting bid €10,000 | 02:14:09'), stableLotText('Lot 8 | Starting bid €12,000 | 01:59:30'));
+  // What follows a countdown on the same line, or on the next, still counts.
+  const est = (e) => `Lot 9 | Closes in 3 days · Est. ${e}\nCurrent bid: €1,000`;
+  assert.notEqual(stableLotText(est('€12,000 - €18,000')), stableLotText(est('€14,000 - €20,000')));
+  assert.notEqual(stableLotText('Opens in 6d 4h\nEst. €12,000 - €18,000'), stableLotText('Opens in 5d 4h\nEst. €14,000 - €20,000'));
+  assert.equal(stableLotText('Opens in 6d 4h\nEst. €12,000 - €18,000'), stableLotText('Opens in 5d 2h\nEst. €12,000 - €18,000'));
+  // A lot's own numbers stay: lot number, year, model designations.
+  assert.match(stableLotText('Lot 104 | 1973 Porsche 911 Carrera RS 2.7 Touring'), /Lot 104 \| 1973 Porsche 911 Carrera RS 2\.7 Touring/);
+});
+
+test('for results, a high bid is part of the lot; a countdown still is not', () => {
+  assert.notEqual(stableLotText('Lot 23 | Not sold | High bid €2,000,000', 'result'),
+    stableLotText('Lot 23 | Not sold | High bid €2,100,000', 'result'));
+  assert.notEqual(stableLotText('Lot 23 | Not sold | High bid €2,000,000', 'result'),
+    stableLotText('Lot 23 | Sold after auction €2,400,000', 'result'));
+  assert.equal(stableLotText('Lot 23 | Sold €2,400,000 | 0d 0h 4m 10s left', 'result'), stableLotText('Lot 23 | Sold €2,400,000 | 0d 0h 0m 0s left', 'result'));
 });

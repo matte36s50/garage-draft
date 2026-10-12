@@ -51,7 +51,7 @@ import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import {
   HOUSES, LOT_MARKER, chooseSaleDates, daysBetween, estimatesOnly, eventNameFromTitle, lotsToSend, majorityCurrency,
-  parseSaleDates, resultsDue, resultsPosted, shouldCapture,
+  parseSaleDates, resultsDue, resultsPosted, shouldCapture, stableLotText,
 } from '../lib/catalogueWatch.js';
 import { CHROME_UA, isWall } from './probe-lib.mjs';
 
@@ -434,8 +434,8 @@ function saveState(state) {
   writeFileSync(STATE_PATH, `${JSON.stringify(state, null, 1)}\n`);
 }
 
-/** One lot's fingerprint: its text, ignoring whitespace. */
-const lotFingerprint = (text) => createHash('sha256').update(String(text).replace(/\s+/g, ' ').trim()).digest('hex').slice(0, 12);
+/** One lot's fingerprint for a kind of pass: its text, less what never matters to it (stableLotText). */
+const lotFingerprint = (text, mode) => createHash('sha256').update(stableLotText(text, mode)).digest('hex').slice(0, 12);
 
 /** A catalogue's fingerprint: its lots' text (order-free) and its dates. */
 const fingerprint = (head, lots) => createHash('sha256')
@@ -585,8 +585,11 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
         const f = estimatesOnly([cat.head, ...lotSegs].join('\n'));
         return { lots: segments(f.text).lots, note: ` (${f.kept} with estimates of ${f.kept + f.dropped})` };
       };
-      const lotHashes = new Map([...cat.lots].map(([u, t]) => [u, lotFingerprint(t)]));
-      const hashesOf = (urls) => Object.fromEntries(urls.map((u) => [u, lotHashes.get(u)]));
+      const lotHashes = {
+        estimate: new Map([...cat.lots].map(([u, t]) => [u, lotFingerprint(t, 'estimate')])),
+        result: new Map([...cat.lots].map(([u, t]) => [u, lotFingerprint(t, 'result')])),
+      };
+      const hashesOf = (m, urls) => Object.fromEntries(urls.map((u) => [u, lotHashes[m].get(u)]));
 
       // A sale captured before per-lot records existed whose page hasn't
       // changed since: its lots now are the lots Claude last read, so the
@@ -594,16 +597,16 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
       if (live && !cap.capture) {
         const seed = {};
         if (entry.capturedAt && !entry.resultsAt && !entry.lotHashes && entry.hash === hash) {
-          seed.lotHashes = hashesOf([...eligible('estimate').lots.keys()]);
+          seed.lotHashes = hashesOf('estimate', [...eligible('estimate').lots.keys()]);
         }
         if (entry.resultsAt && !entry.resultHashes && entry.resultsHash === hash) {
-          seed.resultHashes = hashesOf([...eligible('result').lots.keys()]);
+          seed.resultHashes = hashesOf('result', [...eligible('result').lots.keys()]);
         }
         if (Object.keys(seed).length) state.sales[url] = { ...entry, ...seed };
       }
 
       const { lots: eligibleLots, note } = eligible(mode);
-      const pick = lotsToSend({ entry, mode, sale: dates, today, candidates: [...eligibleLots.keys()], hashes: lotHashes });
+      const pick = lotsToSend({ entry, mode, sale: dates, today, candidates: [...eligibleLots.keys()], hashes: lotHashes[mode] });
       const sendSegs = pick.urls.map((u) => eligibleLots.get(u));
       const reading = `${pick.why}${note}`;
 
@@ -696,7 +699,7 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
         };
         // What Claude has read, lot by lot: a partial read adds to the record,
         // a whole-page read replaces it (dropping lots no longer listed).
-        const readNow = hashesOf(pick.urls);
+        const readNow = hashesOf(mode, pick.urls);
         if (mode === 'result') {
           Object.assign(next, {
             resultsAt: today, resultsHash: hash,
