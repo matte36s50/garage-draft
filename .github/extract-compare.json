@@ -3,14 +3,8 @@
     "house": "rm",
     "url": "https://rmsothebys.com/auctions/zu26/lots/",
     "mode": "result",
-    "models": "claude-opus-4-8:medium,claude-sonnet-5:low",
-    "max_lots": 100
-  },
-  {
-    "house": "rm",
-    "url": "https://rmsothebys.com/auctions/lf26/lots/",
-    "mode": "estimate",
-    "models": "claude-opus-4-8:medium,claude-sonnet-5:low",
-    "max_lots": 100
+    "models": "default,claude-opus-5-5:low",
+    "max_lots": 10,
+    "note": "confirm the production default resolves to claude-opus-5-5 after PR #185"
   }
 ]
