@@ -302,6 +302,8 @@ const COUNTDOWNS = [
   /\b\d+[ \t]*h(?:rs?|ours?)?[ \t]+\d+[ \t]*m(?:in(?:utes?)?)?(?:[ \t]+\d+[ \t]*s(?:ec(?:onds?)?)?)?/gi,
   /\b\d+[ \t]*m(?:in(?:utes?)?)?[ \t]+\d+[ \t]*s(?:ec(?:onds?)?)?/gi,
   /\b\d{1,2}:\d{2}:\d{2}\b/g,
+  // A single unit, said to be left: "4 days left", "3 hours remaining".
+  /\b\d+[ \t]*(?:weeks?|days?|hours?|hrs?|minutes?|mins?|seconds?|secs?)(?=[ \t]+(?:left|remaining|to go)\b)/gi,
 ];
 // "Closes in 3 days", "opens in 2 weeks": only the amounts of time go, never
 // what follows them ("Closes in 3 days · Est. €12,000 - €18,000").

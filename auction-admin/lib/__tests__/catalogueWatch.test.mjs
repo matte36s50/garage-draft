@@ -254,6 +254,10 @@ PLACE BID`;
   assert.equal(stableLotText('Lot 7 | Est. $80,000 - $100,000 | High Bid $41,000 | 9 bids | Closes in 3 days'),
     stableLotText('Lot 7 | Est. $80,000 - $100,000 | High Bid $57,500 | 14 bids | Closes in 2 days'));
   assert.equal(stableLotText('Lot 8 | Starting bid €10,000 | 02:14:09'), stableLotText('Lot 8 | Starting bid €12,000 | 01:59:30'));
+  assert.equal(stableLotText('Lot 9 | Est. £40,000 - £60,000 | 4 days left'), stableLotText('Lot 9 | Est. £40,000 - £60,000 | 3 days left'));
+  assert.equal(stableLotText('Lot 9 | 2 Days 4 Hrs remaining'), stableLotText('Lot 9 | 1 Day 22 Hrs remaining'));
+  // A number that isn't a time left stays: "4 seats", "500 hours since restoration".
+  assert.notEqual(stableLotText('Lot 9 | 500 hours since restoration'), stableLotText('Lot 9 | 400 hours since restoration'));
   // What follows a countdown on the same line, or on the next, still counts.
   const est = (e) => `Lot 9 | Closes in 3 days · Est. ${e}\nCurrent bid: €1,000`;
   assert.notEqual(stableLotText(est('€12,000 - €18,000')), stableLotText(est('€14,000 - €20,000')));
