@@ -13,7 +13,10 @@
  *      when it is worth paying for: the first sighting; a changed page, at most
  *      weekly, then daily from 8 days before the sale through its last day;
  *      and the first run after the sale, for results (again if the results
- *      page changes in the fortnight after).
+ *      page changes in the fortnight after). A re-read sends only the lots
+ *      that are new or whose text changed since Claude last read them, and
+ *      once a sale is under way only new lots (lib/catalogueWatch.js,
+ *      lotsToSend); the record keeps a fingerprint per lot for this.
  *   4. Writes the lots through /api/store/catalogue/ingest as scraper writes,
  *      so a correction made by hand in the admin panel always stands.
  *   5. Reports every sale it saw (lots, estimates, what it did, what it cost)
@@ -29,6 +32,10 @@
  *   CRON_SECRET              the admin app's cron secret (Bearer auth)
  *   CATALOGUE_WATCH_STATE    state file (default .catalogue-watch/state.json)
  *   CATALOGUE_WATCH_MAX_CAPTURES  extractions per run (default 15), a cost cap
+ *   CATALOGUE_WATCH_REPORT   a file the run's summary is also written to
+ *
+ * A dry run's summary also shows the first lots' text for each sale it would
+ * read, to check what a house's lot cards carry.
  *
  *   node scripts/catalogue-watch.mjs [--dry-run] [house ...] [--only <catalogue url>]
  *
@@ -43,8 +50,8 @@ import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import {
-  HOUSES, LOT_MARKER, chooseSaleDates, daysBetween, estimatesOnly, eventNameFromTitle, parseSaleDates, resultsDue,
-  resultsPosted, shouldCapture,
+  HOUSES, LOT_MARKER, chooseSaleDates, daysBetween, estimatesOnly, eventNameFromTitle, lotsToSend, majorityCurrency,
+  parseSaleDates, resultsDue, resultsPosted, shouldCapture, stableLotText,
 } from '../lib/catalogueWatch.js';
 import { CHROME_UA, isWall } from './probe-lib.mjs';
 
@@ -427,6 +434,9 @@ function saveState(state) {
   writeFileSync(STATE_PATH, `${JSON.stringify(state, null, 1)}\n`);
 }
 
+/** One lot's fingerprint for a kind of pass: its text, less what never matters to it (stableLotText). */
+const lotFingerprint = (text, mode) => createHash('sha256').update(stableLotText(text, mode)).digest('hex').slice(0, 12);
+
 /** A catalogue's fingerprint: its lots' text (order-free) and its dates. */
 const fingerprint = (head, lots) => createHash('sha256')
   .update([...lots.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v.replace(/\s+/g, ' ')).join('\n'))
@@ -560,31 +570,62 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
       const res = resultsDue(entry, { hash, today, sale: dates });
       const cap = res.due ? { capture: true, reason: res.reason } : shouldCapture(entry, { hash, today, sale: dates });
       const mode = res.due ? 'result' : 'estimate';
-      let sendSegs = lotSegs;
-      let note = '';
-      if (house.estimatesOnly) {
+
+      // The lots this house lets a pass of each kind send.
+      const eligible = (m) => {
+        if (!house.estimatesOnly) return { lots: cat.lots, note: '' };
         // Huge catalogues: only lots with a published estimate go to Claude;
         // for results, the lots captured before the sale (or, with that
         // record lost, those still showing an estimate).
-        if (mode === 'result' && entry.lotUrls?.length) {
+        if (m === 'result' && entry.lotUrls?.length) {
           const keep = new Set(entry.lotUrls);
-          sendSegs = [...cat.lots.entries()].filter(([u]) => keep.has(u)).map(([, v]) => v);
-          note = ` (${sendSegs.length} watched lots)`;
-        } else {
-          const f = estimatesOnly([cat.head, ...lotSegs].join('\n'));
-          sendSegs = [...segments(f.text).lots.values()];
-          note = ` (${f.kept} with estimates of ${f.kept + f.dropped})`;
+          const lots = new Map([...cat.lots].filter(([u]) => keep.has(u)));
+          return { lots, note: ` (${lots.size} watched lots)` };
         }
+        const f = estimatesOnly([cat.head, ...lotSegs].join('\n'));
+        return { lots: segments(f.text).lots, note: ` (${f.kept} with estimates of ${f.kept + f.dropped})` };
+      };
+      const lotHashes = {
+        estimate: new Map([...cat.lots].map(([u, t]) => [u, lotFingerprint(t, 'estimate')])),
+        result: new Map([...cat.lots].map(([u, t]) => [u, lotFingerprint(t, 'result')])),
+      };
+      const hashesOf = (m, urls) => Object.fromEntries(urls.map((u) => [u, lotHashes[m].get(u)]));
+
+      // A sale captured before per-lot records existed whose page hasn't
+      // changed since: its lots now are the lots Claude last read, so the
+      // record starts today without paying for a read.
+      if (live && !cap.capture) {
+        const seed = {};
+        if (entry.capturedAt && !entry.resultsAt && !entry.lotHashes && entry.hash === hash) {
+          seed.lotHashes = hashesOf('estimate', [...eligible('estimate').lots.keys()]);
+        }
+        if (entry.resultsAt && !entry.resultHashes && entry.resultsHash === hash) {
+          seed.resultHashes = hashesOf('result', [...eligible('result').lots.keys()]);
+        }
+        if (Object.keys(seed).length) state.sales[url] = { ...entry, ...seed };
       }
+
+      const { lots: eligibleLots, note } = eligible(mode);
+      const pick = lotsToSend({ entry, mode, sale: dates, today, candidates: [...eligibleLots.keys()], hashes: lotHashes[mode] });
+      const sendSegs = pick.urls.map((u) => eligibleLots.get(u));
+      const reading = `${pick.why}${note}`;
 
       console.log(`   ${row.name} · ${dates ? `${dates.starts_on}..${dates.ends_on}` : 'no date'} · ${cat.pages} page(s)`
         + `${cat.widened ? ` at ${cat.widened}/page` : ''} · ${cat.lots.size} lots, ${withEst} with estimates`
-        + `${cat.auto ? ` · auto lot links ${cat.auto}` : ''} · ${cap.reason}`);
+        + `${cat.auto ? ` · auto lot links ${cat.auto}` : ''} · ${cap.reason}${cap.capture ? ` · ${reading}` : ''}`);
       if (!dates) problems.push(`${house.name} · ${row.name}: no sale date found, so no results pass will be scheduled`);
       if (!cap.capture) { row.action = cap.reason; continue; }
-      if (!sendSegs.length) { row.action = `${cap.reason}: nothing to send${note}`; continue; }
+      if (!sendSegs.length) {
+        if (!pick.partial) { row.action = `${cap.reason}: nothing to send${note}`; continue; }
+        // Nothing new or changed: note the page as seen, so it is skipped
+        // outright until it changes again.
+        row.action = `${cap.reason}: ${reading}; nothing sent`;
+        if (live) state.sales[url] = { ...entry, lastSeen: today, ...(mode === 'result' ? { resultsHash: hash } : { hash }) };
+        continue;
+      }
       if (!live) {
-        row.action = `would read ${mode === 'result' ? 'results' : 'estimates'}${note}: ${cap.reason}`;
+        row.action = `would read ${mode === 'result' ? 'results' : 'estimates'}: ${reading} (${cap.reason})`;
+        row.sample = sendSegs.slice(0, 2);
         console.log(`      sample: ${sendSegs[0].slice(0, 240).replace(/\s+/g, ' ')}`);
         if (!withEst && cat.lots.size) {
           const first = [...cat.lots.keys()][0];
@@ -608,7 +649,9 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
       captures += 1;
       try {
         const got = await extract(cat.head, sendSegs, mode);
-        if (mode === 'result' && !resultsPosted(got.lots)) {
+        // Only a whole results page can say results aren't up yet; a re-read
+        // of changed lots after the results pass may hold no sale at all.
+        if (mode === 'result' && !pick.partial && !resultsPosted(got.lots)) {
           // Bidding still open or results not up yet: writing this would mark
           // every lot unsold. Hold it and read again when the page changes.
           const cost = costOf(got.usage);
@@ -632,9 +675,16 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
           starts_on: dates?.starts_on,
           ends_on: dates?.ends_on,
         };
+        // A few changed lots may not state the sale's currency where a whole
+        // page would (the store fills a lot's missing currency from the
+        // majority of the lots written with it), so carry it from the record.
+        const saleCurrency = majorityCurrency(got.lots) || entry.currency;
+        const lots = pick.partial && saleCurrency
+          ? got.lots.map((l) => (l.currency ? l : { ...l, currency: saleCurrency }))
+          : got.lots;
         const written = await api('/api/store/catalogue/ingest', {
           method: 'POST',
-          body: { house: houseId, event, catalogue_url: url, mode, lots: got.lots },
+          body: { house: houseId, event, catalogue_url: url, mode, lots },
         });
         const cost = costOf(got.usage);
         row.cost = cost;
@@ -642,13 +692,26 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
         spent.output_tokens += got.usage.output_tokens;
         spent.cost += cost || 0;
         row.action = `${mode === 'result' ? 'results' : 'estimates'}: ${written.written} lots written`
-          + `${written.skipped?.length ? `, ${written.skipped.length} skipped` : ''}${note} (${cap.reason})`;
+          + `${written.skipped?.length ? `, ${written.skipped.length} skipped` : ''}; ${reading} (${cap.reason})`;
         const next = {
-          ...entry, house: houseId, name, location: event.location, ...dates,
+          ...entry, house: houseId, name, location: event.location, ...dates, currency: saleCurrency,
           lots: cat.lots.size, withEstimates: withEst, lastSeen: today, firstSeen: entry.firstSeen || today,
         };
-        if (mode === 'result') Object.assign(next, { resultsAt: today, resultsHash: hash });
-        else Object.assign(next, { capturedAt: today, hash, lotUrls: [...new Set([...(entry.lotUrls || []), ...cat.lots.keys()])] });
+        // What Claude has read, lot by lot: a partial read adds to the record,
+        // a whole-page read replaces it (dropping lots no longer listed).
+        const readNow = hashesOf(mode, pick.urls);
+        if (mode === 'result') {
+          Object.assign(next, {
+            resultsAt: today, resultsHash: hash,
+            resultHashes: pick.partial ? { ...entry.resultHashes, ...readNow } : readNow,
+          });
+        } else {
+          Object.assign(next, {
+            capturedAt: today, hash,
+            lotUrls: [...new Set([...(entry.lotUrls || []), ...cat.lots.keys()])],
+            lotHashes: pick.partial ? { ...entry.lotHashes, ...readNow } : readNow,
+          });
+        }
         state.sales[url] = next;
       } catch (e) {
         row.action = `failed: ${e.message.split('\n')[0]}`;
@@ -678,9 +741,19 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
     '',
     live ? `Claude: ${spent.input_tokens.toLocaleString()} input + ${spent.output_tokens.toLocaleString()} output tokens, ${money(spent.cost)} this run.` : '',
     ...(problems.length ? ['', '### Needs attention', ...problems.map((p) => `- ${p}`)] : []),
+    ...(rows.some((r) => r.sample) ? [
+      '', '<details><summary>Lot text for the sales it would read (first two lots)</summary>', '',
+      ...rows.filter((r) => r.sample).flatMap((r) => [
+        `**${r.house} · ${r.name}**`, '', '```',
+        ...r.sample.map((s) => s.replace(/`/g, "'").replace(/\n{3,}/g, '\n\n').slice(0, 400)), '```', '',
+      ]),
+      '</details>',
+    ] : []),
   ].join('\n');
   console.log(`\n${summary}`);
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
+  for (const file of [process.env.GITHUB_STEP_SUMMARY, process.env.CATALOGUE_WATCH_REPORT]) {
+    if (file) appendFileSync(file, `${summary}\n`);
+  }
   for (const p of problems) console.log(`::warning::${p}`);
   // A live run with a failed capture or an unreadable house fails, so GitHub
   // emails about it; a dry run only reports.

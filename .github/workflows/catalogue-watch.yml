@@ -31,6 +31,8 @@ on:
       - 'auction-admin/scripts/catalogue-watch.mjs'
       - 'auction-admin/lib/catalogueWatch.js'
       - '.github/workflows/catalogue-watch.yml'
+    # A push runs a dry run (no Claude calls, no writes) against the latest
+    # record from main and posts its summary as a comment on the commit.
 
 permissions:
   contents: read
@@ -43,6 +45,8 @@ jobs:
   watch:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      report: ${{ steps.report.outputs.report }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -69,6 +73,7 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           DRY_RUN: ${{ github.event_name == 'push' || github.event.inputs.dry_run == 'true' }}
           HOUSES: ${{ github.event.inputs.houses }}
+          CATALOGUE_WATCH_REPORT: watch-report.md
         run: node scripts/catalogue-watch.mjs $([ "$DRY_RUN" = true ] && echo --dry-run) $HOUSES
       - name: Save the watch's record
         if: always() && hashFiles('auction-admin/.catalogue-watch/state.json') != ''
@@ -76,3 +81,31 @@ jobs:
         with:
           path: auction-admin/.catalogue-watch
           key: catalogue-watch-${{ github.run_id }}
+      # A dry run from a claude/** push hands its summary to the next job,
+      # which posts it on the commit: Claude sessions can't read job summaries.
+      - name: Pass the dry run's summary on
+        id: report
+        if: always() && github.event_name == 'push' && hashFiles('auction-admin/watch-report.md') != ''
+        run: |
+          {
+            echo 'report<<WATCH_REPORT_EOF'
+            head -c 60000 auction-admin/watch-report.md
+            echo
+            echo 'WATCH_REPORT_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+  # Its own job, so the scheduled run keeps a read-only token.
+  comment:
+    needs: watch
+    if: always() && github.event_name == 'push' && needs.watch.outputs.report != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit comments
+    steps:
+      - name: Comment the dry run's summary on the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ needs.watch.outputs.report }}
+        run: |
+          printf '%s\n' "$REPORT" > report.md
+          gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/comments" -F body=@report.md --silent

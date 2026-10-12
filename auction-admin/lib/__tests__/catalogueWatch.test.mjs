@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   watchListingId, eventNameFromTitle, parseSaleDates, shouldCapture, resultsDue, resultsPosted, chooseSaleDates,
-  estimatesOnly, buildIngestItems, LOT_MARKER, HOUSES,
+  estimatesOnly, buildIngestItems, lotsToSend, majorityCurrency, stableLotText, LOT_MARKER, HOUSES,
 } from '../catalogueWatch.js';
 
 test('a lot is keyed by the house\'s own lot id, the same before and after the sale', () => {
@@ -180,4 +180,97 @@ test('a results page where nothing sold is held, and re-read only when the page 
   assert.equal(resultsDue(held, { hash: 'results-up', today: '2026-10-15', sale }).due, true);
   // Held well past the usual two-week window, a changed page is still read.
   assert.equal(resultsDue(held, { hash: 'results-up', today: '2026-11-20', sale }).due, true);
+});
+
+test('estimate re-reads send only new or changed lots, and only new lots once the sale is under way', () => {
+  const sale = { starts_on: '2026-10-31', ends_on: '2026-10-31' };
+  const hashes = new Map([['a', 'h1'], ['b', 'h2'], ['c', 'h3']]);
+  const candidates = ['a', 'b', 'c'];
+  const pick = (entry, today = '2026-10-25', s = sale) => lotsToSend({ entry, mode: 'estimate', sale: s, today, candidates, hashes });
+
+  // Everything: first capture, no per-lot record yet, or the sale's dates moved.
+  assert.deepEqual(pick(undefined), { urls: candidates, partial: false, why: 'all lots: first capture' });
+  const recorded = { capturedAt: '2026-10-20', ...sale };
+  assert.equal(pick(recorded).why, 'all lots: no per-lot record yet');
+  assert.equal(pick({ ...recorded, lotHashes: { a: 'h1', b: 'h2', c: 'h3' } }, '2026-10-25', { starts_on: '2026-11-04', ends_on: '2026-11-04' }).why,
+    'all lots: sale dates changed');
+
+  // Before the sale: new lots (c) and changed lots (b).
+  const known = { ...recorded, lotHashes: { a: 'h1', b: 'old' } };
+  assert.deepEqual(pick(known), { urls: ['b', 'c'], partial: true, why: '2 of 3 lots new or changed' });
+  // Nothing new or changed: nothing to send.
+  assert.deepEqual(pick({ ...recorded, lotHashes: { a: 'h1', b: 'h2', c: 'h3' } }).urls, []);
+  // Under way (bids and countdowns change the cards): new lots only.
+  assert.deepEqual(pick(known, '2026-10-31').urls, ['c']);
+  assert.deepEqual(pick({ ...recorded, lotHashes: { a: 'x', b: 'y', c: 'z' } }, '2026-10-31').urls, []);
+});
+
+test('an online sale under way: bids change every card daily, but only lots added since the last read are sent', () => {
+  const sale = { starts_on: '2026-10-05', ends_on: '2026-10-14' };
+  const entry = { capturedAt: '2026-10-04', ...sale, lotHashes: { a: 'bid-1', b: 'bid-1' } };
+  const hashes = new Map([['a', 'bid-9'], ['b', 'bid-7'], ['n', 'new']]);
+  const pick = lotsToSend({ entry, mode: 'estimate', sale, today: '2026-10-09', candidates: ['a', 'b', 'n'], hashes });
+  assert.deepEqual(pick.urls, ['n']);
+  assert.equal(pick.partial, true);
+});
+
+test('results: the whole page on the first pass, then only lots that changed since it', () => {
+  const sale = { starts_on: '2026-10-31', ends_on: '2026-10-31' };
+  const hashes = new Map([['a', 'sold'], ['b', 'sold-after']]);
+  const pick = (entry) => lotsToSend({ entry, mode: 'result', sale, today: '2026-11-03', candidates: ['a', 'b'], hashes });
+  assert.deepEqual(pick({ capturedAt: '2026-10-30' }), { urls: ['a', 'b'], partial: false, why: 'all lots: first results pass' });
+  // A held read (results weren't up) is still a first pass.
+  assert.equal(pick({ resultsHeldHash: 'x' }).partial, false);
+  assert.equal(pick({ resultsAt: '2026-11-01' }).why, 'all lots: no per-lot record of the results pass');
+  assert.deepEqual(pick({ resultsAt: '2026-11-01', resultHashes: { a: 'sold', b: 'not-sold' } }),
+    { urls: ['b'], partial: true, why: '1 of 2 lots changed since the results pass' });
+});
+
+test('the sale currency is what most lots state', () => {
+  assert.equal(majorityCurrency([{ currency: 'chf' }, { currency: 'CHF' }, { currency: 'EUR' }, { currency: null }]), 'CHF');
+  assert.equal(majorityCurrency([{ currency: null }, {}]), undefined);
+  assert.equal(majorityCurrency(undefined), undefined);
+});
+
+test('a lot card is the same lot whatever its countdown and running bid say', () => {
+  // Broad Arrow online, as the watch read it on 12 October 2026, and a day later.
+  const card = (left, bid) => `[lot: https://bid.broadarrowauctions.com/lots/view/1-DH4AXC/1980-bmw-328-junior-stimula]
+1980 BMW 328 Junior Stimula
+101
+${left}
+1980 BMW 328 JUNIOR STIMULA
+Est. 
+€12,000 - €18,000
+Current bid: ${bid}
+PLACE BID`;
+  const today = card('1d 18h 28m 33s left', '€4,800');
+  const tomorrow = card('18h 4m 2s left', '€6,100');
+  assert.equal(stableLotText(today), stableLotText(tomorrow));
+  assert.match(stableLotText(today), /€12,000 - €18,000/); // the estimate is kept
+  // A revised estimate is a change.
+  assert.notEqual(stableLotText(today), stableLotText(today.replace('€12,000 - €18,000', '€14,000 - €20,000')));
+
+  // Other wordings: bid counts, high/starting bids, clock countdowns, "closes in".
+  assert.equal(stableLotText('Lot 7 | Est. $80,000 - $100,000 | High Bid $41,000 | 9 bids | Closes in 3 days'),
+    stableLotText('Lot 7 | Est. $80,000 - $100,000 | High Bid $57,500 | 14 bids | Closes in 2 days'));
+  assert.equal(stableLotText('Lot 8 | Starting bid €10,000 | 02:14:09'), stableLotText('Lot 8 | Starting bid €12,000 | 01:59:30'));
+  assert.equal(stableLotText('Lot 9 | Est. £40,000 - £60,000 | 4 days left'), stableLotText('Lot 9 | Est. £40,000 - £60,000 | 3 days left'));
+  assert.equal(stableLotText('Lot 9 | 2 Days 4 Hrs remaining'), stableLotText('Lot 9 | 1 Day 22 Hrs remaining'));
+  // A number that isn't a time left stays: "4 seats", "500 hours since restoration".
+  assert.notEqual(stableLotText('Lot 9 | 500 hours since restoration'), stableLotText('Lot 9 | 400 hours since restoration'));
+  // What follows a countdown on the same line, or on the next, still counts.
+  const est = (e) => `Lot 9 | Closes in 3 days · Est. ${e}\nCurrent bid: €1,000`;
+  assert.notEqual(stableLotText(est('€12,000 - €18,000')), stableLotText(est('€14,000 - €20,000')));
+  assert.notEqual(stableLotText('Opens in 6d 4h\nEst. €12,000 - €18,000'), stableLotText('Opens in 5d 4h\nEst. €14,000 - €20,000'));
+  assert.equal(stableLotText('Opens in 6d 4h\nEst. €12,000 - €18,000'), stableLotText('Opens in 5d 2h\nEst. €12,000 - €18,000'));
+  // A lot's own numbers stay: lot number, year, model designations.
+  assert.match(stableLotText('Lot 104 | 1973 Porsche 911 Carrera RS 2.7 Touring'), /Lot 104 \| 1973 Porsche 911 Carrera RS 2\.7 Touring/);
+});
+
+test('for results, a high bid is part of the lot; a countdown still is not', () => {
+  assert.notEqual(stableLotText('Lot 23 | Not sold | High bid €2,000,000', 'result'),
+    stableLotText('Lot 23 | Not sold | High bid €2,100,000', 'result'));
+  assert.notEqual(stableLotText('Lot 23 | Not sold | High bid €2,000,000', 'result'),
+    stableLotText('Lot 23 | Sold after auction €2,400,000', 'result'));
+  assert.equal(stableLotText('Lot 23 | Sold €2,400,000 | 0d 0h 4m 10s left', 'result'), stableLotText('Lot 23 | Sold €2,400,000 | 0d 0h 0m 0s left', 'result'));
 });
