@@ -210,7 +210,8 @@ export const daysBetween = (fromISO, toISO) =>
  * Whether today's pass should send a sale's catalogue to Claude. Reading a
  * page is free; extraction is what costs, so an unchanged page is skipped and
  * a changed one is re-read at most weekly, then daily from 8 days before the
- * sale through its last day (late additions, revised estimates).
+ * sale through its last day (late additions, revised estimates). lotsToSend
+ * then limits a re-read to the lots that are new or changed.
  */
 export function shouldCapture(entry, { hash, today, sale }) {
   if (sale?.ends_on && today > sale.ends_on) return { capture: false, reason: 'sale over' };
@@ -241,6 +242,62 @@ export function resultsDue(entry, { hash, today, sale }) {
     return { due: true, reason: 'results page changed' };
   }
   return { due: false, reason: 'results captured' };
+}
+
+/**
+ * Which of a catalogue's lots a pass sends to Claude. shouldCapture and
+ * resultsDue decide whether a pass happens; this decides what it pays for.
+ * The store keeps every lot already written (writes are per-lot upserts), so
+ * a lot whose text hasn't changed since Claude last read it is not sent again.
+ *
+ *   estimates   everything on the first capture, when the sale's dates have
+ *               changed (every lot's end date moves), and once for a sale
+ *               captured before per-lot records existed. Otherwise: before
+ *               the sale starts, new lots and lots whose text changed; once
+ *               it has started, new lots only, because what changes on a lot
+ *               card during a sale is bids and countdowns, not estimates.
+ *   results     everything on the first results pass (it decides whether
+ *               results are posted at all); later re-reads in the fortnight
+ *               after, only lots whose text changed since that pass.
+ *
+ * entry       the watch's record of the sale (lotHashes / resultHashes: lot
+ *             URL -> fingerprint of its text when Claude last read it)
+ * candidates  lot URLs eligible this pass (all lots, or the subset the house
+ *             config allows), in page order
+ * hashes      Map of lot URL -> fingerprint of its text now
+ * Returns { urls, partial, why }: partial is true when unchanged lots were
+ * left out, so the caller knows the extraction is not the whole page.
+ */
+export function lotsToSend({ entry, mode, sale, today, candidates, hashes }) {
+  const all = (why) => ({ urls: [...candidates], partial: false, why });
+  if (mode === 'result') {
+    if (!entry?.resultsAt) return all('all lots: first results pass');
+    const prev = entry.resultHashes;
+    if (!prev) return all('all lots: no per-lot record of the results pass');
+    const urls = candidates.filter((u) => prev[u] !== hashes.get(u));
+    return { urls, partial: true, why: `${urls.length} of ${candidates.length} lots changed since the results pass` };
+  }
+  if (!entry?.capturedAt) return all('all lots: first capture');
+  if ((entry.starts_on || null) !== (sale?.starts_on || null) || (entry.ends_on || null) !== (sale?.ends_on || null)) {
+    return all('all lots: sale dates changed');
+  }
+  const prev = entry.lotHashes;
+  if (!prev) return all('all lots: no per-lot record yet');
+  if (sale?.starts_on && today >= sale.starts_on) {
+    const urls = candidates.filter((u) => !(u in prev));
+    return { urls, partial: true, why: `${urls.length} new of ${candidates.length} lots (sale under way: lots already read are not re-read)` };
+  }
+  const urls = candidates.filter((u) => prev[u] !== hashes.get(u));
+  return { urls, partial: true, why: `${urls.length} of ${candidates.length} lots new or changed` };
+}
+
+/** The currency most of a sale's lots state, upper-cased; undefined if none do. */
+export function majorityCurrency(lots) {
+  const counts = {};
+  for (const l of lots || []) {
+    if (l?.currency) counts[String(l.currency).toUpperCase()] = (counts[String(l.currency).toUpperCase()] || 0) + 1;
+  }
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
 }
 
 // A catalogue estimate as printed: "$1,200,000 - $1,500,000", "€4.000.000 - €5.000.000",
@@ -297,9 +354,7 @@ export function buildIngestItems({ houseId, event, catalogueUrl, mode, lots, tod
   if (!event?.name) throw new Error('event.name is required');
 
   // A lot whose currency the page didn't state takes the sale's usual one.
-  const counts = {};
-  for (const l of lots) if (l.currency) counts[String(l.currency).toUpperCase()] = (counts[String(l.currency).toUpperCase()] || 0) + 1;
-  const saleCurrency = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const saleCurrency = majorityCurrency(lots);
 
   const items = [];
   const skipped = [];

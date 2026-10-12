@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   watchListingId, eventNameFromTitle, parseSaleDates, shouldCapture, resultsDue, resultsPosted, chooseSaleDates,
-  estimatesOnly, buildIngestItems, LOT_MARKER, HOUSES,
+  estimatesOnly, buildIngestItems, lotsToSend, majorityCurrency, LOT_MARKER, HOUSES,
 } from '../catalogueWatch.js';
 
 test('a lot is keyed by the house\'s own lot id, the same before and after the sale', () => {
@@ -180,4 +180,54 @@ test('a results page where nothing sold is held, and re-read only when the page 
   assert.equal(resultsDue(held, { hash: 'results-up', today: '2026-10-15', sale }).due, true);
   // Held well past the usual two-week window, a changed page is still read.
   assert.equal(resultsDue(held, { hash: 'results-up', today: '2026-11-20', sale }).due, true);
+});
+
+test('estimate re-reads send only new or changed lots, and only new lots once the sale is under way', () => {
+  const sale = { starts_on: '2026-10-31', ends_on: '2026-10-31' };
+  const hashes = new Map([['a', 'h1'], ['b', 'h2'], ['c', 'h3']]);
+  const candidates = ['a', 'b', 'c'];
+  const pick = (entry, today = '2026-10-25', s = sale) => lotsToSend({ entry, mode: 'estimate', sale: s, today, candidates, hashes });
+
+  // Everything: first capture, no per-lot record yet, or the sale's dates moved.
+  assert.deepEqual(pick(undefined), { urls: candidates, partial: false, why: 'all lots: first capture' });
+  const recorded = { capturedAt: '2026-10-20', ...sale };
+  assert.equal(pick(recorded).why, 'all lots: no per-lot record yet');
+  assert.equal(pick({ ...recorded, lotHashes: { a: 'h1', b: 'h2', c: 'h3' } }, '2026-10-25', { starts_on: '2026-11-04', ends_on: '2026-11-04' }).why,
+    'all lots: sale dates changed');
+
+  // Before the sale: new lots (c) and changed lots (b).
+  const known = { ...recorded, lotHashes: { a: 'h1', b: 'old' } };
+  assert.deepEqual(pick(known), { urls: ['b', 'c'], partial: true, why: '2 of 3 lots new or changed' });
+  // Nothing new or changed: nothing to send.
+  assert.deepEqual(pick({ ...recorded, lotHashes: { a: 'h1', b: 'h2', c: 'h3' } }).urls, []);
+  // Under way (bids and countdowns change the cards): new lots only.
+  assert.deepEqual(pick(known, '2026-10-31').urls, ['c']);
+  assert.deepEqual(pick({ ...recorded, lotHashes: { a: 'x', b: 'y', c: 'z' } }, '2026-10-31').urls, []);
+});
+
+test('an online sale under way: bids change every card daily, but only lots added since the last read are sent', () => {
+  const sale = { starts_on: '2026-10-05', ends_on: '2026-10-14' };
+  const entry = { capturedAt: '2026-10-04', ...sale, lotHashes: { a: 'bid-1', b: 'bid-1' } };
+  const hashes = new Map([['a', 'bid-9'], ['b', 'bid-7'], ['n', 'new']]);
+  const pick = lotsToSend({ entry, mode: 'estimate', sale, today: '2026-10-09', candidates: ['a', 'b', 'n'], hashes });
+  assert.deepEqual(pick.urls, ['n']);
+  assert.equal(pick.partial, true);
+});
+
+test('results: the whole page on the first pass, then only lots that changed since it', () => {
+  const sale = { starts_on: '2026-10-31', ends_on: '2026-10-31' };
+  const hashes = new Map([['a', 'sold'], ['b', 'sold-after']]);
+  const pick = (entry) => lotsToSend({ entry, mode: 'result', sale, today: '2026-11-03', candidates: ['a', 'b'], hashes });
+  assert.deepEqual(pick({ capturedAt: '2026-10-30' }), { urls: ['a', 'b'], partial: false, why: 'all lots: first results pass' });
+  // A held read (results weren't up) is still a first pass.
+  assert.equal(pick({ resultsHeldHash: 'x' }).partial, false);
+  assert.equal(pick({ resultsAt: '2026-11-01' }).why, 'all lots: no per-lot record of the results pass');
+  assert.deepEqual(pick({ resultsAt: '2026-11-01', resultHashes: { a: 'sold', b: 'not-sold' } }),
+    { urls: ['b'], partial: true, why: '1 of 2 lots changed since the results pass' });
+});
+
+test('the sale currency is what most lots state', () => {
+  assert.equal(majorityCurrency([{ currency: 'chf' }, { currency: 'CHF' }, { currency: 'EUR' }, { currency: null }]), 'CHF');
+  assert.equal(majorityCurrency([{ currency: null }, {}]), undefined);
+  assert.equal(majorityCurrency(undefined), undefined);
 });
