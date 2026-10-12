@@ -375,7 +375,12 @@ Rules:
 - Amounts are plain numbers (no currency symbols or separators). "$1,215,000" -> 1215000.
   "Est. $150,000 - $200,000" -> estimate_low 150000, estimate_high 200000.
 - year/make/model split: "1962 Ferrari 250 GT SWB Berlinetta" -> year 1962, make "Ferrari",
-  model "250 GT SWB", trim "Berlinetta" (trim only when clearly separable, else null).
+  model "250 GT SWB", trim "Berlinetta".
+  model is the model designation as printed, keeping series, variant and edition names and any
+  quoted name: "4½-Litre S-Type 'Low Chassis'", "488 Spider 70th Anniversary", "GT Carbon Series".
+  trim is the body style and coachwork, with the coachbuilder: "Convertible", "Roadster",
+  "Drophead Coupé by Park Ward", "Tilbury Saloon by Willoughby". Never fold a body style or
+  coachwork into model; trim is null when the title names neither.
 - Detect the event name, auction house, location, and the buyer premium when stated.
   Houses usually publish a fee table rather than one rate — put it in fee_categories,
   one entry per lot category, and leave buyer_premium_pct null. For example

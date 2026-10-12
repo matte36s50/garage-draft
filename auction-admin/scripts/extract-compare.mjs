@@ -8,7 +8,10 @@
  * Writes nothing: no store writes, no watch state. The only side effect is
  * the Claude spend for the extraction calls, shown in the report.
  *
- * Runs from .github/workflows/extract-compare.yml (manual dispatch only).
+ * Runs from .github/workflows/extract-compare.yml: by manual dispatch, or by a
+ * push to a claude/extract-compare/* branch that changes
+ * .github/extract-compare.json (the comparisons to run). A push run posts the
+ * report as a comment on the commit that asked for it.
  *
  *   node scripts/extract-compare.mjs --house rm --url <catalogue url> \
  *     --mode result|estimate \
@@ -16,7 +19,8 @@
  *
  * The first setting is the baseline the others are compared against.
  *
- * Environment: CATALOGUE_WATCH_APP_URL and CRON_SECRET, as for the watch.
+ * Environment: CATALOGUE_WATCH_APP_URL and CRON_SECRET, as for the watch;
+ * COMPARE_REPORT, a file the report is also appended to (the workflow posts it).
  */
 
 import { appendFileSync } from 'node:fs';
@@ -159,6 +163,15 @@ export async function main(argv = process.argv.slice(2)) {
         lines.push('', '| Lot | Field | Baseline | This setting |', '|---|---|---|---|',
           ...d.figures.slice(0, 60).map((x) => `| ${describe(x.lot)} | ${x.field} | ${show(x.base)} | ${show(x.other)} |`));
         if (d.figures.length > 60) lines.push(`| … ${d.figures.length - 60} more | | | |`);
+        // The text both settings were given for each disputed lot, so the
+        // report shows which one read it right.
+        const disputed = [...new Map(d.figures.map((x) => [keyOf(x.lot), x.lot])).values()].slice(0, 12);
+        lines.push('', '<details><summary>Catalogue text for the lots that differ</summary>', '');
+        for (const l of disputed) {
+          const text = l.lot_url ? cat.lots.get(String(l.lot_url).trim()) : null;
+          lines.push(`**${describe(l)}**`, '', '```', (text || '(no lot link to look the text up by)').replace(/`/g, "'").slice(0, 900), '```', '');
+        }
+        lines.push('</details>');
       }
       if (d.names.length) {
         lines.push('', '<details><summary>Naming differences</summary>', '', '| Lot | Field | Baseline | This setting |', '|---|---|---|---|',
@@ -170,15 +183,20 @@ export async function main(argv = process.argv.slice(2)) {
     }
   }
 
-  const report = lines.join('\n');
-  console.log(`\n${report}`);
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${report}\n`);
+  writeReport(lines.join('\n'));
   return failed ? 1 : 0;
+}
+
+function writeReport(report) {
+  console.log(`\n${report}`);
+  for (const file of [process.env.GITHUB_STEP_SUMMARY, process.env.COMPARE_REPORT]) {
+    if (file) appendFileSync(file, `${report}\n\n`);
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().then((code) => process.exit(code)).catch((e) => {
-    console.error(e.message);
+    writeReport(`## Extractor comparison failed\n\n${process.argv.slice(2).join(' ')}\n\n${e.message}`);
     process.exit(1);
   });
 }
