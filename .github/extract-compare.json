@@ -4,13 +4,15 @@
     "url": "https://rmsothebys.com/auctions/zu26/lots/",
     "mode": "result",
     "models": "claude-opus-4-8:medium,claude-sonnet-5:low",
-    "max_lots": 100
+    "max_lots": 100,
+    "note": "rerun with the explicit model/trim rule (PR #184)"
   },
   {
     "house": "rm",
     "url": "https://rmsothebys.com/auctions/lf26/lots/",
     "mode": "estimate",
     "models": "claude-opus-4-8:medium,claude-sonnet-5:low",
-    "max_lots": 100
+    "max_lots": 100,
+    "note": "rerun with the explicit model/trim rule (PR #184)"
   }
 ]
