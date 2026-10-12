@@ -15,9 +15,11 @@
  *
  *   node scripts/extract-compare.mjs --house rm --url <catalogue url> \
  *     --mode result|estimate \
- *     [--models claude-opus-4-8:medium,claude-sonnet-5:low] [--max-lots 100]
+ *     [--models default,claude-sonnet-5:low] [--max-lots 100]
  *
- * The first setting is the baseline the others are compared against.
+ * The first setting is the baseline the others are compared against. A
+ * setting is model:effort, or "default" for whatever the live extractor runs
+ * when asked for nothing in particular (the report shows which model that is).
  *
  * Environment: CATALOGUE_WATCH_APP_URL and CRON_SECRET, as for the watch;
  * COMPARE_REPORT, a file the report is also appended to (the workflow posts it).
@@ -36,7 +38,7 @@ const FIGURE_FIELDS = ['lot', 'year', 'estimate_low', 'estimate_high', 'price', 
 const NAME_FIELDS = ['make', 'model', 'trim'];
 
 function parseArgs(argv) {
-  const args = { models: 'claude-opus-4-8:medium,claude-sonnet-5:low', maxLots: 100 };
+  const args = { models: 'default,claude-sonnet-5:low', maxLots: 100 };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     const value = argv[i + 1];
@@ -51,6 +53,7 @@ function parseArgs(argv) {
   if (!args.url) throw new Error('--url (the catalogue) is required');
   if (!['estimate', 'result'].includes(args.mode)) throw new Error('--mode must be estimate or result');
   args.settings = args.models.split(',').map((s) => s.trim()).filter(Boolean).map((s) => {
+    if (s === 'default') return {};
     const [model, effort] = s.split(':');
     return effort ? { model, effort } : { model };
   });
@@ -59,7 +62,10 @@ function parseArgs(argv) {
   return args;
 }
 
-const label = (s) => (s.effort ? `${s.model} (${s.effort})` : s.model);
+const label = (s, usage) => {
+  if (!s.model) return `default${usage?.model ? ` = ${usage.model}` : ''}`;
+  return s.effort ? `${s.model} (${s.effort})` : s.model;
+};
 
 // A lot's own page link identifies it, as in the watch; the lot number and
 // year/make stand in when a run left the link out.
@@ -125,7 +131,7 @@ export async function main(argv = process.argv.slice(2)) {
     try {
       const got = await extract(cat.head, sent, args.mode, s);
       runs.push({ setting: s, ...got, cost: costOf(got.usage), seconds: (Date.now() - t0) / 1000 });
-      console.log(`${label(s)}: ${got.lots.length} lots, ${got.usage.input_tokens} in / ${got.usage.output_tokens} out, ${money(costOf(got.usage))}`);
+      console.log(`${label(s, got.usage)}: ${got.lots.length} lots, ${got.usage.input_tokens} in / ${got.usage.output_tokens} out, ${money(costOf(got.usage))}`);
     } catch (e) {
       runs.push({ setting: s, error: e.message, seconds: (Date.now() - t0) / 1000 });
       console.log(`${label(s)}: failed — ${e.message}`);
@@ -143,7 +149,7 @@ export async function main(argv = process.argv.slice(2)) {
     '|---|---:|---:|---:|---:|---:|',
     ...runs.map((r) => (r.error
       ? `| ${label(r.setting)} | failed: ${r.error} | | | | ${r.seconds.toFixed(0)}s |`
-      : `| ${label(r.setting)}${r === baseline ? ' — baseline' : ''} | ${r.lots.length} | ${r.usage.input_tokens.toLocaleString()} | ${r.usage.output_tokens.toLocaleString()} | ${money(r.cost)}${r === baseline ? '' : pct(r.cost, baseline.cost)} | ${r.seconds.toFixed(0)}s |`)),
+      : `| ${label(r.setting, r.usage)}${r === baseline ? ' — baseline' : ''} | ${r.lots.length} | ${r.usage.input_tokens.toLocaleString()} | ${r.usage.output_tokens.toLocaleString()} | ${money(r.cost)}${r === baseline ? '' : pct(r.cost, baseline.cost)} | ${r.seconds.toFixed(0)}s |`)),
   ];
 
   const failed = runs.some((r) => r.error);
@@ -153,7 +159,7 @@ export async function main(argv = process.argv.slice(2)) {
       const lotsWithFigureDiffs = new Set(d.figures.map((x) => keyOf(x.lot))).size;
       lines.push(
         '',
-        `### ${label(c.setting)} vs ${label(baseline.setting)}`,
+        `### ${label(c.setting, c.usage)} vs ${label(baseline.setting, baseline.usage)}`,
         '',
         `- Figures (lot, year, estimates, price, outcome, currency): **${lotsWithFigureDiffs === 0 ? 'identical' : `${lotsWithFigureDiffs} lot(s) differ`}**`,
         `- Names (make, model, trim): ${d.names.length === 0 ? 'identical' : `${d.names.length} field(s) differ`}`,

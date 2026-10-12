@@ -32,8 +32,8 @@ on:
         options: [result, estimate]
         default: result
       models:
-        description: 'Settings to compare, model:effort, comma-separated; the first is the baseline'
-        default: 'claude-opus-4-8:medium,claude-sonnet-5:low'
+        description: 'Settings to compare (model:effort, or default for what the live extractor runs), comma-separated; the first is the baseline'
+        default: 'default,claude-sonnet-5:low'
       max_lots:
         description: 'Lots to send to each setting (a cost cap)'
         default: '100'
@@ -84,7 +84,7 @@ jobs:
               --house "$(jq -r '.house' <<<"$run")" \
               --url "$(jq -r '.url' <<<"$run")" \
               --mode "$(jq -r '.mode' <<<"$run")" \
-              --models "$(jq -r '.models // "claude-opus-4-8:medium,claude-sonnet-5:low"' <<<"$run")" \
+              --models "$(jq -r '.models // "default,claude-sonnet-5:low"' <<<"$run")" \
               --max-lots "$(jq -r '.max_lots // 100' <<<"$run")" </dev/null || status=1
           done <<<"$runs"
           exit $status

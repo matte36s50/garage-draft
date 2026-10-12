@@ -43,10 +43,15 @@ const CHUNK_CONCURRENCY = Number(process.env.EXTRACT_CONCURRENCY || 4);
 const RUN_BUDGET_MS = Number(process.env.EXTRACT_BUDGET_MS || 230_000);
 
 // Extraction is mechanical — copying printed numbers into fields — so it runs
-// at medium effort. Both are env-overridable (an env change takes effect on
-// the next deploy).
-const MODEL = process.env.EXTRACT_MODEL || 'claude-opus-4-8';
-const EFFORT = process.env.EXTRACT_EFFORT || 'medium';
+// at low effort. Opus 5.5 low matched Opus 4.8 medium on every figure in the
+// October 2026 comparison (RM Zurich results, RM London estimates) at about
+// 20% less. Sonnet 5 matched the figures at 46-60% less but split names
+// wrongly ("550" + "Barchetta", "Integra" + "Type R"), which would merge
+// different cars in MAI, so it is not the default. Both are env-overridable
+// (an env change takes effect on the next deploy); re-check a change with
+// the Extractor comparison workflow first.
+const MODEL = process.env.EXTRACT_MODEL || 'claude-opus-5-5';
+const EFFORT = process.env.EXTRACT_EFFORT || 'low';
 
 // A caller may name the model and effort for one request. The extractor
 // comparison (scripts/extract-compare.mjs) uses this to run a cheaper setting
