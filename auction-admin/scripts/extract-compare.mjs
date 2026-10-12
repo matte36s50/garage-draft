@@ -163,6 +163,15 @@ export async function main(argv = process.argv.slice(2)) {
         lines.push('', '| Lot | Field | Baseline | This setting |', '|---|---|---|---|',
           ...d.figures.slice(0, 60).map((x) => `| ${describe(x.lot)} | ${x.field} | ${show(x.base)} | ${show(x.other)} |`));
         if (d.figures.length > 60) lines.push(`| … ${d.figures.length - 60} more | | | |`);
+        // The text both settings were given for each disputed lot, so the
+        // report shows which one read it right.
+        const disputed = [...new Map(d.figures.map((x) => [keyOf(x.lot), x.lot])).values()].slice(0, 12);
+        lines.push('', '<details><summary>Catalogue text for the lots that differ</summary>', '');
+        for (const l of disputed) {
+          const text = l.lot_url ? cat.lots.get(String(l.lot_url).trim()) : null;
+          lines.push(`**${describe(l)}**`, '', '```', (text || '(no lot link to look the text up by)').replace(/`/g, "'").slice(0, 900), '```', '');
+        }
+        lines.push('</details>');
       }
       if (d.names.length) {
         lines.push('', '<details><summary>Naming differences</summary>', '', '| Lot | Field | Baseline | This setting |', '|---|---|---|---|',
