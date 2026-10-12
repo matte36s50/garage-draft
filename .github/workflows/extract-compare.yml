@@ -1,0 +1,60 @@
+name: Extractor comparison
+
+# Manual only. Reads one catalogue the way the catalogue watch does and runs
+# the same text through the extractor once per model setting, then reports
+# every lot where they disagree and what each run cost. Use it before changing
+# the extractor's default model or effort. Writes nothing to the store; the
+# only side effect is the Claude spend shown in the report.
+# See auction-admin/scripts/extract-compare.mjs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      house:
+        description: 'House the catalogue belongs to'
+        type: choice
+        options: [rm, broadarrow, gooding, mecum]
+        default: rm
+      catalogue_url:
+        description: 'Catalogue URL (as the watch reads it)'
+        required: true
+      mode:
+        description: 'estimate (before the sale) or result (after it)'
+        type: choice
+        options: [result, estimate]
+        default: result
+      models:
+        description: 'Settings to compare, model:effort, comma-separated; the first is the baseline'
+        default: 'claude-opus-4-8:medium,claude-sonnet-5:low'
+      max_lots:
+        description: 'Lots to send to each setting (a cost cap)'
+        default: '100'
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright and Chromium
+        working-directory: auction-admin
+        run: |
+          npm install --no-save --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+      - name: Compare
+        working-directory: auction-admin
+        env:
+          CATALOGUE_WATCH_APP_URL: ${{ vars.CATALOGUE_WATCH_APP_URL || 'https://bid-prix-admin.vercel.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          HOUSE: ${{ inputs.house }}
+          CATALOGUE_URL: ${{ inputs.catalogue_url }}
+          MODE: ${{ inputs.mode }}
+          MODELS: ${{ inputs.models }}
+          MAX_LOTS: ${{ inputs.max_lots }}
+        run: node scripts/extract-compare.mjs --house "$HOUSE" --url "$CATALOGUE_URL" --mode "$MODE" --models "$MODELS" --max-lots "$MAX_LOTS"

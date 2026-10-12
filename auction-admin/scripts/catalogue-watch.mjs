@@ -384,14 +384,18 @@ async function api(path, { method = 'GET', body, timeout = 60_000 } = {}) {
   return data;
 }
 
-/** Extract lots from the marked text, LOTS_PER_CALL lots per call, header on each. */
-async function extract(head, lotSegments, mode) {
+/**
+ * Extract lots from the marked text, LOTS_PER_CALL lots per call, header on each.
+ * `settings` ({ model, effort }) overrides the extractor's default for these
+ * calls only; the watch itself never passes it.
+ */
+async function extract(head, lotSegments, mode, settings = {}) {
   const lots = [];
   const usage = { input_tokens: 0, output_tokens: 0, model: null, calls: 0 };
   let event = {};
   for (let i = 0; i < lotSegments.length; i += LOTS_PER_CALL) {
     const text = [head.slice(0, 4000), ...lotSegments.slice(i, i + LOTS_PER_CALL)].join('\n');
-    const res = await api('/api/store/extract', { method: 'POST', body: { text, mode }, timeout: EXTRACT_TIMEOUT_MS });
+    const res = await api('/api/store/extract', { method: 'POST', body: { text, mode, ...settings }, timeout: EXTRACT_TIMEOUT_MS });
     lots.push(...(res.lots || []));
     event = { ...res.event, ...Object.fromEntries(Object.entries(event).filter(([, v]) => v)) };
     usage.input_tokens += res.usage?.input_tokens || 0;
@@ -690,5 +694,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
 }
 
-export { segments, fingerprint, readCatalogue, saleDates };
+export { segments, fingerprint, readCatalogue, saleDates, extract, costOf, PRICES };
 
