@@ -43,9 +43,20 @@ const CHUNK_CONCURRENCY = Number(process.env.EXTRACT_CONCURRENCY || 4);
 const RUN_BUDGET_MS = Number(process.env.EXTRACT_BUDGET_MS || 230_000);
 
 // Extraction is mechanical — copying printed numbers into fields — so it runs
-// at medium effort. Both are env-overridable to retune without a deploy.
+// at medium effort. Both are env-overridable (an env change takes effect on
+// the next deploy).
 const MODEL = process.env.EXTRACT_MODEL || 'claude-opus-4-8';
 const EFFORT = process.env.EXTRACT_EFFORT || 'medium';
+
+// A caller may name the model and effort for one request. The extractor
+// comparison (scripts/extract-compare.mjs) uses this to run a cheaper setting
+// against the current one on the same catalogue text before the default
+// changes. An allowlist, so a typo fails loudly instead of billing a model
+// nobody meant to use; these are the models the catalogue watch can price.
+const MODELS = new Set(['claude-opus-4-8', 'claude-opus-5', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-haiku-4-5']);
+const EFFORTS = new Set(['low', 'medium', 'high']);
+// Haiku takes neither adaptive thinking nor effort.
+const supportsEffort = (model) => !/^claude-haiku/.test(model);
 
 // Per slice, not per page: ~45K chars of catalog is well under 200 lots and
 // each lot is a short JSON object.
@@ -212,16 +223,20 @@ function mergeEvent(perChunk) {
 }
 
 /** One Claude call over one slice. Returns { event, lots } or throws. */
-async function extractChunk(client, prompt, signal) {
+async function extractChunk(client, prompt, signal, { model, effort }) {
   // Stream + finalMessage(): large max_tokens requires streaming (the SDK
   // rejects long non-streaming requests to avoid HTTP timeouts). The signal is
   // the hard stop — a call still running at the deadline is cut so the route
   // answers with the slices that did land instead of being killed at 300s.
+  const withEffort = supportsEffort(model);
   const stream = client.messages.stream({
-    model: MODEL,
+    model,
     max_tokens: MAX_TOKENS_PER_CHUNK,
-    thinking: { type: 'adaptive' },
-    output_config: { effort: EFFORT, format: { type: 'json_schema', schema: EXTRACTION_SCHEMA } },
+    ...(withEffort ? { thinking: { type: 'adaptive' } } : {}),
+    output_config: {
+      ...(withEffort ? { effort } : {}),
+      format: { type: 'json_schema', schema: EXTRACTION_SCHEMA },
+    },
     messages: [{ role: 'user', content: prompt }],
   }, { signal });
   const response = await stream.finalMessage();
@@ -253,7 +268,7 @@ async function extractChunk(client, prompt, signal) {
  * deadline. Workers that find the deadline passed stop taking new slices, so
  * the run returns partial results instead of being killed by the platform.
  */
-async function runChunks(chunks, buildPrompt, deadline) {
+async function runChunks(chunks, buildPrompt, deadline, settings) {
   const client = new Anthropic();
   const results = new Array(chunks.length).fill(null); // by slice, so lots stay in page order
   const failures = [];
@@ -271,7 +286,8 @@ async function runChunks(chunks, buildPrompt, deadline) {
         results[i] = await extractChunk(
           client,
           buildPrompt(chunks[i], i, chunks.length),
-          AbortSignal.timeout(remaining)
+          AbortSignal.timeout(remaining),
+          settings
         );
       } catch (e) {
         failures.push({ chunk: i, error: e });
@@ -302,6 +318,16 @@ export async function POST(request) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
+
+  const model = body.model ?? MODEL;
+  const effort = body.effort ?? EFFORT;
+  if (body.model != null && !MODELS.has(model)) {
+    return NextResponse.json({ error: `Unknown model: ${model}` }, { status: 400 });
+  }
+  if (body.effort != null && !EFFORTS.has(effort)) {
+    return NextResponse.json({ error: `Unknown effort: ${effort} (low, medium or high)` }, { status: 400 });
+  }
+  const settings = { model, effort };
 
   const mode = body.mode === 'estimate' ? 'estimate' : 'result';
   let pageText = (body.text || '').trim();
@@ -378,7 +404,7 @@ ${chunk}`;
   let failures;
   let attempted;
   try {
-    ({ done, failures, attempted } = await runChunks(chunks, buildPrompt, deadline));
+    ({ done, failures, attempted } = await runChunks(chunks, buildPrompt, deadline, settings));
   } catch (error) {
     return anthropicError(error);
   }
@@ -440,7 +466,8 @@ ${chunk}`;
     note,
     chunks: { total: chunks.length, read: done.length, failed: failures.length },
     usage: {
-      model: MODEL,
+      model,
+      effort: supportsEffort(model) ? effort : null,
       input_tokens: done.reduce((n, d) => n + (d.usage?.input_tokens || 0), 0),
       output_tokens: done.reduce((n, d) => n + (d.usage?.output_tokens || 0), 0),
     },
