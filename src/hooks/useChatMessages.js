@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { track } from '../utils/track';
 
 /**
  * Custom hook for managing league chat messages with real-time subscriptions
@@ -100,6 +101,9 @@ export function useChatMessages(supabase, leagueId, user, initialLimit = 50) {
         p_user_id: user.id,
         p_content: content.trim()
       });
+
+      // Only that a message was sent and how long it was; never its text.
+      track('chat_send', { league_id: leagueId, ok: Boolean(!rpcError && data?.success), length: content.trim().length });
 
       if (rpcError) {
         throw rpcError;

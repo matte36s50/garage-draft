@@ -6,10 +6,12 @@ import UserHistory from './components/UserHistory'
 import DraftResults from './components/DraftResults'
 import { bonusPrize, bonusResult, decideBonus } from './utils/bonusCar'
 import { carValue } from './utils/carValue'
+import { initTracking, setTrackingContext, setTrackingSession, track, trackOnce } from './utils/track'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqcXljeWtmYWpheXRicnF5bmN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc5NDU4ODUsImV4cCI6MjA2MzUyMTg4NX0.m2ZPJ0qnssVLrTk1UsIG5NJZ9aVJzoOF2ye4CCOzahA'
 const supabase = createClient(supabaseUrl, supabaseKey)
+initTracking({ url: supabaseUrl, key: supabaseKey })
 const STORAGE_KEY = 'bidprix_selected_league'
 const SCREEN_STORAGE_KEY = 'bidprix_current_screen'
 
@@ -892,6 +894,7 @@ export default function BidPrixApp() {
   const AUTH_TRANSIENT_SCREENS = ['reset-password', 'forgot-password', 'login', 'signup']
   const updateCurrentScreen = (screen) => {
     setCurrentScreen(screen)
+    track('screen_view', { screen })
     if (!AUTH_TRANSIENT_SCREENS.includes(screen)) {
       saveCurrentScreen(screen)
     }
@@ -1043,6 +1046,9 @@ export default function BidPrixApp() {
           onConflict: 'league_id,user_id'
         })
       
+      track('prediction_submit', {
+        auction_id: bonusCar.id, ok: !error, predicted_price: parseFloat(predictedPrice), previous: userPrediction,
+      })
       if (error) {
         console.error('Error submitting prediction:', error)
         alert('Error saving prediction: ' + error.message)
@@ -1334,6 +1340,7 @@ export default function BidPrixApp() {
         .insert([{ league_id: league.id, user_id: user.id, total_score: 0 }])
       
       if (me) { alert('Error entering event: '+me.message); return }
+      track('league_join', { league_id: league.id, source: 'list' })
       
       updateSelectedLeague(league)
       setUserGarageId(g.id)
@@ -1396,9 +1403,10 @@ export default function BidPrixApp() {
             .single()
 
           if (!ge && g) {
-            await supabase
+            const { error: me } = await supabase
               .from('league_members')
               .insert([{ league_id: pendingId, user_id: sessionUser.id, total_score: 0 }])
+            if (!me) track('league_join', { league_id: pendingId, source: 'invite' })
           }
         }
       }
@@ -1428,9 +1436,11 @@ export default function BidPrixApp() {
       return
     }
 
-    if (garage.length >= 7) { alert('Garage is full!'); return }
     const draftPrice = auction.baselinePrice || auction.currentBid
-    if (budget < draftPrice) { alert('Not enough budget remaining!'); return }
+    const logDraft = (ok, reason = null) =>
+      track('draft_add', { auction_id: auction.id, ok, reason, price: draftPrice, garage_size: garage.length })
+    if (garage.length >= 7) { logDraft(false, 'garage_full'); alert('Garage is full!'); return }
+    if (budget < draftPrice) { logDraft(false, 'over_budget'); alert('Not enough budget remaining!'); return }
     if (!user || !selectedLeague || !userGarageId) { alert('Please join an auction first!'); return }
 
     // Server-side enforcement: the draft_car RPC validates the budget, the 7-car
@@ -1440,8 +1450,9 @@ export default function BidPrixApp() {
       p_auction_id: auction.id,
     })
 
-    if (rpcError) { alert('Error adding car: ' + rpcError.message); return }
-    if (!result?.success) { alert(result?.error || 'Could not add car.'); return }
+    if (rpcError) { logDraft(false, 'error'); alert('Error adding car: ' + rpcError.message); return }
+    if (!result?.success) { logDraft(false, result?.error || 'refused'); alert(result?.error || 'Could not add car.'); return }
+    logDraft(true)
 
     const purchasePrice = parseFloat(result.purchase_price)
     setGarage([...garage, { ...auction, purchasePrice, garageCarId: result.garage_car_id }])
@@ -1463,6 +1474,8 @@ export default function BidPrixApp() {
       p_garage_car_id: car.garageCarId,
     })
 
+    const removed = !rpcError && result?.success
+    track('draft_remove', { auction_id: car.id, ok: Boolean(removed) })
     if (rpcError) { alert('Error removing car: ' + rpcError.message); return }
     if (!result?.success) { alert(result?.error || 'Could not remove car.'); return }
 
@@ -1503,6 +1516,7 @@ export default function BidPrixApp() {
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setTrackingSession(session)
       const nextUser = session?.user || null
       const prevUserId = userIdRef.current
       userIdRef.current = nextUser?.id || null
@@ -1680,6 +1694,11 @@ export default function BidPrixApp() {
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLeague?.id, user?.id, bonusSettled, bonusCar?.finalPrice])
+
+  // Every logged event carries the event (league) the player has open.
+  useEffect(() => { setTrackingContext({ league_id: selectedLeague?.id || null }) }, [selectedLeague?.id])
+  useEffect(() => { if (showPredictionModal) track('prediction_open', { auction_id: bonusCar?.id }) }, [showPredictionModal]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isChatOpen) track('chat_open') }, [isChatOpen])
 
   // The screens live at module scope and read app state from AppContext. Declared
   // inside this component they were new component types on every render, so React
@@ -2088,6 +2107,7 @@ function LoginScreen() {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) return alert('Error signing in: '+error.message)
     setUser(data.user)
+    track('sign_in')
     updateCurrentScreen('leagues')
   }
 
@@ -2566,6 +2586,16 @@ function CarsScreen({ onNavigate, currentScreen }) {
     return true
   })
 
+  // Which cars a player was shown, in order, with what they could afford then.
+  // Logged once per distinct list, so re-renders and live bid ticks don't repeat it.
+  const shownIds = loading ? '' : available.map(car => car.id).join(',')
+  useEffect(() => {
+    if (!shownIds || !selectedLeague) return
+    trackOnce(`list:${selectedLeague.id}:${filter}:${shownIds}`, 'auction_list_view', {
+      auction_ids: shownIds.split(',').slice(0, 100), filter, budget, garage_size: garage.length,
+    })
+  }, [shownIds, filter, selectedLeague?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function showToastMsg(msg) { setToast(msg); setTimeout(() => setToast(null), 2000) }
 
   async function handleAdd(car) {
@@ -2765,7 +2795,8 @@ function CarsScreen({ onNavigate, currentScreen }) {
                   </div>
                 )}
                 {car.auctionUrl ? (
-                  <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
+                  <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}
+                    onClick={() => track('auction_open', { auction_id: car.id, target: 'source', screen: 'cars' })}>
                     <CarImg car={car} height={isWide ? undefined : 160} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 360 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={2} />
                   </a>
                 ) : (
@@ -2922,7 +2953,8 @@ function GarageScreen({ onNavigate, currentScreen }) {
                   )
                 })()}
                 {hasAuctionLink ? (
-                  <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
+                  <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}
+                    onClick={() => track('auction_open', { auction_id: car.id, target: 'source', screen: 'garage' })}>
                     <CarImg car={car} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 360 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={2} />
                   </a>
                 ) : (
@@ -2931,7 +2963,8 @@ function GarageScreen({ onNavigate, currentScreen }) {
                 <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 6 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
                 <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, lineHeight: 1.25, height: 38, overflow: 'hidden' }}>
                   {hasAuctionLink ? (
-                    <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
+                    <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}
+                      onClick={() => track('auction_open', { auction_id: car.id, target: 'source', screen: 'garage' })}>
                       {carTitle}
                     </a>
                   ) : carTitle}
@@ -3238,6 +3271,7 @@ if (!selectedLeague && !leagueLoading) {
   }
 
   const handleSortChange = (newSort) => {
+    track('leaderboard_sort', { sort: newSort })
     setSortBy(newSort)
     setStandings(sortStandings(standings, newSort))
   }
