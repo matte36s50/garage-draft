@@ -41,6 +41,9 @@ import { eventCompletion } from '@/lib/eventCompletion';
  * closes finished events once their results are in (see lib/eventCompletion.js).
  */
 
+// Hours between performance_history snapshots for a league (env override for testing).
+const SNAPSHOT_EVERY_HOURS = Number(process.env.SNAPSHOT_EVERY_HOURS) || 23;
+
 // Helper to create supabase client with service role key for cron job
 function getSupabaseClient() {
   return createClient(
@@ -302,8 +305,26 @@ export async function GET(request) {
           };
         });
 
-        // Insert performance snapshots
+        // One snapshot a day is plenty: nothing reads them hour by hour, and
+        // hourly rows filled most of the database (2,000+ a day). Scores and
+        // ranks above still update every run.
+        let snapshotDue = true;
         if (snapshots.length > 0) {
+          const { data: lastSnapshot } = await supabase
+            .from('performance_history')
+            .select('timestamp')
+            .eq('league_id', league.id)
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          snapshotDue = !lastSnapshot ||
+            Date.now() - new Date(lastSnapshot.timestamp).getTime() >= SNAPSHOT_EVERY_HOURS * 3600 * 1000;
+        }
+
+        // Insert performance snapshots
+        if (snapshots.length > 0 && !snapshotDue) {
+          results.push({ league: league.name, status: 'success', snapshots: 0, note: 'snapshot taken within the last day' });
+        } else if (snapshots.length > 0) {
           const { error: insertError } = await supabase
             .from('performance_history')
             .insert(snapshots);

@@ -558,7 +558,7 @@ We have **two cron jobs** configured on cronjob.org:
 - **Schedule:** Every hour (`0 * * * *`)
 - **Purpose:**
   - Calculates and updates league member scores
-  - Writes `performance_history` snapshots and refreshes `rank` / `rank_change` (`calculate_league_ranks`)
+  - Writes a daily `performance_history` snapshot per event and refreshes `rank` / `rank_change` (`calculate_league_ranks`)
   - Closes finished events and writes them to History once their results are in
 - **Note:** The live leaderboard works without this, but History doesn't: events only close when it runs.
   Nothing in the player app reads `performance_history` or `rank_change` today; they fed the old

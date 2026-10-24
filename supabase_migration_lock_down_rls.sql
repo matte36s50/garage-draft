@@ -23,6 +23,13 @@
 --   - every player's bonus-car prediction was readable while predictions
 --     were still open, so a player could copy the leader and shade it.
 --
+-- Checked against the live project on 2026-10-24: row security was off on
+-- auctions, leagues, garages, garage_cars, league_members, bonus_predictions,
+-- users, auction_price_history and league_cars; anon held write grants on all
+-- of them; add_car_simple() (adds a car to anyone's garage by username) was
+-- callable by anon; and anon could write through the auction store views
+-- auction_review_queue and auction_draftable, which run as their owner.
+--
 -- AFTER: each table allows exactly what the player app does (mapped from
 -- src/App.js, src/components, src/hooks), drafting stays in the draft_car /
 -- undraft_car RPCs, chat goes only through send_chat_message, and everything
@@ -32,7 +39,9 @@
 -- ---------------------------------------------------------------------
 -- BEFORE RUNNING — in this order:
 --   1. Every server-side writer must use the SERVICE-ROLE key, or its writes
---      will start failing:
+--      will start failing. (On 2026-10-24 the API logs showed every write
+--      coming from the service role: both AWS scrapers, the Vercel crons and
+--      the auction store's writers.)
 --        - Vercel (auction-admin): SUPABASE_SERVICE_ROLE_KEY. The routes no
 --          longer fall back to the anon key; /api/cron/test-connection shows
 --          whether it is set.
@@ -339,7 +348,9 @@ BEGIN
               'get_username', 'post_system_message', 'can_send_notification', 'format_price',
               -- trigger functions
               'notify_car_drafted', 'notify_price_movement', 'notify_auction_ended',
-              'notify_reserve_not_met', 'reset_finalize_attempts',
+              'notify_reserve_not_met', 'reset_finalize_attempts', 'handle_new_user',
+              -- an old helper that adds a car to anyone's garage by username
+              'add_car_simple',
               -- player RPCs: revoked here, granted back to signed-in players below
               'draft_car', 'undraft_car', 'send_chat_message'
           ])
@@ -368,6 +379,42 @@ BEGIN
         IF to_regclass('public.' || t) IS NOT NULL THEN
             EXECUTE format('REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON public.%I FROM anon, authenticated', t);
         END IF;
+    END LOOP;
+END $$;
+
+-- =====================================================
+-- 9. Scraper-only tables: the service role's alone
+--    auction_price_history (bid snapshots the scraper takes) and league_cars
+--    (an older baseline table) aren't read or written by either app.
+-- =====================================================
+DO $$
+DECLARE
+    t TEXT;
+BEGIN
+    FOREACH t IN ARRAY ARRAY['auction_price_history', 'league_cars'] LOOP
+        IF to_regclass('public.' || t) IS NOT NULL THEN
+            EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+            EXECUTE format('REVOKE ALL ON public.%I FROM anon, authenticated', t);
+        END IF;
+    END LOOP;
+END $$;
+
+-- =====================================================
+-- 10. Auction store views: readable, never writable from the app keys
+--     A simple view runs as its owner, so anon's write grant on, say,
+--     auction_review_queue let it change auction.listings around that
+--     schema's own row security. Reads stay: the MII pipeline reads
+--     auction_live_lots with the anon key.
+-- =====================================================
+DO $$
+DECLARE
+    v RECORD;
+BEGIN
+    FOR v IN
+        SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind IN ('v', 'm') AND c.relname LIKE 'auction\_%'
+    LOOP
+        EXECUTE format('REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON public.%I FROM anon, authenticated', v.relname);
     END LOOP;
 END $$;
 
