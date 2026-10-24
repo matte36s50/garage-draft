@@ -3,9 +3,8 @@ import { adminSessionToken, ADMIN_SESSION_COOKIE } from '../../../lib/adminAuth'
 
 /**
  * Server-side admin login. The password is checked here (server-side) instead of
- * in the browser, and on success we set:
- *   - `admin_session` (httpOnly) — verified by API routes via verifyAdminRequest
- *   - `admin_auth=true`           — kept for the existing page middleware
+ * in the browser, and on success we set `admin_session` (httpOnly), which the
+ * API routes (verifyAdminRequest) and the page middleware both verify.
  */
 export async function POST(request) {
   let password = '';
@@ -38,7 +37,5 @@ export async function POST(request) {
     secure: process.env.NODE_ENV === 'production',
   };
   res.cookies.set(ADMIN_SESSION_COOKIE, token, { ...cookieOpts, httpOnly: true });
-  // Non-httpOnly marker for the existing presence-based page middleware.
-  res.cookies.set('admin_auth', 'true', cookieOpts);
   return res;
 }

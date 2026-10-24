@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { NextResponse } from 'next/server';
+import { signingSecret, ADMIN_SESSION_MESSAGE } from './adminSession';
 
 /**
  * Server-side admin authentication helpers.
@@ -11,27 +12,17 @@ import { NextResponse } from 'next/server';
  *   2. Cron secret — `Authorization: Bearer <CRON_SECRET>` or `?secret=<CRON_SECRET>`,
  *      so the same routes can be driven by external automation/cron.
  *
- * The signing secret is derived from (in order): ADMIN_SECRET, ADMIN_PASSWORD,
- * NEXT_PUBLIC_ADMIN_PASSWORD. Existing deployments that only set
- * NEXT_PUBLIC_ADMIN_PASSWORD keep working with no extra config.
+ * The signing secret and message live in lib/adminSession.js, which the page
+ * middleware shares.
  */
 
 export const ADMIN_SESSION_COOKIE = 'admin_session';
-
-function signingSecret() {
-  return (
-    process.env.ADMIN_SECRET ||
-    process.env.ADMIN_PASSWORD ||
-    process.env.NEXT_PUBLIC_ADMIN_PASSWORD ||
-    ''
-  );
-}
 
 /** Deterministic session token derived from the signing secret. */
 export function adminSessionToken() {
   const secret = signingSecret();
   if (!secret) return null;
-  return createHmac('sha256', secret).update('bidprix-admin-session-v1').digest('hex');
+  return createHmac('sha256', secret).update(ADMIN_SESSION_MESSAGE).digest('hex');
 }
 
 function safeEqual(a, b) {
