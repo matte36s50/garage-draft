@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { serviceRoleKey } from '@/lib/serviceClient';
 import { NextResponse } from 'next/server';
 import { decideBonus } from '@/lib/bonusCar';
 import { carValue } from '@/lib/carValue';
@@ -44,7 +45,7 @@ import { eventCompletion } from '@/lib/eventCompletion';
 function getSupabaseClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    serviceRoleKey()
   );
 }
 
