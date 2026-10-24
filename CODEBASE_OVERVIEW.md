@@ -125,9 +125,11 @@ Located at `/home/user/garage-draft/auction-admin/`
 - `middleware.js` - Authentication middleware
 
 ### Authentication
-- Basic cookie-based middleware protection on root route
-- Redirects to `/login` if no `admin_auth` cookie
-- Login page allows setting admin credentials (minimal security - should be enhanced)
+- `/api/login` checks the admin password server-side and sets a signed, httpOnly `admin_session` cookie
+- The page middleware and every admin API route verify that cookie (`lib/adminSession.js`, `lib/adminAuth.js`);
+  crons use `Authorization: Bearer <CRON_SECRET>` instead
+- The panels' database queries run server-side through `/api/admin/db` with the service-role key
+  (`lib/supabase.js` records the query, `lib/adminDb.js` replays it), so the anon key writes nothing
 
 ### Admin Tabs & Features
 
@@ -591,7 +593,6 @@ There's also a diagnostic endpoint at `/api/cron/test-connection` that can be us
 
 ### Current Limitations
 - No database schema migration files
-- Minimal admin authentication (cookie-based only)
 - Manual auction creation is for testing (live BaT integration not implemented)
 - Leaderboard scores calculated on-demand (not cached)
 

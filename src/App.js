@@ -3054,7 +3054,7 @@ if (!selectedLeague && !leagueLoading) {
         .select(`
             user_id,
             total_score,
-            users (username, email)
+            users (username)
           `)
         .eq('league_id', selectedLeague.id)
 
@@ -3070,7 +3070,7 @@ if (!selectedLeague && !leagueLoading) {
         const score = await calculateUserScore(member.user_id, selectedLeague.id, bonus)
         return {
           userId: member.user_id,
-          username: member.users?.username || member.users?.email?.split('@')[0] || 'Unknown',
+          username: member.users?.username || 'Player',
           ...score
         }
       })
