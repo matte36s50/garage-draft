@@ -1,0 +1,34 @@
+/* Shared styles for the static legal pages (privacy.html, terms.html). Colours follow the app's tokens in src/App.js. */
+:root {
+  --bg: #0a0a0c;
+  --surface: #15161b;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #f4f4f5;
+  --muted: #a1a1aa;
+  --red: #ef3a32;
+  --amber: #f5c542;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+.brand { font-family: var(--mono); font-weight: 800; letter-spacing: 1.5px; color: var(--text); text-decoration: none; }
+.brand span { color: var(--red); }
+h1 { font-family: var(--mono); font-size: 28px; letter-spacing: -0.5px; text-transform: uppercase; margin: 28px 0 4px; }
+h2 { font-family: var(--mono); font-size: 15px; letter-spacing: 1.2px; text-transform: uppercase; margin: 36px 0 8px; border-top: 1px solid var(--border); padding-top: 20px; }
+p, li { color: #d4d4d8; }
+ul { padding-left: 20px; }
+li { margin: 6px 0; }
+a { color: var(--text); }
+.meta { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: 0.6px; }
+.draft { background: rgba(245, 197, 66, 0.12); border: 1px solid rgba(245, 197, 66, 0.45); color: var(--amber); font-family: var(--mono); font-size: 12px; letter-spacing: 0.4px; padding: 10px 12px; margin-top: 20px; }
+mark.ph { background: rgba(245, 197, 66, 0.2); color: var(--amber); padding: 0 3px; border-radius: 2px; }
+.summary { background: var(--surface); border: 1px solid var(--border); padding: 4px 18px; margin-top: 20px; }
+nav.legal { margin-top: 48px; font-family: var(--mono); font-size: 12px; letter-spacing: 0.8px; display: flex; gap: 18px; flex-wrap: wrap; }
+nav.legal a { color: var(--muted); }

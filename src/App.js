@@ -374,7 +374,10 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
 
       <footer className="border-t border-white/10 mt-10 hidden sm:block">
         <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-bpGray">
-          © {new Date().getFullYear()} Bid Prix — Race the Market.
+          © {new Date().getFullYear()} Bid Prix — Race the Market. ·{' '}
+          <a href="/terms.html" className="hover:text-bpCream">Terms</a> ·{' '}
+          <a href="/privacy.html" className="hover:text-bpCream">Privacy</a> ·{' '}
+          Not affiliated with Bring a Trailer or any auction house.
         </div>
       </footer>
     </div>
@@ -438,6 +441,17 @@ const C = {
   amber: '#f5c542',
   pos: '#5cd17a',
   neg: '#ef3a32',
+}
+
+// Terms, privacy and the no-affiliation line, for the screens players see before signing up.
+function LegalLinks() {
+  const link = { color: C.text, textDecoration: 'none' }
+  return (
+    <div style={{ marginTop: 20, textAlign: 'center', fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 0.6, color: C.muted, lineHeight: 1.7 }}>
+      <a href="/terms.html" style={link}>TERMS</a> · <a href="/privacy.html" style={link}>PRIVACY</a>
+      <div>Not affiliated with Bring a Trailer or any auction house.</div>
+    </div>
+  )
 }
 
 function CBrand({ size = 22 }) {
@@ -2064,6 +2078,7 @@ function LandingScreen({ onGetStarted }) {
         <button onClick={onGetStarted} style={{ width: '100%', height: 50, borderRadius: 4, background: 'transparent', color: C.text, fontWeight: 700, fontSize: 13, fontFamily: 'ui-monospace,monospace', letterSpacing: 1.4, border: `1px solid ${C.borderHi}`, textTransform: 'uppercase', cursor: 'pointer' }}>
           CREATE FREE ACCOUNT ▸
         </button>
+        <LegalLinks />
       </div>
 
       <CheckerBar height={4} />
@@ -2159,6 +2174,12 @@ function LoginScreen() {
         <button onClick={isSignUp ? signUp : signIn} style={{ width: '100%', height: 50, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontWeight: 800, fontSize: 13, fontFamily: mono, letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer', marginTop: 4 }}>
           {isSignUp ? 'JOIN THE GRID ▸' : 'SIGN IN ▸'}
         </button>
+        {isSignUp && (
+          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, textAlign: 'center' }}>
+            By creating an account you agree to the <a href="/terms.html" style={{ color: C.text }}>Terms of Use</a> and
+            the <a href="/privacy.html" style={{ color: C.text }}>Privacy Policy</a>.
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '24px 0' }}>
@@ -2176,6 +2197,7 @@ function LoginScreen() {
           ← BACK TO HOME
         </button>
       </div>
+      <LegalLinks />
     </div>
   )
 }
