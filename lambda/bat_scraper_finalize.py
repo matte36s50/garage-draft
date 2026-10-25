@@ -11,13 +11,9 @@ import requests
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
-# User agent pool
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-]
+# Says what is asking rather than passing as a browser; the admin app sends
+# the same (auction-admin/lib/botUserAgent.js).
+USER_AGENT = "BidPrixBot/1.0 (+https://github.com/matte36s50/garage-draft)"
 
 # -------- HTML PARSING --------
 def extract_price_from_html(html_content: str):
@@ -156,7 +152,7 @@ def scrape_auction_price(auction_url: str):
         time.sleep(random.uniform(0.3, 0.8))
 
         headers = {
-            "User-Agent": random.choice(USER_AGENTS),
+            "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9,de;q=0.8,fr;q=0.7",
             "Accept-Encoding": "gzip, deflate",

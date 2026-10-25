@@ -372,7 +372,7 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
 
       <footer className="border-t border-white/10 mt-10 hidden sm:block">
         <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-bpGray">
-          © {new Date().getFullYear()} Bid Prix — Race the Market.
+          © {new Date().getFullYear()} Bid Prix — Race the Market. Not affiliated with or endorsed by Bring a Trailer.
         </div>
       </footer>
     </div>
@@ -2045,6 +2045,9 @@ function LandingScreen({ onGetStarted }) {
         <button onClick={onGetStarted} style={{ width: '100%', height: 50, borderRadius: 4, background: 'transparent', color: C.text, fontWeight: 700, fontSize: 13, fontFamily: 'ui-monospace,monospace', letterSpacing: 1.4, border: `1px solid ${C.borderHi}`, textTransform: 'uppercase', cursor: 'pointer' }}>
           CREATE FREE ACCOUNT ▸
         </button>
+        <p style={{ fontSize: 11, color: C.faint, lineHeight: 1.5, marginTop: 16, textAlign: 'center' }}>
+          Bid Prix is an independent fan game, not affiliated with or endorsed by Bring a Trailer.
+        </p>
       </div>
 
       <CheckerBar height={4} />
