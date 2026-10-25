@@ -400,11 +400,14 @@ BEGIN
 END $$;
 
 -- =====================================================
--- 10. Auction store views: readable, never writable from the app keys
---     A simple view runs as its owner, so anon's write grant on, say,
---     auction_review_queue let it change auction.listings around that
---     schema's own row security. Reads stay: the MII pipeline reads
---     auction_live_lots with the anon key.
+-- 10. Auction store views: never writable from the app keys, and readable
+--     only where something needs it
+--     These views run as their owner, so a grant on one reaches
+--     auction.listings around that schema's own row security: anon's write
+--     grant on auction_review_queue let it change listings. The one public
+--     reader is the MII pipeline, which reads auction_live_lots with the
+--     anon key (API logs, 2026-10-25); the admin app reads the rest with the
+--     service role.
 -- =====================================================
 DO $$
 DECLARE
@@ -415,6 +418,9 @@ BEGIN
         WHERE n.nspname = 'public' AND c.relkind IN ('v', 'm') AND c.relname LIKE 'auction\_%'
     LOOP
         EXECUTE format('REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON public.%I FROM anon, authenticated', v.relname);
+        IF v.relname <> 'auction_live_lots' THEN
+            EXECUTE format('REVOKE SELECT ON public.%I FROM anon, authenticated', v.relname);
+        END IF;
     END LOOP;
 END $$;
 
