@@ -96,8 +96,19 @@ npm run dev        # Next.js dev server
 ```
 
 The admin portal reads Supabase credentials from environment variables
-(`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`). It manages auctions (incl. CSV import/export), users, leagues, bonus‑car assignment,
-and garages.
+(`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`). It manages auctions (incl. CSV import/export), users, leagues, bonus‑car assignment,
+and garages. Its panels never touch the database from the browser: each query goes to `/api/admin/db`, which checks the
+admin session and runs it with the service-role key. Server routes refuse to run without `SUPABASE_SERVICE_ROLE_KEY`.
+
+### Database access
+
+The player app ships the anon key, so the database itself decides what a visitor or player may do.
+[`supabase_migration_lock_down_rls.sql`](supabase_migration_lock_down_rls.sql) sets that: public game data is readable,
+players may only open their own garage, join a league, and make their own bonus prediction, drafting goes through the
+`draft_car` / `undraft_car` RPCs and chat through `send_chat_message`, emails are never readable, and everything else
+belongs to the service role. Its header lists what to do before running it. Afterwards,
+`node auction-admin/scripts/check-db-access.mjs` (with `SUPABASE_URL` and `SUPABASE_ANON_KEY`) checks the live database
+from the outside.
 
 ---
 

@@ -337,6 +337,7 @@ function LeagueChat({ supabase, leagueId, leagueName, user, isOpen, onToggle, un
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
+            maxLength={1000}
             rows={1}
             className="
               flex-1 px-3 py-2 bg-gray-800/80 border border-gray-600

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { serviceRoleKey } from '@/lib/serviceClient';
 import { NextResponse } from 'next/server';
 import { toCanonicalItem, canonicalUpsertListings } from '@/lib/canonicalStore';
 import { BOT_USER_AGENT } from '@/lib/botUserAgent';
@@ -34,7 +35,7 @@ import { BOT_USER_AGENT } from '@/lib/botUserAgent';
 function getSupabaseClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    serviceRoleKey()
   );
 }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { serviceRoleKey } from '@/lib/serviceClient';
 import { verifyAdminRequest } from '../../../../lib/adminAuth';
 import {
   toCanonicalItem, canonicalUpsertListings, canonicalConfigured,
@@ -37,7 +38,7 @@ async function sync(request) {
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    serviceRoleKey()
   );
 
   const now = Math.floor(Date.now() / 1000);
