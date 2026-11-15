@@ -279,19 +279,19 @@ Else:                          value = current_bid          (live)
 1. Load player's garage and all cars
 2. Value each car with `carValue` (above) and sum the values
 3. Add the bonus car prize if the player won it (`loadBonusOutcome()` → `decideBonus()` in `src/utils/bonusCar.js`)
-4. Compute average per-car percentage
+4. Compute the garage's % gain: net $ gain ÷ total spent (`garagePercentGain()` in
+   `src/utils/garageGain.js`), not the cars' individual percentages added up
 
 **Sort Options:**
 - `total_value` - VALUE: complete rosters first, then total value (the official ranking)
 - `total_dollar` - NET: $ gain over the draft prices (reorders the list only)
-- `total_percent` - AVG %: % gain (reorders the list only)
+- `total_percent` - % GAIN: the garage's % gain, the same figure each row shows (reorders the list only)
 
 **Display Fields:**
 - Rank
 - Username
 - % Gain (color: green if positive, red if negative)
 - $ Gain (same color coding)
-- Avg %
 - Cars drafted (out of 7)
 - Total spent
 - Bonus prediction status (checkmark if made prediction)
