@@ -6,6 +6,7 @@ import UserHistory from './components/UserHistory'
 import DraftResults from './components/DraftResults'
 import { bonusPrize, bonusResult, decideBonus } from './utils/bonusCar'
 import { carValue } from './utils/carValue'
+import { parseDbTime } from './utils/dbTime'
 import { initTracking, setTrackingContext, setTrackingSession, track, trackOnce } from './utils/track'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
@@ -110,8 +111,8 @@ function BrandLogo({ compact }) {
 function getLeagueDraftInfo(league) {
   if (!league) return { statusColor: 'bg-gray-400', label: '' }
   const now = new Date()
-  const start = league.draft_starts_at ? new Date(league.draft_starts_at) : null
-  const end = league.draft_ends_at ? new Date(league.draft_ends_at) : null
+  const start = parseDbTime(league.draft_starts_at)
+  const end = parseDbTime(league.draft_ends_at)
 
   if (!start || !end) return { statusColor: 'bg-emerald-400', label: 'Draft open' }
   if (now < start) return { statusColor: 'bg-yellow-400', label: 'Opens soon' }
@@ -769,12 +770,16 @@ const getDraftStatus = (league) => {
   }
 
   const now = new Date()
-  const start = new Date(league.draft_starts_at)
-  const end = new Date(league.draft_ends_at)
+  // Read as UTC, the way the server enforces them (utils/dbTime.js).
+  const start = parseDbTime(league.draft_starts_at)
+  const end = parseDbTime(league.draft_ends_at)
   // Terminal lifecycle state: the event is FINISHED once its end_date passes.
   // Leagues without an end_date fall back to one week after the draft closes
   // (the 7-day event format), so old events can never read as LIVE forever.
-  const eventEnd = league.end_date ? new Date(league.end_date) : new Date(+end + 7 * 86400000)
+  // An end_date at or before the draft's own close is the column default (a week
+  // after the row was created), not a real finish, so it is ignored too.
+  const statedEnd = parseDbTime(league.end_date)
+  const eventEnd = statedEnd && statedEnd > end ? statedEnd : new Date(+end + 7 * 86400000)
   if (now > eventEnd) {
     return { status: 'ended', message: 'Event finished' }
   }
@@ -2454,12 +2459,12 @@ function LeaguesScreen({ onNavigate, currentScreen }) {
           // Lifecycle time labels: OPENS · <date> / DRAFT CLOSES · <countdown> / ENDS · <countdown> / ENDED · <date>
           const timeLabel = ds.status === 'upcoming' ? 'OPENS' : ds.status === 'open' ? 'DRAFT CLOSES' : ds.status === 'ended' ? 'ENDED' : 'ENDS'
           const timeVal = ds.status === 'upcoming'
-            ? (l.draft_starts_at ? new Date(l.draft_starts_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—')
+            ? (l.draft_starts_at ? parseDbTime(l.draft_starts_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—')
             : ds.status === 'open'
-              ? (l.draft_ends_at ? calculateTimeLeft(new Date(l.draft_ends_at)) : '—')
+              ? (l.draft_ends_at ? calculateTimeLeft(parseDbTime(l.draft_ends_at)) : '—')
               : ds.status === 'ended'
-                ? (l.end_date ? new Date(l.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'FINAL')
-                : (l.end_date ? calculateTimeLeft(new Date(l.end_date)) : '—')
+                ? (l.end_date ? parseDbTime(l.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'FINAL')
+                : (l.end_date ? calculateTimeLeft(parseDbTime(l.end_date)) : '—')
           return (
             <div key={l.id} style={{ marginBottom: 8, padding: '14px 14px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${cfg.borderColor}` }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -3511,7 +3516,7 @@ function DashboardScreenC({ onNavigate }) {
     if (!selectedLeague) return null
     const start = selectedLeague.draft_starts_at || selectedLeague.start_date
     if (!start) return null
-    const d = Math.floor((Date.now() - new Date(start)) / 86400000) + 1
+    const d = Math.floor((Date.now() - parseDbTime(start)) / 86400000) + 1
     return d >= 1 && d <= 7 ? d : null
   })()
 
@@ -3579,7 +3584,7 @@ function DashboardScreenC({ onNavigate }) {
             <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 800, color: C.amber, letterSpacing: 1.4 }}>🏁 EVENT FINISHED</span>
             {selectedLeague.end_date && (
               <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1 }}>
-                ENDED {new Date(selectedLeague.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase()}
+                ENDED {parseDbTime(selectedLeague.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase()}
               </span>
             )}
           </div>
