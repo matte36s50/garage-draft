@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react'
-import { Car, Trophy, Users, DollarSign, LogOut, Zap, TrendingUp, LayoutDashboard, History, ChevronDown, Check } from 'lucide-react'
+import { Car, Trophy, Users, DollarSign, LogOut, TrendingUp, LayoutDashboard, History, ChevronDown, Check } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 import LeagueChat from './components/LeagueChat'
 import UserHistory from './components/UserHistory'
@@ -385,25 +385,6 @@ function Shell({ children, onSignOut, onNavigate, currentScreen, lastUpdated, co
   )
 }
 
-function Card({ children, className = '' }) {
-  return (
-    <div className={`bg-bpCream text-bpInk border border-white/50 rounded-2xl shadow-[0_8px_28px_rgba(0,0,0,0.22)] ${className}`}>
-      {children}
-    </div>
-  )
-}
-
-function PrimaryButton({ className = '', children, ...props }) {
-  return (
-    <button
-      {...props}
-      className={`inline-flex items-center justify-center rounded-md px-4 py-2 font-semibold bg-teal-500 text-white border border-teal-600 hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-400/80 active:translate-y-[0.5px] transition ${className}`}
-    >
-      {children}
-    </button>
-  )
-}
-
 // eslint-disable-next-line no-unused-vars
 function OutlineButton({ className = '', children, ...props }) {
   return (
@@ -480,9 +461,12 @@ function CheckerBar({ height = 4 }) {
   )
 }
 
+// "$1.25M", "$16.8k", "$950": one more digit than fmtK, for gains and totals.
 function fmtCompact(n) {
+  if (n == null || isNaN(n)) return '$0'
   const sign = n < 0 ? '-' : ''
   const abs = Math.abs(n)
+  if (abs >= 999500) return `${sign}$${(abs / 1e6).toFixed(2)}M`
   if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(1)}k`
   return `${sign}$${Math.round(abs)}`
 }
@@ -602,10 +586,12 @@ function fmtUSD(n) {
   return s + '$' + Math.abs(Math.round(n)).toLocaleString()
 }
 
+// "$15M", "$2.25M", "$31k", "$950": prices and estimates.
 function fmtK(n) {
   if (n == null || isNaN(n)) return '$0'
   const abs = Math.abs(n), s = n < 0 ? '-' : ''
-  return abs >= 1000 ? s + '$' + (abs / 1000).toFixed(0) + 'k' : s + '$' + abs
+  if (abs >= 999500) return s + '$' + parseFloat((abs / 1e6).toFixed(2)) + 'M'
+  return abs >= 1000 ? s + '$' + (abs / 1000).toFixed(0) + 'k' : s + '$' + Math.round(abs)
 }
 
 function useCountUp(target, duration) {
@@ -678,7 +664,7 @@ function CarImg({ car, height, radius, aspect, maxHeight, objectPosition }) {
       </div>
     )
   }
-  return <img src={car.imageUrl} alt={car.title} onError={() => setErr(true)}
+  return <img src={car.imageUrl} alt={car.title} loading="lazy" decoding="async" onError={() => setErr(true)}
     style={{ ...box, objectFit: 'cover', objectPosition, display: 'block' }} />
 }
 
@@ -797,21 +783,37 @@ const getDraftStatus = (league) => {
   return { status: 'closed', message: 'Draft closed' }
 }
 
-const getDefaultCarImage = (make) => {
-  const map = {
-    BMW: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=640&h=420&fit=crop',
-    Porsche: 'https://images.unsplash.com/photo-1544829099-b9a0c5303bea?w=640&h=420&fit=crop',
-    Toyota: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=640&h=420&fit=crop',
-    Honda: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=640&h=420&fit=crop',
-    Mercedes: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=640&h=420&fit=crop',
-    Nissan: 'https://images.unsplash.com/photo-1605559424843-9e4c228bf1c2?w=640&h=420&fit=crop',
-    Ford: 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=640&h=420&fit=crop',
-    Chevrolet: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=640&h=420&fit=crop',
-    Jaguar: 'https://images.unsplash.com/photo-1544829099-b9a0c5303bea?w=640&h=420&fit=crop',
-    Ferrari: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=640&h=420&fit=crop',
-    Lamborghini: 'https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=640&h=420&fit=crop'
-  }
-  return (make && map[make]) || map['Ford']
+// A lot with no photo shows the striped placeholder with its year and make
+// (CarImg). It used to borrow a stock photo by make, which put a picture of a
+// different car on a real lot.
+const getDefaultCarImage = () => null
+
+// The catalogue estimate and reserve status of a lot (supabase_migration_lot_details.sql).
+// noReserve is true or false when known, null when not. BaT says so in the title.
+function lotDetails(auction) {
+  const num = v => (v == null || v === '' || isNaN(parseFloat(v)) ? null : parseFloat(v))
+  let noReserve = auction?.no_reserve
+  if (noReserve == null) noReserve = /^\s*no[- ]reserve\b/i.test(auction?.title || '') ? true : null
+  return { estimateLow: num(auction?.estimate_low), estimateHigh: num(auction?.estimate_high), noReserve }
+}
+
+// "NO RESERVE" / "RESERVE" tag for a card; nothing when the status isn't known.
+function ReserveTag({ car }) {
+  if (!car || car.noReserve == null) return null
+  const color = car.noReserve ? C.pos : C.muted
+  return (
+    <span style={{ display: 'inline-block', fontFamily: mono, fontSize: 9.5, lineHeight: 1.5, fontWeight: 800, letterSpacing: 0.8, color, border: `1px solid ${color}77`, padding: '1px 5px', borderRadius: 2, whiteSpace: 'nowrap' }}>
+      {car.noReserve ? 'NO RESERVE' : 'RESERVE'}
+    </span>
+  )
+}
+
+// "$30k–$40k" when a lot has a catalogue estimate.
+function estimateText(car) {
+  if (!car || car.estimateLow == null) return null
+  return car.estimateHigh != null && car.estimateHigh !== car.estimateLow
+    ? `${fmtK(car.estimateLow)}–${fmtK(car.estimateHigh)}`
+    : fmtK(car.estimateLow)
 }
 
 // A garage car's worth right now, by the shared rule in utils/carValue.js.
@@ -893,7 +895,6 @@ export default function BidPrixApp() {
   const [leagueLoading, setLeagueLoading] = useState(true)
   const [bonusCar, setBonusCar] = useState(null)
   const [userPrediction, setUserPrediction] = useState(null)
-  const [showPredictionModal, setShowPredictionModal] = useState(false)
   // eslint-disable-next-line no-unused-vars
   const [connectionStatus, setConnectionStatus] = useState('connected')
   // eslint-disable-next-line no-unused-vars
@@ -1002,6 +1003,7 @@ export default function BidPrixApp() {
         auctionEnded: auctionEnded,
         finalPrice: auction.final_price != null ? parseFloat(auction.final_price) : null,
         reserveNotMet: auction.reserve_not_met === true,
+        ...lotDetails(auction),
       }
 
       console.log('✅ Active bonus car loaded:', bonusCarData)
@@ -1075,8 +1077,7 @@ export default function BidPrixApp() {
       }
       
       setUserPrediction(parseFloat(predictedPrice))
-      setShowPredictionModal(false)
-      alert('Prediction saved! You predicted: $' + parseFloat(predictedPrice).toLocaleString())
+      // No alert: the call card itself turns to "CALL LOCKED".
       return true
       
     } catch (error) {
@@ -1197,7 +1198,8 @@ export default function BidPrixApp() {
         endTime: endDate,
         timestamp_end: a.timestamp_end,
         manually_added: a.manually_added || false,  // Preserve manually added flag
-        custom_end_date: a.custom_end_date  // Preserve custom end date
+        custom_end_date: a.custom_end_date,  // Preserve custom end date
+        ...lotDetails(a),
       }
     })
 
@@ -1308,6 +1310,7 @@ export default function BidPrixApp() {
             timestampEnd: auction?.timestamp_end || null,
             auctionEnded: auctionEnded,
             reserveNotMet: auction?.reserve_not_met === true,
+            ...lotDetails(auction),
           }
         })
         setGarage(garageCars)
@@ -1716,7 +1719,6 @@ export default function BidPrixApp() {
 
   // Every logged event carries the event (league) the player has open.
   useEffect(() => { setTrackingContext({ league_id: selectedLeague?.id || null }) }, [selectedLeague?.id])
-  useEffect(() => { if (showPredictionModal) track('prediction_open', { auction_id: bonusCar?.id }) }, [showPredictionModal]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (isChatOpen) track('chat_open') }, [isChatOpen])
 
   // The screens live at module scope and read app state from AppContext. Declared
@@ -1726,7 +1728,7 @@ export default function BidPrixApp() {
   const app = {
     addToGarage, auctions, authLinkError, bonusCar, bonusPrizeWon, budget, garage, isChatOpen, joinLeague,
     leagueLoading, leagues, loading, marketTick, recentUpdates, removeFromGarage, selectedLeague,
-    setAuthLinkError, setIsChatOpen, setShowPredictionModal, setUser, showPredictionModal,
+    setAuthLinkError, setIsChatOpen, setUser,
     submitPrediction, updateCurrentScreen, updateSelectedLeague, user, userLeagues,
     userPrediction,
   }
@@ -1798,43 +1800,68 @@ function BonusCarCard({ isWide }) {
   const car = bonusCar
   const prize = bonusPrize(selectedLeague?.spending_limit || 200000)
   const closed = car.endTime ? car.endTime <= new Date() : !!car.auctionEnded
-  const lo = Math.round(car.currentBid) || 0
-  // Quick-pick slider range: current bid → 2× current bid. Typed exact amounts
-  // have no upper cap — the slider max stretches to follow a higher typed call.
-  const hi = Math.max(lo + 1000, Math.round((car.currentBid * 2) / 1000) * 1000)
-  const def = Math.min(hi, Math.max(lo, Math.round((car.currentBid * 1.2) / 500) * 500))
+  // A catalogue lot has an estimate and no live bid; an online lot has a live bid.
+  const hasEstimate = car.estimateLow != null
+  const bid = Math.round(car.currentBid) || 0
+  const estLow = hasEstimate ? car.estimateLow : null
+  const estHigh = hasEstimate ? (car.estimateHigh || car.estimateLow) : null
+  // Quick-pick slider range. Online: current bid → 2× current bid (a sale can't
+  // finish under the bid already placed). Catalogue: half the low estimate →
+  // 1.5× the high estimate, because lots do sell under their estimate and a call
+  // must be free to say so. Typed amounts stretch the track either way.
+  const lo = hasEstimate ? Math.round(estLow * 0.5) : bid
+  const hi = hasEstimate ? Math.round(estHigh * 1.5) : Math.max(lo + 1000, Math.round((car.currentBid * 2) / 1000) * 1000)
+  const step = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000].find(s => s >= (hi - lo) / 250) || 500000
+  const snap = v => Math.round(v / step) * step
+  const def = hasEstimate
+    ? snap((estLow + estHigh) / 2)
+    : Math.min(hi, Math.max(lo, Math.round((car.currentBid * 1.2) / 500) * 500))
+  // An online call can't go under the current bid; a catalogue call only has to be positive.
+  const floor = hasEstimate ? 1 : lo
   const [editing, setEditing] = useState(false)
   const [pred, setPred] = useState(() =>
-    Math.max(lo, Math.round(userPrediction != null ? userPrediction : def))
+    Math.max(floor, Math.round(userPrediction != null ? userPrediction : def))
   )
   const [typing, setTyping] = useState(false)
   const [typed, setTyped] = useState('')
-  // Sticky extended max: typing a call above 2× stretches the slider and it
-  // stays stretched, so dragging back down doesn't re-scale the track.
+  const opened = useRef(false)
+  const touch = () => {
+    if (opened.current) return
+    opened.current = true
+    track('prediction_open', { auction_id: car.id })
+  }
+  // Sticky extended ends: typing a call beyond the quick-pick range stretches
+  // the slider and it stays stretched, so dragging back doesn't re-scale it.
   const [hiExt, setHiExt] = useState(() => Math.round(userPrediction || 0))
+  const [loExt, setLoExt] = useState(() => (userPrediction != null ? Math.round(userPrediction) : lo))
   const locked = closed || (userPrediction != null && !editing)
   // A locked card shows the saved call, even if it was saved below today's bid.
   const call = locked && userPrediction != null ? Math.round(userPrediction) : pred
   const noCall = closed && userPrediction == null
   const hiSlider = Math.max(hi, hiExt, call)
-  const pct = hiSlider > lo ? Math.min(1, Math.max(0, (call - lo) / (hiSlider - lo))) : 0
-  const overBid = call - car.currentBid
+  const loSlider = Math.max(0, Math.min(lo, loExt, call))
+  const pct = hiSlider > loSlider ? Math.min(1, Math.max(0, (call - loSlider) / (hiSlider - loSlider))) : 0
+  const reference = hasEstimate ? estLow : car.currentBid
+  const overBid = call - reference
   const model = car.title && car.year ? car.title.replace(`${car.year} `, '') : car.title
   const lock = () => { submitPrediction(pred); setEditing(false) }
   const edit = () => {
+    touch()
     if (userPrediction != null) {
-      const saved = Math.max(lo, Math.round(userPrediction))
+      const saved = Math.max(floor, Math.round(userPrediction))
       setPred(saved)
       setHiExt(prev => Math.max(prev, saved))
+      setLoExt(prev => Math.min(prev, saved))
     }
     setEditing(true)
   }
   const applyTyped = () => {
     const v = Math.round(parseFloat(typed.replace(/[^0-9.]/g, '')))
     if (!isNaN(v) && v > 0) {
-      const call = Math.max(lo, v)
+      const call = Math.max(floor, v)
       setPred(call)
       setHiExt(prev => Math.max(prev, call))
+      setLoExt(prev => Math.min(prev, call))
     }
     setTyping(false)
     setTyped('')
@@ -1866,7 +1893,7 @@ function BonusCarCard({ isWide }) {
       {/* Mechanic + prediction */}
       <div style={{ padding: 16 }}>
         <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5, marginBottom: 16 }}>
-          You don't own this lot — <strong style={{ color: C.text }}>call its final hammer price</strong>. The closest call in your event wins <strong style={{ color: C.amber }}>{fmtUSD(prize)}</strong>, added to their score once the result is in.
+          You don't own this lot — <strong style={{ color: C.text }}>call its final hammer price</strong>{hasEstimate ? ', before buyer\'s premium' : ''}. The closest call in your event wins <strong style={{ color: C.amber }}>{fmtUSD(prize)}</strong>, added to their score once the result is in.
         </div>
 
         {/* Your call vs current bid */}
@@ -1876,22 +1903,22 @@ function BonusCarCard({ isWide }) {
             <div style={{ fontFamily: mono, fontSize: 34, fontWeight: 800, color: C.amber, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>{noCall ? '—' : fmtUSD(call)}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>CURRENT BID</div>
-            <div style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, color: C.text, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmtUSD(car.currentBid)}</div>
-            {!noCall && <div style={{ fontFamily: mono, fontSize: 11, color: overBid >= 0 ? C.pos : C.neg, marginTop: 3 }}>{overBid >= 0 ? '+' : ''}{fmtK(overBid)} vs now</div>}
+            <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>{hasEstimate ? 'ESTIMATE' : 'CURRENT BID'}</div>
+            <div style={{ fontFamily: mono, fontSize: hasEstimate ? 15 : 18, fontWeight: 700, color: C.text, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2, whiteSpace: 'nowrap' }}>{hasEstimate ? estimateText(car) : fmtUSD(car.currentBid)}</div>
+            {!noCall && <div style={{ fontFamily: mono, fontSize: 11, color: overBid >= 0 ? C.pos : C.neg, marginTop: 3, whiteSpace: 'nowrap' }}>{overBid >= 0 ? '+' : ''}{fmtK(overBid)} vs {hasEstimate ? 'low est.' : 'now'}</div>}
           </div>
         </div>
 
-        {/* Slider — quick pick between current bid and 2× current bid */}
+        {/* Slider — quick pick across the range set above */}
         <input
           type="range" className="bp-slider"
-          min={lo} max={hiSlider} step={500} value={call}
+          min={loSlider} max={hiSlider} step={step} value={call}
           disabled={locked}
-          onChange={e => setPred(parseInt(e.target.value, 10))}
+          onChange={e => { touch(); setPred(parseInt(e.target.value, 10)) }}
           style={{ background: `linear-gradient(90deg, ${C.amber} 0%, ${C.amber} ${pct * 100}%, ${C.border} ${pct * 100}%, ${C.border} 100%)`, opacity: locked ? 0.55 : 1 }}
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
-          <span style={{ fontFamily: mono, fontSize: 10.5, color: C.faint }}>{fmtK(lo)}</span>
+          <span style={{ fontFamily: mono, fontSize: 10.5, color: C.faint }}>{fmtK(loSlider)}</span>
           <span style={{ fontFamily: mono, fontSize: 10.5, color: C.faint }}>{fmtK(hiSlider)}</span>
         </div>
 
@@ -1914,7 +1941,7 @@ function BonusCarCard({ isWide }) {
               <button onClick={() => { setTyping(false); setTyped('') }} style={{ height: 44, width: 44, borderRadius: 4, border: `1px solid ${C.border}`, background: 'none', color: C.muted, fontFamily: mono, fontSize: 14, cursor: 'pointer' }}>✕</button>
             </div>
           ) : (
-            <button onClick={() => setTyping(true)} style={{ marginTop: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: mono, fontSize: 11.5, fontWeight: 700, color: C.muted, letterSpacing: 0.8, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+            <button onClick={() => { touch(); setTyping(true) }} style={{ marginTop: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: mono, fontSize: 11.5, fontWeight: 700, color: C.muted, letterSpacing: 0.8, textDecoration: 'underline', textUnderlineOffset: 3 }}>
               TYPE EXACT AMOUNT — go beyond the slider ▸
             </button>
           )
@@ -2503,83 +2530,9 @@ function LeaguesScreen({ onNavigate, currentScreen }) {
   )
 }
 
-function PredictionModal({ car, onClose, onSubmit, currentPrediction }) {
-  const { selectedLeague } = useApp()
-  const [prediction, setPrediction] = useState(currentPrediction ? currentPrediction.toString() : '')
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    const price = parseFloat(prediction.replace(/[^0-9.]/g, ''))
-    if (isNaN(price) || price <= 0) {
-      alert('Please enter a valid price')
-      return
-    }
-    onSubmit(price)
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4">
-      <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto p-4 sm:p-6">
-        <div className="flex items-center justify-between mb-3 sm:mb-4">
-          <h2 className="text-lg sm:text-2xl font-bold text-bpInk flex items-center gap-2">
-            <Zap className="text-bpGold" size={20} />
-            Predict the Final Price
-          </h2>
-          <button onClick={onClose} className="text-bpInk/60 hover:text-bpInk text-2xl">✕</button>
-        </div>
-
-        <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg bg-bpGold/10 border-2 border-bpGold/30">
-          <p className="text-xs sm:text-sm text-bpInk/80 mb-1 sm:mb-2">🏆 <strong>BONUS CAR</strong> (Shared by all players)</p>
-          <h3 className="font-bold text-base sm:text-lg text-bpInk">{car.title}</h3>
-          <p className="text-xs sm:text-sm text-bpInk/70 mt-1">Current Bid: ${car.currentBid.toLocaleString()}</p>
-        </div>
-
-        <div className="mb-4 sm:mb-6">
-          <img
-            src={car.imageUrl}
-            alt={car.title}
-            className="w-full h-40 sm:h-64 object-cover rounded-lg"
-          />
-        </div>
-
-        <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg bg-bpInk/5">
-          <p className="text-xs sm:text-sm text-bpInk/80 mb-2">
-            <strong>How it works:</strong>
-          </p>
-          <ul className="text-xs sm:text-sm text-bpInk/70 space-y-1 list-disc list-inside">
-            <li>The closest prediction wins <strong>{fmtUSD(bonusPrize(selectedLeague?.spending_limit || 200000))}</strong>, added to your score</li>
-            <li>Paid once the auction's result is in; if the car doesn't sell, its high bid counts</li>
-            <li>You can change your prediction until the auction ends</li>
-          </ul>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <label className="block text-sm font-semibold text-bpInk mb-2">
-            Your Prediction:
-          </label>
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-            <input
-              type="text"
-              value={prediction}
-              onChange={(e) => setPrediction(e.target.value)}
-              placeholder="Enter final sale price..."
-              className="flex-1 px-4 py-3 rounded-md border-2 border-bpNavy/20 text-bpInk text-lg font-semibold"
-              autoFocus
-            />
-            <PrimaryButton type="submit" className="px-6 py-3 sm:py-0">
-              {currentPrediction ? 'Update' : 'Submit'}
-            </PrimaryButton>
-          </div>
-        </form>
-      </Card>
-    </div>
-  )
-}
-
 function CarsScreen({ onNavigate, currentScreen }) {
   const {
-    addToGarage, auctions, bonusCar, budget, garage, loading, removeFromGarage, selectedLeague,
-    setShowPredictionModal, showPredictionModal, submitPrediction, userPrediction,
+    addToGarage, auctions, bonusCar, budget, garage, loading, removeFromGarage, selectedLeague, userPrediction,
   } = useApp()
   const isWide = useIsWide(700)
   const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
@@ -2587,6 +2540,8 @@ function CarsScreen({ onNavigate, currentScreen }) {
   const budgetTotal = selectedLeague?.spending_limit || 200000
 
   const [filter, setFilter] = useState('ALL')
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState('SHUFFLED')
   const [addingId, setAddingId] = useState(null)
   const [glowIds, setGlowIds] = useState([])
   const [showBonus, setShowBonus] = useState(false)
@@ -2606,22 +2561,54 @@ function CarsScreen({ onNavigate, currentScreen }) {
     return 'available'
   }
 
+  const priceOf = car => car.baselinePrice || car.currentBid
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
   const available = auctions.filter(car => {
-    const dp = car.baselinePrice || car.currentBid
-    if (filter === 'ADDED') return garageIds.has(car.id)
-    if (filter === 'AVAILABLE') return !garageIds.has(car.id) && dp <= budget
-    return true
+    if (filter === 'ADDED' && !garageIds.has(car.id)) return false
+    if (filter === 'AVAILABLE' && (garageIds.has(car.id) || priceOf(car) > budget)) return false
+    if (filter === 'NO RESERVE' && car.noReserve !== true) return false
+    if (!words.length) return true
+    const text = `${car.title || ''} ${car.make || ''} ${car.year || ''}`.toLowerCase()
+    return words.every(w => text.includes(w))
   })
+  // The pool arrives shuffled, in a different order for each player. Any other
+  // order is the player's own choice, and is logged with the list they saw.
+  if (sort === 'PRICE HIGH') available.sort((a, b) => priceOf(b) - priceOf(a))
+  else if (sort === 'PRICE LOW') available.sort((a, b) => priceOf(a) - priceOf(b))
+  else if (sort === 'ENDING') available.sort((a, b) => +a.endTime - +b.endTime)
+
+  const filters = auctions.some(car => car.noReserve === true)
+    ? ['ALL', 'AVAILABLE', 'NO RESERVE', 'ADDED']
+    : ['ALL', 'AVAILABLE', 'ADDED']
+  // Online events have cars ending at different times; a catalogue sells in one session.
+  const rollingPool = !!selectedLeague && !selectedLeague.use_manual_auctions
+  const sorts = rollingPool ? ['SHUFFLED', 'PRICE HIGH', 'PRICE LOW', 'ENDING'] : ['SHUFFLED', 'PRICE HIGH', 'PRICE LOW']
+  // In an online event a car can be drafted only while its auction ends four to
+  // five days out, so every car leaves the pool at some point during the draft.
+  // Say when, so timing a pick is a choice and not a surprise.
+  const poolLeft = car => {
+    if (!rollingPool || !canPick || !car.endTime || garageIds.has(car.id)) return null
+    const ms = +car.endTime - 4 * 86400000 - Date.now()
+    if (ms <= 0) return 'CLOSING'
+    const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000)
+    return h > 0 ? `${h}h ${m}m` : `${m}m`
+  }
 
   // Which cars a player was shown, in order, with what they could afford then.
   // Logged once per distinct list, so re-renders and live bid ticks don't repeat it.
   const shownIds = loading ? '' : available.map(car => car.id).join(',')
+  const searching = words.length > 0
   useEffect(() => {
     if (!shownIds || !selectedLeague) return
-    trackOnce(`list:${selectedLeague.id}:${filter}:${shownIds}`, 'auction_list_view', {
-      auction_ids: shownIds.split(',').slice(0, 100), filter, budget, garage_size: garage.length,
+    const log = () => trackOnce(`list:${selectedLeague.id}:${filter}:${sort}:${shownIds}`, 'auction_list_view', {
+      auction_ids: shownIds.split(',').slice(0, 100), filter, sort, searched: searching, budget, garage_size: garage.length,
     })
-  }, [shownIds, filter, selectedLeague?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    // While a search is being typed, wait for it to settle. The words searched
+    // for are never logged, only that a search was in use.
+    if (!searching) { log(); return }
+    const t = setTimeout(log, 1200)
+    return () => clearTimeout(t)
+  }, [shownIds, filter, sort, selectedLeague?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function showToastMsg(msg) { setToast(msg); setTimeout(() => setToast(null), 2000) }
 
@@ -2761,36 +2748,43 @@ function CarsScreen({ onNavigate, currentScreen }) {
           <button onClick={() => setShowBonus(!showBonus)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: 1.3, fontWeight: 700 }}>★ BONUS CAR</span>
-              <span style={{ fontFamily: mono, fontSize: 11, color: C.muted }}>{bonusCar.title}</span>
+              <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, textAlign: 'left' }}>{bonusCar.title}</span>
             </div>
-            <span style={{ fontFamily: mono, fontSize: 11, color: C.muted, transition: 'transform 0.2s', transform: showBonus ? 'rotate(180deg)' : 'rotate(0)' }}>▾</span>
+            <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: userPrediction != null ? C.pos : C.amber, whiteSpace: 'nowrap', marginLeft: 8 }}>
+              {userPrediction != null ? `✓ ${fmtK(userPrediction)}` : 'CALL IT'}{' '}
+              <span style={{ display: 'inline-block', color: C.muted, transition: 'transform 0.2s', transform: showBonus ? 'rotate(180deg)' : 'rotate(0)' }}>▾</span>
+            </span>
           </button>
+          {/* The same call card as Garage and Dashboard: one form everywhere. */}
           {showBonus && (
-            <div style={{ marginTop: 12, display: 'flex', gap: 12, animation: 'bpFadeIn 0.15s ease-out' }}>
-              <div style={{ width: 88, flexShrink: 0 }}>
-                <CarImg car={bonusCar} height={64} radius={2} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, marginBottom: 4 }}>{bonusCar.title}</div>
-                <div style={{ fontFamily: mono, fontSize: 11, color: C.muted }}>CURRENT BID</div>
-                <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, marginTop: 1 }}>{fmtUSD(bonusCar.currentBid)}</div>
-                <div style={{ marginTop: 8 }}>
-                  <button onClick={() => setShowPredictionModal(true)} style={{ height: 30, padding: '0 12px', borderRadius: 3, border: `1px solid ${C.amber}55`, background: `${C.amber}18`, color: C.amber, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>
-                    {userPrediction ? `PREDICTION: ${fmtUSD(userPrediction)} ✓` : 'MAKE PREDICTION ▸'}
-                  </button>
-                </div>
-              </div>
+            <div style={{ marginTop: 12, animation: 'bpFadeIn 0.15s ease-out' }}>
+              <BonusCarCard isWide={isWide} />
             </div>
           )}
         </div>
       )}
 
       {/* Filter row */}
-      <div style={{ padding: '12px 18px 10px', display: 'flex', gap: 6 }}>
-        {['ALL', 'AVAILABLE', 'ADDED'].map(f => (
+      <div style={{ padding: '12px 18px 8px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {filters.map(f => (
           <button key={f} onClick={() => setFilter(f)} style={{ padding: '5px 10px', borderRadius: 3, fontFamily: mono, fontSize: 11, fontWeight: 700, letterSpacing: 1.1, background: f === filter ? C.text : 'transparent', color: f === filter ? C.bg : C.muted, border: `1px solid ${f === filter ? C.text : C.border}`, cursor: 'pointer' }}>{f}</button>
         ))}
         <div style={{ marginLeft: 'auto', fontFamily: mono, fontSize: 11, color: C.faint, alignSelf: 'center' }}>{available.length} LOTS</div>
+      </div>
+
+      {/* Search and sort */}
+      <div style={{ padding: '0 18px 10px', display: 'flex', gap: 8 }}>
+        <input
+          id="pick-search" type="search" value={query} onChange={e => setQuery(e.target.value)}
+          placeholder="Search make, model or year" aria-label="Search lots"
+          style={{ flex: 1, minWidth: 0, height: 38, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 3, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', fontSize: 14, padding: '0 12px', outline: 'none' }}
+        />
+        <select
+          id="pick-sort" value={sort} onChange={e => setSort(e.target.value)} aria-label="Sort lots"
+          style={{ height: 38, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 3, color: C.text, fontFamily: mono, fontSize: 11, fontWeight: 700, letterSpacing: 0.8, padding: '0 8px', outline: 'none' }}
+        >
+          {sorts.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
       </div>
 
       {/* Loading state */}
@@ -2804,7 +2798,7 @@ function CarsScreen({ onNavigate, currentScreen }) {
 
       {/* Car grid */}
       {!loading && (
-        <div style={{ padding: '2px 18px 8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ padding: '2px 18px 8px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
           {available.map(car => {
             const status = carStatus(car)
             const inGarage = status === 'added'
@@ -2829,19 +2823,32 @@ function CarsScreen({ onNavigate, currentScreen }) {
                 ) : (
                   <CarImg car={car} height={isWide ? undefined : 160} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 360 : undefined} objectPosition={isWide ? 'center 45%' : undefined} radius={2} />
                 )}
-                <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 7 }}>{car.year} · {(car.make || '').toUpperCase()}</div>
-                <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, lineHeight: 1.25, height: 38, overflow: 'hidden' }}>{car.title && car.title.replace(`${car.year} `, '')}</div>
+                {car.noReserve != null && (
+                  <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 2, background: `${C.bg}e6`, borderRadius: 2, display: 'flex' }}>
+                    <ReserveTag car={car} />
+                  </div>
+                )}
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{car.year} · {(car.make || '').toUpperCase()}</div>
+                <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, lineHeight: 1.25, height: 38, overflow: 'hidden' }}>{car.title && car.title.replace(`${car.year} `, '').replace(/^\s*no[- ]reserve:?\s*/i, '')}</div>
+                {/* What you pay, beside what it is measured against: the house
+                    estimate for a catalogue lot, the live bid for an online one. */}
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 5, marginBottom: 8 }}>
                   <div>
-                    <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>DRAFT</div>
+                    <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>PRICE</div>
                     <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtK(dp)}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>NOW</div>
-                    <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: C.pos, fontVariantNumeric: 'tabular-nums' }}>{fmtK(car.currentBid)}</div>
+                    <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>{car.estimateLow != null ? 'ESTIMATE' : 'BID NOW'}</div>
+                    <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{car.estimateLow != null ? estimateText(car) : fmtK(car.currentBid)}</div>
                   </div>
                 </div>
-                <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, marginBottom: 8 }}>{car.timeLeft}</div>
+                <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, marginBottom: 8, lineHeight: 1.5 }}>
+                  {car.timeLeft && car.timeLeft !== 'Ended' && car.timeLeft !== 'N/A' ? `SELLS IN ${car.timeLeft}` : car.timeLeft}
+                  {/* Online events: one more line on every card, so rows stay level. */}
+                  {rollingPool && canPick && (
+                    <div style={{ color: C.amber, minHeight: 16 }}>{poolLeft(car) ? `IN POOL ${poolLeft(car)}` : ''}</div>
+                  )}
+                </div>
                 {inGarage ? (
                   <button onClick={() => handleRemove(car)} disabled={!canPick} style={{ width: '100%', height: 32, borderRadius: 3, border: `1px solid ${C.red}55`, background: confirmRemoveId === car.id ? C.red : 'transparent', color: confirmRemoveId === car.id ? C.text : C.red, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, cursor: canPick ? 'pointer' : 'default' }}>
                     {confirmRemoveId === car.id ? 'TAP TO REMOVE' : 'IN GARAGE ✓'}
@@ -2873,15 +2880,6 @@ function CarsScreen({ onNavigate, currentScreen }) {
         <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: C.surface, border: `1px solid ${C.borderHi}`, padding: '10px 16px', borderRadius: 4, fontFamily: mono, fontSize: 11, color: C.text, letterSpacing: 0.8, whiteSpace: 'nowrap', zIndex: 100, animation: 'bpFadeIn 0.15s ease-out' }}>
           {toast}
         </div>
-      )}
-
-      {showPredictionModal && bonusCar && (
-        <PredictionModal
-          car={bonusCar}
-          onClose={() => setShowPredictionModal(false)}
-          onSubmit={submitPrediction}
-          currentPrediction={userPrediction}
-        />
       )}
 
       <BottomTabBar screen="cars" onNavigate={onNavigate} />
@@ -2979,6 +2977,11 @@ function GarageScreen({ onNavigate, currentScreen }) {
                     </div>
                   )
                 })()}
+                {car.noReserve != null && (status === 'live' || status === 'pending') && (
+                  <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 1, background: `${C.bg}e6`, borderRadius: 2, display: 'flex' }}>
+                    <ReserveTag car={car} />
+                  </div>
+                )}
                 {hasAuctionLink ? (
                   <a href={car.auctionUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}
                     onClick={() => track('auction_open', { auction_id: car.id, target: 'source', screen: 'garage' })}>
