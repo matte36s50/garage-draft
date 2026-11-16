@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { parseDbTime } from '../utils/dbTime';
 
 export default function UserHistory({ supabase, user }) {
   const [loading, setLoading] = useState(true);
@@ -79,8 +80,8 @@ export default function UserHistory({ supabase, user }) {
 
   // Format date range
   const formatDateRange = (start, end) => {
-    const startDate = new Date(start);
-    const endDate = new Date(end);
+    const startDate = parseDbTime(start);
+    const endDate = parseDbTime(end);
     const options = { month: 'short', day: 'numeric' };
     return `${startDate.toLocaleDateString('en-US', options)} - ${endDate.toLocaleDateString('en-US', options)}`;
   };

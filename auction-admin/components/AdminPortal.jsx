@@ -36,6 +36,9 @@ function generateFakeUsername(existingUsernames) {
   return combos.find(c => !used.has(c)) || `Player${Date.now()}`;
 }
 
+// Event times are stored without a zone and mean UTC; show them in local time.
+const eventTime = (value) => new Date(/[zZ]$|[+-]\d\d:?\d\d$/.test(String(value)) ? value : `${String(value).replace(' ', 'T')}Z`);
+
 const AdminPortal = () => {
   const [activeTab, setActiveTab] = useState('auctions');
   const [auctions, setAuctions] = useState([]);
@@ -1156,8 +1159,11 @@ const AdminPortal = () => {
       const league = {
         name: trimmedName,
         created_by: creatorId,
-        draft_starts_at: newLeague.draft_starts_at,
-        draft_ends_at: newLeague.draft_ends_at,
+        // The form holds the admin's local time. Event times are stored without
+        // a zone and enforced by the server as UTC, so store the UTC wall-clock
+        // time of the instant that was typed.
+        draft_starts_at: startDate.toISOString().slice(0, 19),
+        draft_ends_at: endDate.toISOString().slice(0, 19),
         is_public: newLeague.is_public,
         use_manual_auctions: newLeague.use_manual_auctions,
         spending_limit: newLeague.spending_limit || 200000,
@@ -2609,7 +2615,7 @@ const AdminPortal = () => {
                               league.status === 'active' ? 'text-green-400' : 'text-slate-400'
                             }`}>{league.status}</span></p>
                             {league.draft_starts_at && (
-                              <p>Draft: {new Date(league.draft_starts_at).toLocaleDateString()} - {new Date(league.draft_ends_at).toLocaleDateString()}</p>
+                              <p>Draft: {eventTime(league.draft_starts_at).toLocaleString()} - {eventTime(league.draft_ends_at).toLocaleString()}</p>
                             )}
                             {league.bonus_auction && (
                               <p>Bonus: {league.bonus_auction.title}</p>
