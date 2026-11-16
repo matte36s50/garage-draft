@@ -34,7 +34,8 @@ prediction (see `src/utils/bonusCar.js`). Unspent budget doesn't count. Each car
 | Ended, result not recorded yet | the high bid, until the result is recorded |
 
 Players with a full 7‑car garage rank above players with fewer cars, then by score. The NET and
-AVG % leaderboard tabs only reorder the list; they never change who wins. The car rule lives in
+% GAIN leaderboard tabs only reorder the list; they never change who wins. % GAIN is the garage's
+net gain over what was spent drafting it (`src/utils/garageGain.js`). The car rule lives in
 `src/utils/carValue.js` (player app) and `auction-admin/lib/carValue.js` (score cron).
 
 An event closes and is written to History once every car, and the bonus car, has a recorded

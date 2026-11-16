@@ -7,6 +7,7 @@ import DraftResults from './components/DraftResults'
 import { bonusPrize, bonusResult, decideBonus } from './utils/bonusCar'
 import { carValue } from './utils/carValue'
 import { parseDbTime } from './utils/dbTime'
+import { garagePercentGain } from './utils/garageGain'
 import { initTracking, setTrackingContext, setTrackingSession, track, trackOnce } from './utils/track'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
@@ -469,6 +470,13 @@ function fmtCompact(n) {
   if (abs >= 999500) return `${sign}$${(abs / 1e6).toFixed(2)}M`
   if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(1)}k`
   return `${sign}$${Math.round(abs)}`
+}
+
+// Signed percentage to one decimal: +159.4%, -8.1%. Rounds before picking the
+// sign, so a hair under zero reads +0.0% rather than -0.0%.
+function fmtPct(n) {
+  const rounded = Math.round((Number(n) || 0) * 10) / 10
+  return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(1)}%`
 }
 
 function CarPlaceholder({ tint = '#3a4a6b', height = 86, radius = 2, aspect, maxHeight }) {
@@ -3172,12 +3180,11 @@ if (!selectedLeague && !leagueLoading) {
         return {
           totalScore: 0,
           totalFinalValue: 0,
-          totalPercentGain: 0,
+          percentGain: 0,
           totalDollarGain: 0,
           bonusPrizeWon: 0,
           carsCount: 0,
           totalSpent: 0,
-          avgPercentPerCar: 0,
           isRosterComplete: false,
           openLots: []
         }
@@ -3200,7 +3207,6 @@ if (!selectedLeague && !leagueLoading) {
         .eq('garage_id', garage.id)
 
       let totalFinalValue = 0
-      let totalPercentGain = 0
       let totalDollarGain = 0
       let carsCount = 0
       let totalSpent = 0
@@ -3225,10 +3231,6 @@ if (!selectedLeague && !leagueLoading) {
           totalFinalValue += finalValue
           if (status === 'live' || status === 'pending') openLots.push(auction.auction_id)
 
-          // Keep percentage gain for backward compatibility
-          const percentGain = purchasePrice > 0 ? ((finalValue - purchasePrice) / purchasePrice) * 100 : 0
-          totalPercentGain += percentGain
-
           const dollarGain = finalValue - purchasePrice
           totalDollarGain += dollarGain
 
@@ -3242,18 +3244,19 @@ if (!selectedLeague && !leagueLoading) {
       totalFinalValue += bonusPrizeWon
       totalDollarGain += bonusPrizeWon
 
-      const avgPercentPerCar = carsCount > 0 ? totalPercentGain / carsCount : 0
+      // One figure for the whole garage: net gain over what was spent (see
+      // utils/garageGain.js). Never the cars' own percentages added together.
+      const percentGain = garagePercentGain(totalDollarGain, totalSpent)
       const isRosterComplete = carsCount >= 7
 
       return {
         totalScore: parseFloat(totalFinalValue.toFixed(2)),
         totalFinalValue: parseFloat(totalFinalValue.toFixed(2)),
-        totalPercentGain: parseFloat(totalPercentGain.toFixed(2)),
+        percentGain: parseFloat(percentGain.toFixed(2)),
         totalDollarGain: parseFloat(totalDollarGain.toFixed(2)),
         bonusPrizeWon,
         carsCount,
         totalSpent: parseFloat(totalSpent.toFixed(2)),
-        avgPercentPerCar: parseFloat(avgPercentPerCar.toFixed(2)),
         isRosterComplete,
         openLots
       }
@@ -3263,12 +3266,11 @@ if (!selectedLeague && !leagueLoading) {
       return {
         totalScore: 0,
         totalFinalValue: 0,
-        totalPercentGain: 0,
+        percentGain: 0,
         totalDollarGain: 0,
         bonusPrizeWon: 0,
         carsCount: 0,
         totalSpent: 0,
-        avgPercentPerCar: 0,
         isRosterComplete: false,
         openLots: []
       }
@@ -3289,7 +3291,7 @@ if (!selectedLeague && !leagueLoading) {
       case 'total_dollar':
         return sorted.sort((a, b) => b.totalDollarGain - a.totalDollarGain)
       case 'total_percent':
-        return sorted.sort((a, b) => b.totalPercentGain - a.totalPercentGain)
+        return sorted.sort((a, b) => b.percentGain - a.percentGain)
       default:
         // Default sort by total value
         return sorted.sort((a, b) => {
@@ -3310,7 +3312,7 @@ if (!selectedLeague && !leagueLoading) {
   // leader — is ALWAYS decided by total dollar value (money) with complete
   // rosters ranked first. The sort tabs only reorder the display list below;
   // they must never change who the champion is. (Previously the champion was
-  // just standings[0] of the active sort, so sorting by AVG %/NET crowned the
+  // just standings[0] of the active sort, so sorting by % GAIN/NET crowned the
   // wrong player — the leader on that metric rather than the one with the most
   // money.)
   const rankedByValue = sortStandings(standings, 'total_value')
@@ -3322,7 +3324,7 @@ if (!selectedLeague && !leagueLoading) {
   const sortTabs = [
     { key: 'total_value', label: 'VALUE' },
     { key: 'total_dollar', label: 'NET' },
-    { key: 'total_percent', label: 'AVG %' },
+    { key: 'total_percent', label: '% GAIN' },
   ]
 
   return (
@@ -3425,8 +3427,8 @@ if (!selectedLeague && !leagueLoading) {
             </div>
             <div>
               <div style={{ color: C.faint, fontSize: 11, letterSpacing: 1.2 }}>% GAIN</div>
-              <div style={{ color: me.totalPercentGain >= 0 ? C.pos : C.neg, fontWeight: 700, marginTop: 2 }}>
-                {me.totalPercentGain >= 0 ? '+' : ''}{(me.totalPercentGain || 0).toFixed(1)}%
+              <div style={{ color: me.percentGain >= 0 ? C.pos : C.neg, fontWeight: 700, marginTop: 2 }}>
+                {fmtPct(me.percentGain)}
               </div>
             </div>
           </div>
@@ -3468,7 +3470,7 @@ if (!selectedLeague && !leagueLoading) {
                     {isMe && <span style={{ marginLeft: 6, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.red }}>· YOU</span>}
                   </div>
                   <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, marginTop: 2, letterSpacing: 0.5 }}>
-                    {player.carsCount}/7 LOTS{player.totalPercentGain > 0 ? ` · +${player.totalPercentGain.toFixed(1)}%` : ''}
+                    {player.carsCount}/7 LOTS{player.totalSpent > 0 ? ` · ${fmtPct(player.percentGain)}` : ''}
                     {player.bonusPrizeWon > 0 && <div style={{ color: C.amber, marginTop: 2 }}>★ BONUS +{fmtUSD(player.bonusPrizeWon)}</div>}
                   </div>
                 </div>
