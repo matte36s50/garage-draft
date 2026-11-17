@@ -480,6 +480,7 @@ function fmtPct(n) {
   return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(1)}%`
 }
 
+// eslint-disable-next-line no-unused-vars
 function CarPlaceholder({ tint = '#3a4a6b', height = 86, radius = 2, aspect, maxHeight }) {
   const box = aspect
     ? { width: '100%', aspectRatio: aspect, maxHeight }
@@ -1452,7 +1453,8 @@ export default function BidPrixApp() {
       }
 
       updateSelectedLeague(normalizedLeague)
-      updateCurrentScreen('dashboard')
+      // Someone arriving by invite while the draft is open came to pick cars.
+      updateCurrentScreen(getDraftStatus(league).status === 'open' ? 'cars' : 'dashboard')
       return true
     } catch (err) {
       console.error('Magic link: error handling pending league', err)
@@ -2000,65 +2002,97 @@ function BonusCarCard({ isWide }) {
 
 function LandingScreen({ onGetStarted }) {
   const isWide = useIsWide(700)
-  const TICKER_ROWS = [
-    { t: 'NEW BID', n: '1991 BMW M5', v: '+$2,700', good: true },
-    { t: 'SELECTED', n: 'shop_rat → S2000', v: '$24.0k', good: null },
-    { t: 'SOLD', n: 'Land Cruiser', v: '$48,200', good: true },
-  ]
-  const MOCK_CARS = [
-    { id: 'c1', title: '1991 BMW M5 (E34)',        year: 1991, price: 38500, img: '#3a4a6b', trend: 7 },
-    { id: 'c2', title: '1995 Porsche 993 Carrera', year: 1995, price: 92000, img: '#6b3a3a', trend: 5 },
-    { id: 'c3', title: '1987 Toyota Land Cruiser', year: 1987, price: 42000, img: '#3a5a4a', trend: 6 },
-    { id: 'c4', title: '1972 Datsun 240Z',         year: 1972, price: 28500, img: '#5a4a3a', trend: 9 },
-  ]
-  // Pull a few real open auctions (with photos) so the grid shows live lots
-  // instead of color placeholders. Falls back to MOCK_CARS if the fetch is
-  // empty or fails, so the landing page always renders.
-  const [gridCars, setGridCars] = useState(null)
-  const [lotCount, setLotCount] = useState(null)
+  // Everything on this page is read from the game: which events are open, the
+  // event a visitor was invited to, and real lots from its pool. Nothing is
+  // shown that isn't true right now.
+  const invitedId = (() => { try { return sessionStorage.getItem(PENDING_LEAGUE_KEY) } catch { return null } })()
+  const [event, setEvent] = useState(null)         // the invite, else what is drafting, else what opens next
+  const [openCount, setOpenCount] = useState(null) // events with an open draft; null until loaded
+  const [pool, setPool] = useState({ cars: [], count: null })
   useEffect(() => {
     let active = true
     ;(async () => {
       try {
-        const nowSec = Math.floor(Date.now() / 1000)
-        const { data, error, count } = await supabase
-          .from('auctions')
-          .select('auction_id, title, make, year, current_bid, price_at_48h, image_url', { count: 'exact' })
-          .not('image_url', 'is', null)
-          .is('final_price', null)
-          .gte('timestamp_end', nowSec)
-          .order('timestamp_end', { ascending: true })
-          .limit(4)
+        const withCount = l => ({ ...l, playerCount: l.league_members?.[0]?.count || 0 })
+        const { data: rows, error } = await supabase.from('leagues').select('*, league_members(count)').eq('is_public', true)
         if (error) throw error
+        let all = (rows || []).map(withCount)
+        // An invite to a private event isn't in the public list.
+        if (invitedId && !all.some(l => l.id === invitedId)) {
+          const { data: one } = await supabase.from('leagues').select('*, league_members(count)').eq('id', invitedId).maybeSingle()
+          if (one) all = [...all, withCount(one)]
+        }
+        const statusOf = l => getDraftStatus(l).status
+        const open = all.filter(l => statusOf(l) === 'open')
+          .sort((a, b) => (parseDbTime(a.draft_ends_at) || 0) - (parseDbTime(b.draft_ends_at) || 0))
+        const upcoming = all.filter(l => statusOf(l) === 'upcoming')
+          .sort((a, b) => (parseDbTime(a.draft_starts_at) || 0) - (parseDbTime(b.draft_starts_at) || 0))
+        const featured = all.find(l => l.id === invitedId) || open[0] || upcoming[0] || null
         if (!active) return
-        const cars = (data || []).map((a) => {
-          const baseline = parseFloat(a.price_at_48h)
-          const current = parseFloat(a.current_bid) || baseline || 0
-          const trend = baseline ? Math.round(((current - baseline) / baseline) * 100) : 0
-          return {
-            id: a.auction_id,
-            title: a.title || `${a.year || ''} ${a.make || ''}`.trim(),
-            make: a.make,
-            year: a.year,
-            price: current,
-            imageUrl: a.image_url || getDefaultCarImage(a.make),
-            trend,
-          }
+        setOpenCount(open.length)
+        setEvent(featured)
+        if (!featured) return
+
+        const cols = 'auction_id, title, make, year, current_bid, price_at_48h, image_url, estimate_low, estimate_high, no_reserve'
+        const toCar = a => ({
+          id: a.auction_id,
+          title: a.title || `${a.year || ''} ${a.make || ''}`.trim(),
+          make: a.make,
+          year: a.year,
+          price: parseFloat(a.price_at_48h) || parseFloat(a.current_bid) || 0,
+          currentBid: parseFloat(a.current_bid) || 0,
+          imageUrl: a.image_url,
+          ...lotDetails(a),
         })
-        if (cars.length) setGridCars(cars)
-        if (typeof count === 'number') setLotCount(count)
+        let cars = [], count = null
+        if (featured.use_manual_auctions) {
+          const { data: la, error: e2 } = await supabase.from('league_auctions')
+            .select(`auctions!league_auctions_auction_id_fkey(${cols})`).eq('league_id', featured.id).limit(300)
+          if (e2) throw e2
+          const lots = (la || []).map(r => r.auctions).filter(Boolean).map(toCar)
+          count = lots.length
+          // The headline lots are the draw: show the four dearest that have a photo.
+          cars = lots.filter(c => c.imageUrl).sort((a, b) => b.price - a.price).slice(0, 4)
+        } else {
+          const nowSec = Math.floor(Date.now() / 1000)
+          const { data, error: e3, count: n } = await supabase.from('auctions')
+            .select(cols, { count: 'exact' })
+            .gte('timestamp_end', nowSec + 4 * 86400).lte('timestamp_end', nowSec + 5 * 86400)
+            .not('price_at_48h', 'is', null).is('final_price', null).not('image_url', 'is', null)
+            .order('timestamp_end', { ascending: true }).limit(4)
+          if (e3) throw e3
+          cars = (data || []).map(toCar)
+          count = typeof n === 'number' ? n : null
+        }
+        if (active) setPool({ cars, count })
       } catch (e) {
-        console.warn('Landing grid: falling back to mock cars', e)
+        console.warn('Landing: could not load events', e)
+        if (active) setOpenCount(prev => (prev == null ? 0 : prev))
       }
     })()
     return () => { active = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const status = event ? getDraftStatus(event).status : null
+  const invited = !!event && event.id === invitedId
+  // Joining from here carries the event through sign-up, like an invite link.
+  const joinEvent = () => {
+    try { if (event && status === 'open') sessionStorage.setItem(PENDING_LEAGUE_KEY, event.id) } catch { /* storage blocked */ }
+    onGetStarted()
+  }
+  const badge = openCount == null ? null
+    : openCount > 0 ? { text: `DRAFT OPEN · ${openCount} ${openCount === 1 ? 'EVENT' : 'EVENTS'}`, color: C.red, live: true }
+    : status === 'upcoming' ? { text: `NEXT EVENT OPENS ${parseDbTime(event.draft_starts_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}`, color: C.amber, live: false }
+    : { text: 'NO EVENT OPEN RIGHT NOW', color: C.muted, live: false }
+  const monoFont = 'ui-monospace,"JetBrains Mono",monospace'
+
   return (
     <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* App bar */}
       <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <CBrand />
-        <button onClick={onGetStarted} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, letterSpacing: 0.5, background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button onClick={onGetStarted} style={{ fontFamily: monoFont, fontSize: 11, color: C.muted, letterSpacing: 0.5, background: 'none', border: 'none', cursor: 'pointer' }}>
           SIGN IN ▸
         </button>
       </div>
@@ -2066,79 +2100,108 @@ function LandingScreen({ onGetStarted }) {
 
       {/* Hero */}
       <div style={{ padding: '22px 18px 18px' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.red, letterSpacing: 1.6, fontWeight: 700, background: `${C.red}15`, padding: '5px 8px', border: `1px solid ${C.red}40`, marginBottom: 18 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.red, boxShadow: `0 0 10px ${C.red}`, display: 'inline-block' }} />
-          LIVE · 3 EVENTS DRAFTING
-        </div>
-        <h1 style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 'clamp(36px,10vw,52px)', fontWeight: 800, lineHeight: 0.95, letterSpacing: -2, margin: '0 0 16px', textTransform: 'uppercase' }}>
+        {badge && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: monoFont, fontSize: 11, color: badge.color, letterSpacing: 1.6, fontWeight: 700, background: `${badge.color}15`, padding: '5px 8px', border: `1px solid ${badge.color}40`, marginBottom: 18 }}>
+            {badge.live && <span style={{ width: 6, height: 6, borderRadius: '50%', background: badge.color, boxShadow: `0 0 10px ${badge.color}`, display: 'inline-block' }} />}
+            {badge.text}
+          </div>
+        )}
+        <h1 style={{ fontFamily: monoFont, fontSize: 'clamp(36px,10vw,52px)', fontWeight: 800, lineHeight: 0.95, letterSpacing: -2, margin: '0 0 16px', textTransform: 'uppercase' }}>
           RACE THE<br/>
           <span style={{ color: C.red }}>MARKET.</span>
         </h1>
-        <p style={{ fontSize: 14, lineHeight: 1.5, color: C.muted, margin: '0 0 22px', maxWidth: 320 }}>
-          Seven cars. $175k budget. One week of the BaT market. The leaderboard updates every minute.
+        <p style={{ fontSize: 14, lineHeight: 1.5, color: C.muted, margin: '0 0 22px', maxWidth: 340 }}>
+          Pick seven cars from a real auction and stay inside the budget. When the hammers fall, the best garage wins. Free to play.
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onGetStarted} style={{ flex: 1, height: 50, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontWeight: 800, fontSize: 13, fontFamily: 'ui-monospace,monospace', letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer' }}>
-            ENTER PIT LANE ▸
+          <button onClick={event && status === 'open' ? joinEvent : onGetStarted} style={{ flex: 1, height: 50, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontWeight: 800, fontSize: 13, fontFamily: monoFont, letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer' }}>
+            {event && status === 'open' ? 'JOIN THE DRAFT ▸' : 'ENTER PIT LANE ▸'}
           </button>
-          <button onClick={onGetStarted} style={{ width: 50, height: 50, borderRadius: 4, border: `1px solid ${C.borderHi}`, background: 'transparent', color: C.text, fontFamily: 'ui-monospace,monospace', fontSize: 16, cursor: 'pointer' }}>?</button>
+          <a href="#how-it-works" aria-label="How it works" style={{ width: 50, height: 50, borderRadius: 4, border: `1px solid ${C.borderHi}`, background: 'transparent', color: C.text, fontFamily: monoFont, fontSize: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>?</a>
         </div>
       </div>
 
-      {/* Live ticker */}
-      <div style={{ margin: '6px 0 22px', borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, padding: '12px 18px', background: C.surface }}>
-        <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 8 }}>{'//'} LIVE TICKER</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {TICKER_ROWS.map((r, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'ui-monospace,monospace', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: r.t === 'NEW BID' ? C.red : r.t === 'SOLD' ? C.pos : C.amber, width: 56 }}>{r.t}</span>
-              <span style={{ flex: 1, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.n}</span>
-              <span style={{ color: r.good === true ? C.pos : C.text, fontWeight: 700 }}>{r.v}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Featured grid */}
-      <div style={{ padding: '0 18px 24px' }}>
-        <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>{'//'} THIS WEEK&apos;S GRID — {lotCount ?? 72} LOTS</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {(gridCars || MOCK_CARS).map((c, i) => (
-            <div key={c.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10 }}>
-              {c.imageUrl
-                ? <CarImg car={c} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 320 : undefined} radius={2} />
-                : <CarPlaceholder tint={c.img} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 320 : undefined} radius={2} />}
-              <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 8 }}>LOT {String(i + 1).padStart(4,'0')} · {c.year}</div>
-              <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, height: 38, lineHeight: 1.3, overflow: 'hidden' }}>{c.title.replace(`${c.year} `,'')}</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 6 }}>
-                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>${(c.price/1000).toFixed(0)}k</div>
-                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: c.trend >= 0 ? C.pos : C.red }}>{c.trend >= 0 ? '+' : ''}{c.trend}%</div>
+      {/* The event: an invite, what is drafting now, or what opens next */}
+      {event && (
+        <div style={{ margin: '6px 18px 22px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${status === 'open' ? C.red : C.amber}`, padding: '14px 16px' }}>
+          <div style={{ fontFamily: monoFont, fontSize: 11, letterSpacing: 1.6, color: status === 'open' ? C.red : C.amber, fontWeight: 700, marginBottom: 6 }}>
+            {'//'} {invited ? "YOU'RE INVITED" : status === 'open' ? 'DRAFTING NOW' : status === 'upcoming' ? 'OPENS NEXT' : status === 'closed' ? 'AUCTION UNDER WAY' : 'FINISHED'}
+          </div>
+          <div style={{ fontSize: 19, fontWeight: 700, lineHeight: 1.2, letterSpacing: -0.2 }}>{event.name}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 12 }}>
+            {[
+              { label: 'BUDGET', value: fmtK(event.spending_limit || 200000) },
+              { label: 'LOTS', value: pool.count != null ? String(pool.count) : '—' },
+              status === 'open' ? { label: 'DRAFT CLOSES', value: event.draft_ends_at ? calculateTimeLeft(parseDbTime(event.draft_ends_at)) : '—' }
+                : status === 'upcoming' ? { label: 'DRAFT OPENS', value: calculateTimeLeft(parseDbTime(event.draft_starts_at)) }
+                : { label: 'PLAYERS', value: String(event.playerCount || 0) },
+            ].map(s => (
+              <div key={s.label} style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: monoFont, fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>{s.label}</div>
+                <div style={{ fontFamily: monoFont, fontSize: 15, fontWeight: 700, marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          {status === 'open' && (
+            <button onClick={joinEvent} style={{ marginTop: 14, width: '100%', height: 44, borderRadius: 4, border: `1px solid ${C.red}66`, background: 'transparent', color: C.red, fontWeight: 800, fontSize: 12, fontFamily: monoFont, letterSpacing: 1.3, cursor: 'pointer' }}>
+              JOIN THIS EVENT ▸
+            </button>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* The Format */}
-      <div style={{ margin: '0 18px', padding: '20px', background: C.surface, border: `1px solid ${C.border}` }}>
-        <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 14 }}>{'//'} THE FORMAT</div>
+      {/* Real lots from that event's pool */}
+      {pool.cars.length > 0 && (
+        <div style={{ padding: '0 18px 24px' }}>
+          <div style={{ fontFamily: monoFont, fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>
+            {'//'} IN THE POOL{pool.count != null ? ` — ${pool.count} LOTS` : ''}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8 }}>
+            {pool.cars.map(c => (
+              <div key={c.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10 }}>
+                <CarImg car={c} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 320 : undefined} radius={2} />
+                <div style={{ fontFamily: monoFont, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.year} · {(c.make || '').toUpperCase()}</div>
+                <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, height: 38, lineHeight: 1.3, overflow: 'hidden' }}>{c.title.replace(`${c.year} `, '').replace(/^\s*no[- ]reserve:?\s*/i, '')}</div>
+                {/* A catalogue lot's price is its low estimate, so the estimate says both. */}
+                {c.estimateLow != null ? (
+                  <div style={{ fontFamily: monoFont, fontSize: 12.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginTop: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ color: C.faint, fontWeight: 600 }}>EST </span>{estimateText(c)}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, marginTop: 6 }}>
+                    <div style={{ fontFamily: monoFont, fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtK(c.price)}</div>
+                    <div style={{ fontFamily: monoFont, fontSize: 11, color: C.muted, whiteSpace: 'nowrap' }}>{c.currentBid ? `BID ${fmtK(c.currentBid)}` : ''}</div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* How it works */}
+      <div id="how-it-works" style={{ margin: '0 18px', padding: '20px', background: C.surface, border: `1px solid ${C.border}` }}>
+        <div style={{ fontFamily: monoFont, fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 14 }}>{'//'} HOW IT WORKS</div>
         {[
-          { n: '01', t: 'SELECT', d: 'Pick 7 live auctions. Price locks at the 48-hour mark.' },
-          { n: '02', t: 'BID',    d: 'Real bids roll in. Watch the market move in your favour.' },
-          { n: '03', t: 'WIN',    d: 'Hammer prices tally. Best auction picks take the podium.' },
+          { n: '01', t: 'PICK', d: 'Choose seven cars from a real auction. Each has a price, and your seven must fit the budget.' },
+          { n: '02', t: 'CALL', d: 'Call the hammer price of the bonus car. The closest call wins a prize.' },
+          { n: '03', t: 'WIN',  d: 'The auction decides. When the hammers fall, the garage that did best takes the podium.' },
         ].map((s, i) => (
           <div key={s.n} style={{ display: 'grid', gridTemplateColumns: '40px 1fr', gap: 12, padding: '12px 0', borderTop: i === 0 ? 'none' : `1px solid ${C.border}` }}>
-            <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 22, fontWeight: 800, color: C.red }}>{s.n}</div>
+            <div style={{ fontFamily: monoFont, fontSize: 22, fontWeight: 800, color: C.red }}>{s.n}</div>
             <div>
-              <div style={{ fontFamily: 'ui-monospace,monospace', fontWeight: 700, fontSize: 14, letterSpacing: 0.5 }}>{s.t}</div>
+              <div style={{ fontFamily: monoFont, fontWeight: 700, fontSize: 14, letterSpacing: 0.5 }}>{s.t}</div>
               <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3, lineHeight: 1.4 }}>{s.d}</div>
             </div>
           </div>
         ))}
+        <div style={{ fontSize: 12.5, color: C.faint, marginTop: 10, lineHeight: 1.5 }}>
+          No money changes hands. Budgets, scores and prizes are game points.
+        </div>
       </div>
 
       <div style={{ padding: 24 }}>
-        <button onClick={onGetStarted} style={{ width: '100%', height: 50, borderRadius: 4, background: 'transparent', color: C.text, fontWeight: 700, fontSize: 13, fontFamily: 'ui-monospace,monospace', letterSpacing: 1.4, border: `1px solid ${C.borderHi}`, textTransform: 'uppercase', cursor: 'pointer' }}>
+        <button onClick={onGetStarted} style={{ width: '100%', height: 50, borderRadius: 4, background: 'transparent', color: C.text, fontWeight: 700, fontSize: 13, fontFamily: monoFont, letterSpacing: 1.4, border: `1px solid ${C.borderHi}`, textTransform: 'uppercase', cursor: 'pointer' }}>
           CREATE FREE ACCOUNT ▸
         </button>
         <LegalLinks />
@@ -2204,7 +2267,7 @@ function LoginScreen() {
         {isSignUp ? 'CREATE ACCOUNT' : 'SIGN IN'}
       </div>
       <div style={{ fontSize: 13, color: C.muted, marginBottom: 28 }}>
-        {isSignUp ? 'Choose your callsign. First race is free.' : 'Welcome back to the grid.'}
+        {isSignUp ? 'Choose your callsign. Free to play.' : 'Welcome back to the grid.'}
       </div>
 
       <CheckerBar height={2} />
