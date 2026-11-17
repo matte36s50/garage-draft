@@ -3153,6 +3153,8 @@ function LeaderboardScreen({ onNavigate, currentScreen }) {
   const { isChatOpen, leagueLoading, marketTick, selectedLeague, setIsChatOpen, user } = useApp()
   const [standings, setStandings] = useState([])
   const [resultsToCome, setResultsToCome] = useState(0)
+  // While a draft is open, how many cars each player has picked (never which).
+  const [rosters, setRosters] = useState([])
   const [loading, setLoading] = useState(true)
   const [sortBy, setSortBy] = useState('total_value')
   const [showConfetti, setShowConfetti] = useState(false)
@@ -3165,6 +3167,9 @@ function LeaderboardScreen({ onNavigate, currentScreen }) {
   // The event's own scoring rule (utils/eventScore.js): garage value, or profit.
   const scoring = scoringOf(selectedLeague)
   const profitMode = scoring === SCORING.PROFIT
+  // Before the draft closes nothing is scored, and rivals' picks are hidden by
+  // the database (supabase_migration_blind_draft.sql).
+  const draftPhase = selectedLeague ? ['open', 'upcoming'].includes(getDraftStatus(selectedLeague).status) : false
 
   // Fire the checkered-flag confetti once, when the final results first land.
   useEffect(() => {
@@ -3234,9 +3239,25 @@ if (!selectedLeague && !leagueLoading) {
       if (membersError) throw membersError
 
       if (!members || members.length === 0) {
-        if (seq === fetchSeq.current) setStandings([])
+        if (seq === fetchSeq.current) { setStandings([]); setRosters([]) }
         return
       }
+
+      // Draft open: rivals' cars can't be read, so list roster counts only.
+      if (draftPhase) {
+        const { data: counts, error: countsError } = await supabase.rpc('league_roster_counts', { p_league_id: selectedLeague.id })
+        if (countsError) throw countsError
+        const byUser = new Map((counts || []).map(r => [r.user_id, r.car_count]))
+        const rows = members
+          .map(m => ({ userId: m.user_id, username: m.users?.username || 'Player', carsCount: byUser.get(m.user_id) || 0 }))
+          .sort((a, b) => b.carsCount - a.carsCount || a.username.localeCompare(b.username))
+        if (seq !== fetchSeq.current) return
+        setRosters(rows)
+        setStandings([])
+        setResultsToCome(0)
+        return
+      }
+      setRosters([])
 
       const bonus = await loadBonusOutcome(selectedLeague.id, members.map(m => m.user_id))
       const standingsPromises = members.map(async (member) => {
@@ -3501,8 +3522,40 @@ if (!selectedLeague && !leagueLoading) {
         </div>
       )}
 
+      {/* Draft open: who has picked how many, and when scoring starts */}
+      {!loading && draftPhase && (
+        <div style={{ margin: '8px 18px 160px' }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.amber}`, padding: '12px 14px', marginBottom: 14 }}>
+            <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, letterSpacing: 1.4, color: C.amber }}>
+              {getDraftStatus(selectedLeague).status === 'upcoming' ? 'DRAFT OPENS SOON' : 'DRAFT OPEN'}
+            </div>
+            <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5, marginTop: 6 }}>
+              Picks stay hidden until the draft closes
+              {selectedLeague.draft_ends_at ? ` on ${parseDbTime(selectedLeague.draft_ends_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}.
+              Scores start then.
+            </div>
+          </div>
+          {rosters.length === 0 ? (
+            <div style={{ fontFamily: mono, fontSize: 13, color: C.faint, textAlign: 'center', padding: '32px 0' }}>NO ONE HAS ENTERED YET</div>
+          ) : rosters.map(r => {
+            const isMe = r.userId === user?.id
+            return (
+              <div key={r.userId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 0', borderBottom: `1px solid ${C.border}`, background: isMe ? `${C.red}10` : 'transparent', marginLeft: isMe ? -10 : 0, marginRight: isMe ? -10 : 0, paddingLeft: isMe ? 10 : 0, paddingRight: isMe ? 10 : 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {r.username}
+                  {isMe && <span style={{ marginLeft: 6, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.red }}>· YOU</span>}
+                </div>
+                <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: r.carsCount >= 7 ? C.pos : C.muted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                  {r.carsCount}/7 PICKED
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {/* Empty state */}
-      {!loading && standings.length === 0 && (
+      {!loading && !draftPhase && standings.length === 0 && (
         <div style={{ padding: '48px 18px', textAlign: 'center', fontFamily: 'ui-monospace,monospace', fontSize: 14, color: C.faint }}>
           NO STANDINGS YET<br/>
           <span style={{ fontSize: 11, color: C.muted, marginTop: 8, display: 'block' }}>Draft your garage to appear here.</span>
