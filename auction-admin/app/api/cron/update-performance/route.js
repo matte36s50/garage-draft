@@ -3,6 +3,7 @@ import { serviceRoleKey } from '@/lib/serviceClient';
 import { NextResponse } from 'next/server';
 import { decideBonus } from '@/lib/bonusCar';
 import { carValue } from '@/lib/carValue';
+import { eventScore, scoringOf } from '@/lib/eventScore';
 import { eventCompletion } from '@/lib/eventCompletion';
 
 /**
@@ -76,7 +77,7 @@ export async function GET(request) {
     // Get all leagues (regardless of status - we want to track performance for all)
     const { data: leagues, error: leaguesError } = await supabase
       .from('leagues')
-      .select('id, name, use_manual_auctions, draft_starts_at, draft_ends_at, completed_at, bonus_auction_id, spending_limit');
+      .select('id, name, use_manual_auctions, draft_starts_at, draft_ends_at, completed_at, bonus_auction_id, spending_limit, scoring');
 
     if (leaguesError) throw leaguesError;
 
@@ -247,8 +248,12 @@ export async function GET(request) {
               console.log(`[Cron] BONUS CAR WINNER: ${member.user_id} gets $${bonusValue} (call closest to $${bonus.price})`);
             }
 
-            // Score is total dollar value (including the bonus prize for the winner)
-            const finalScore = parseFloat(totalFinalValue.toFixed(2));
+            // The event's own rule decides the score (lib/eventScore.js): total
+            // dollar value, or profit over what was paid. totalFinalValue already
+            // carries the winner's bonus prize.
+            const finalScore = parseFloat(
+              eventScore({ scoring: scoringOf(league), carsValue: totalFinalValue, spent: totalSpent }).toFixed(2)
+            );
 
             return {
               user_id: member.user_id,
