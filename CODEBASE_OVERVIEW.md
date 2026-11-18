@@ -300,6 +300,24 @@ Else:                          value = current_bid          (live)
 
 ---
 
+### Call the hammer (daily game)
+
+`HammerScreen` in `src/App.js` (screen id `hammer`). It works without an event, and is reached from
+`HammerTeaser` on the dashboard, the events list and the landing page, or from a `?play=hammer` link
+(kept in localStorage through sign‑in by `afterSignIn()`). All data goes through RPCs in
+`supabase_migration_call_the_hammer.sql`:
+
+- `hammer_round(day)`: the day's lots with the player's call and points, the number of calls, and the
+  crowd's median once a lot closes. It picks today's or tomorrow's round if missing.
+- `make_hammer_call(day, auction_id, price)`: refused once the lot has closed. `hammer_calls` has no
+  insert grant, and its RLS hides other players' calls until the lot closes.
+- `hammer_board(from, to)`: standings over settled lots only.
+
+The points rule and the shared price‑call slider range (also used by the bonus car) are in
+`src/utils/hammer.js`. Events logged: `hammer_view`, `hammer_call`.
+
+---
+
 ## 6. REAL-TIME FEATURES
 
 ### Supabase Real-Time Subscriptions
