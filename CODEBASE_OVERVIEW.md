@@ -263,7 +263,9 @@ Else:                          value = current_bid          (live)
 
 **Total Score:**
 - Sum of all car values, plus the bonus car prize for the closest prediction
-- Unspent budget doesn't count
+- The event's rule (`leagues.scoring`, `src/utils/eventScore.js`) decides what the total means:
+  `profit` subtracts what was paid, so unspent budget neither helps nor hurts; `value` (events
+  before November 2026) doesn't, so unspent budget counts for nothing
 - Complete 7-car rosters rank above incomplete ones, then by total score
 
 **Event Completion** (`auction-admin/lib/eventCompletion.js`, run by the hourly score cron):

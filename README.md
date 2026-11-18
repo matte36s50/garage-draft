@@ -22,8 +22,16 @@ value moves, and players are ranked by the total current value of their garage.
 
 ### Scoring
 
-A player's **score** is the value of their garage, plus the bonus‑car prize if they made the closest
-prediction (see `src/utils/bonusCar.js`). Unspent budget doesn't count. Each car counts at:
+Each event carries its own scoring rule in `leagues.scoring` (`src/utils/eventScore.js`, mirrored in
+`auction-admin/lib/eventScore.js`):
+
+- **profit** (new events): what the garage is worth, plus the bonus‑car prize if the player made the
+  closest prediction (`src/utils/bonusCar.js`), minus what was paid for it. Unspent budget neither
+  helps nor hurts, and a garage can finish below zero.
+- **value** (every event before November 2026): what the garage is worth, plus the bonus‑car prize.
+  What was paid doesn't count, so unspent budget is worth nothing.
+
+Under either rule each car counts at:
 
 | Auction | Car counts at |
 |---|---|

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { serviceRoleKey } from '@/lib/serviceClient';
 import { NextResponse } from 'next/server';
 import { toCanonicalItem, canonicalUpsertListings } from '@/lib/canonicalStore';
+import { goodingResult } from '@/lib/houseResults';
 
 /**
  * AUCTION FINALIZER CRON JOB
@@ -511,6 +512,91 @@ export async function POST(request) {
   return runFinalizer({ minAgeMinutes: 5, forceUrls });
 }
 
+// ── Catalogue lots (Gooding Christie's) ─────────────────────────────────────
+// Read straight from the lot page (lib/houseResults.js), so results reach the
+// game even when the catalogue watch can't run. A result counts only when the
+// page names the lot's own sale (auctions.auction_reference), and is stored as
+// the hammer price, the same basis as the low estimate the lot was drafted at.
+const HOUSE_BATCH_SIZE = Number(process.env.HOUSE_BATCH_SIZE || 100);
+const HOUSE_MAX_AGE_DAYS = 21;
+// A two-day sale's lots all carry its first day's start, so a page that names
+// the sale but shows no result yet is not a failure until this long after.
+const HOUSE_RESULT_WAIT_HOURS = 48;
+const HOUSE_USER_AGENT = 'BidPrix/1.0 (fantasy auction game; reads published results; +https://garage-draft.vercel.app)';
+
+async function finalizeHouseLots(supabase, { cutoff, now }) {
+  const summary = { checked: 0, sold: 0, notSold: 0, waiting: 0, failed: 0, results: [] };
+  const { data: lots, error } = await supabase
+    .from('auctions')
+    .select('auction_id, title, url, auction_reference, timestamp_end, finalize_attempts')
+    .ilike('url', '%goodingco.com/lot/%')
+    .is('final_price', null)
+    .not('reserve_not_met', 'is', true)
+    .not('auction_reference', 'is', null)
+    .lt('timestamp_end', cutoff)
+    .gte('timestamp_end', now - HOUSE_MAX_AGE_DAYS * 86400)
+    .lt('finalize_attempts', MAX_FINALIZE_ATTEMPTS)
+    .order('finalize_attempts', { ascending: true })
+    .order('timestamp_end', { ascending: false })
+    .limit(HOUSE_BATCH_SIZE);
+  if (error) return { ...summary, error: error.message };
+
+  const failedIds = [];
+  for (const lot of lots || []) {
+    summary.checked++;
+    let html = null;
+    try {
+      const res = await fetch(lot.url, {
+        headers: { 'User-Agent': HOUSE_USER_AGENT, Accept: 'text/html' },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.ok) html = await res.text();
+    } catch { /* counted as a failure below */ }
+    const result = html ? goodingResult(html, lot.auction_reference) : { outcome: null, reason: 'page did not load' };
+
+    if (result.outcome === 'sold' && result.hammer > 0) {
+      const { error: e } = await supabase.from('auctions')
+        .update({ final_price: result.hammer, reserve_not_met: false })
+        .eq('auction_id', lot.auction_id);
+      if (!e) {
+        summary.sold++;
+        summary.results.push({ id: lot.auction_id, outcome: 'sold', hammer: result.hammer, all_in: result.allIn });
+        console.log(`   🔨 ${lot.title}: sold, hammer $${result.hammer.toLocaleString()} ($${result.allIn.toLocaleString()} with premium)`);
+        continue;
+      }
+      result.reason = `write failed: ${e.message}`;
+    } else if (result.outcome === 'not_sold') {
+      const { error: e } = await supabase.from('auctions')
+        .update({ reserve_not_met: true })
+        .eq('auction_id', lot.auction_id);
+      if (!e) {
+        summary.notSold++;
+        summary.results.push({ id: lot.auction_id, outcome: 'not_sold' });
+        console.log(`   ⚠️ ${lot.title}: did not sell`);
+        continue;
+      }
+      result.reason = `write failed: ${e.message}`;
+    }
+
+    // Still selling (a later session of the same sale): wait without spending attempts.
+    const waitedLongEnough = now - lot.timestamp_end > HOUSE_RESULT_WAIT_HOURS * 3600;
+    if (result.reason === 'no result on the page yet' && !waitedLongEnough) {
+      summary.waiting++;
+      continue;
+    }
+    summary.failed++;
+    failedIds.push(lot.auction_id);
+    summary.results.push({ id: lot.auction_id, outcome: null, reason: result.reason });
+  }
+
+  if (failedIds.length) {
+    const { error: bumpError } = await supabase.rpc('bump_finalize_attempts', { p_ids: failedIds, p_urls: [] });
+    if (bumpError) console.log(`⚠️ Could not record catalogue-lot attempts (${bumpError.message})`);
+  }
+  summary.results = summary.results.slice(0, 20);
+  return summary;
+}
+
 async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
   const supabase = getSupabaseClient();
 
@@ -523,6 +609,16 @@ async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
   try {
     const now = Math.floor(Date.now() / 1000);
     const cutoff = now - (minAgeMinutes * 60);
+
+    // Catalogue lots first, on their own: a failure here must never stop BaT.
+    let house;
+    try {
+      house = await finalizeHouseLots(supabase, { cutoff, now });
+      console.log(`🏛️ Catalogue lots: ${house.checked} checked · ${house.sold} sold · ${house.notSold} not sold · ${house.waiting} waiting · ${house.failed} unresolved`);
+    } catch (e) {
+      house = { error: e.message };
+      console.log(`⚠️ Catalogue lots skipped: ${e.message}`);
+    }
 
     // Auctions ended > minAgeMinutes ago, no final price, not already flagged RNM.
     //
@@ -645,7 +741,7 @@ async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
 
     if (auctions.length === 0) {
       console.log('📭 No auctions need finalization');
-      return NextResponse.json({ success: true, message: 'No auctions to finalize', processed: 0 });
+      return NextResponse.json({ success: true, message: 'No auctions to finalize', processed: 0, catalogueLots: house });
     }
 
     console.log(`📋 Found ${auctions.length} BaT auctions to process`);
@@ -806,6 +902,7 @@ async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
       attemptTracking: attemptTrackingActive,
       successRate,
       canonicalMirror: canonical,
+      catalogueLots: house,
       results: {
         successful: results.successful.slice(0, 10),
         noSale: results.noSale.slice(0, 10),

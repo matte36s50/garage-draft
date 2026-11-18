@@ -27,7 +27,7 @@ function DraftResults({ supabase, selectedLeague, draftStatus, getDefaultCarImag
         .select(`
           id,
           user_id,
-          users!garages_user_id_fkey(username),
+          users!garages_user_id_fkey(username, is_house),
           garage_cars(
             purchase_price,
             auctions!garage_cars_auction_id_fkey(
@@ -43,6 +43,7 @@ function DraftResults({ supabase, selectedLeague, draftStatus, getDefaultCarImag
       // Build by-player list
       const players = (garages || []).map(g => ({
         username: g.users?.username || 'Unknown',
+        isHouse: !!g.users?.is_house,
         cars: (g.garage_cars || [])
           .filter(gc => gc.auctions)
           .map(gc => ({
@@ -66,6 +67,7 @@ function DraftResults({ supabase, selectedLeague, draftStatus, getDefaultCarImag
           }
           auctionMap[id].pickers.push({
             username,
+            isHouse: !!g.users?.is_house,
             purchase_price: gc.purchase_price,
           })
         }
@@ -250,7 +252,7 @@ function DraftResults({ supabase, selectedLeague, draftStatus, getDefaultCarImag
                           className="inline-flex items-center gap-1 bg-bpInk/8 border border-bpInk/15 rounded-full px-2.5 py-0.5 text-xs font-medium"
                         >
                           <span className="text-bpInk/50">●</span>
-                          {p.username}
+                          {p.username}{p.isHouse ? ' (house)' : ''}
                           <span className="text-bpInk/50">· {formatPrice(p.purchase_price)}</span>
                         </span>
                       ))}
@@ -287,6 +289,7 @@ function DraftResults({ supabase, selectedLeague, draftStatus, getDefaultCarImag
                     {player.username.charAt(0).toUpperCase()}
                   </div>
                   <span className="font-bold text-bpInk">{player.username}</span>
+                  {player.isHouse && <span className="text-[10px] font-bold tracking-wide text-bpInk/50 border border-bpInk/20 rounded px-1">HOUSE</span>}
                 </div>
                 <span className="text-sm text-bpInk/50">{player.cars.length}/7 cars</span>
               </div>

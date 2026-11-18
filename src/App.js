@@ -7,6 +7,7 @@ import DraftResults from './components/DraftResults'
 import { bonusPrize, bonusResult, decideBonus } from './utils/bonusCar'
 import { carValue } from './utils/carValue'
 import { parseDbTime } from './utils/dbTime'
+import { eventScore, scoringOf, SCORING } from './utils/eventScore'
 import { garagePercentGain } from './utils/garageGain'
 import { initTracking, setTrackingContext, setTrackingSession, track, trackOnce } from './utils/track'
 
@@ -479,6 +480,7 @@ function fmtPct(n) {
   return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(1)}%`
 }
 
+// eslint-disable-next-line no-unused-vars
 function CarPlaceholder({ tint = '#3a4a6b', height = 86, radius = 2, aspect, maxHeight }) {
   const box = aspect
     ? { width: '100%', aspectRatio: aspect, maxHeight }
@@ -493,6 +495,9 @@ function CarPlaceholder({ tint = '#3a4a6b', height = 86, radius = 2, aspect, max
 
 // Value-trajectory sparkline (SVG area + line). vectorEffect keeps the stroke crisp
 // when the viewBox is stretched to full width; color is driven by gain (green/red).
+// Not in use: the dashboard's curve was drawn from two numbers, not measured, so
+// it was removed. Kept for when the stored daily snapshots are plotted.
+// eslint-disable-next-line no-unused-vars
 function Sparkline({ data, color, width = 300, height = 44 }) {
   if (!data || data.length < 2) return null
   const min = Math.min(...data), max = Math.max(...data)
@@ -550,7 +555,7 @@ function Confetti({ count = 44 }) {
 }
 
 // Final-standings podium: P2 (left) · P1 (center, tallest) · P3 (right).
-function PodiumFinish({ standings = [], meId }) {
+function PodiumFinish({ standings = [], meId, format = fmtCompact }) {
   const top = standings.slice(0, 3)
   if (top.length === 0) return null
   const order = [top[1], top[0], top[2]] // visual L→R: 2nd, 1st, 3rd
@@ -573,7 +578,7 @@ function PodiumFinish({ standings = [], meId }) {
               {p.username}{isMe ? ' · YOU' : ''}
             </div>
             <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>
-              ${(Math.round(p.totalScore || 0) / 1000).toFixed(1)}k
+              {format(p.totalScore || 0)}
             </div>
             <div style={{ width: '100%', height: m.h, background: `${m.color}1f`, border: `1px solid ${m.color}`, borderBottom: 'none', borderTopLeftRadius: 3, borderTopRightRadius: 3, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 8 }}>
               <span style={{ fontFamily: mono, fontSize: 26, fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.medal}</span>
@@ -816,6 +821,16 @@ function ReserveTag({ car }) {
   )
 }
 
+// Marks a player the admin seeded to fill a table (users.is_house), so nobody
+// takes one for a person.
+function HouseTag() {
+  return (
+    <span title="A house player, added to fill the table" style={{ marginLeft: 6, fontFamily: mono, fontSize: 9.5, fontWeight: 800, letterSpacing: 0.8, color: C.muted, border: `1px solid ${C.border}`, padding: '1px 4px', borderRadius: 2, verticalAlign: 'middle' }}>
+      HOUSE
+    </span>
+  )
+}
+
 // "$30k–$40k" when a lot has a catalogue estimate.
 function estimateText(car) {
   if (!car || car.estimateLow == null) return null
@@ -845,8 +860,14 @@ const CAR_STATUS = {
   live:      { label: 'LIVE',           color: '#3a8aef' },
 }
 
-// What VALUE means, stated the same way under every total.
-function valueFootnote(eventOver) {
+// What the score means, stated the same way under every total. It follows the
+// event's own scoring rule (utils/eventScore.js).
+function valueFootnote(eventOver, scoring) {
+  if (scoring === SCORING.PROFIT) {
+    return eventOver
+      ? "PROFIT = what your cars sold for, minus what you paid for them (no sale: 25% of the high bid, result not in yet: its price) + any bonus prize. Unspent budget neither helps nor hurts."
+      : "PROFIT = what your cars are worth now, minus what you paid for them (sold: hammer price, no sale: 25% of the high bid) + any bonus prize. Unspent budget neither helps nor hurts."
+  }
   return eventOver
     ? "VALUE = your cars at their final prices (no sale: 25% of the high bid, result not in yet: the high bid) + any bonus prize. Unspent budget doesn't count."
     : "VALUE = your cars at their live bids (sold: hammer price, no sale: 25% of the high bid) + any bonus prize. Unspent budget doesn't count."
@@ -1442,7 +1463,8 @@ export default function BidPrixApp() {
       }
 
       updateSelectedLeague(normalizedLeague)
-      updateCurrentScreen('dashboard')
+      // Someone arriving by invite while the draft is open came to pick cars.
+      updateCurrentScreen(getDraftStatus(league).status === 'open' ? 'cars' : 'dashboard')
       return true
     } catch (err) {
       console.error('Magic link: error handling pending league', err)
@@ -1605,6 +1627,18 @@ export default function BidPrixApp() {
     setLeagueLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id])
+
+  // The saved event is a copy from an earlier visit. When the events load, take
+  // the current row, so a change to its dates, budget or scoring rule reaches a
+  // player who already had it open.
+  useEffect(() => {
+    if (!selectedLeague) return
+    const fresh = [...leagues, ...userLeagues].find(l => l.id === selectedLeague.id)
+    if (!fresh) return
+    const keys = ['name', 'scoring', 'draft_starts_at', 'draft_ends_at', 'end_date', 'spending_limit', 'bonus_auction_id', 'use_manual_auctions']
+    if (keys.some(k => fresh[k] !== selectedLeague[k])) updateSelectedLeague({ ...selectedLeague, ...fresh })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagues, userLeagues])
 
   useEffect(() => {
   if (selectedLeague && user) {
@@ -1905,12 +1939,13 @@ function BonusCarCard({ isWide }) {
         </div>
 
         {/* Your call vs current bid */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
+        {/* Wraps onto two lines when a seven- or eight-figure call needs the width. */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px 12px', marginBottom: 12 }}>
           <div>
             <div style={{ fontFamily: mono, fontSize: 10.5, color: C.amber, letterSpacing: 1.3, marginBottom: 4 }}>YOUR CALL</div>
-            <div style={{ fontFamily: mono, fontSize: 34, fontWeight: 800, color: C.amber, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>{noCall ? '—' : fmtUSD(call)}</div>
+            <div style={{ fontFamily: mono, fontSize: 'clamp(26px, 8.5vw, 34px)', fontWeight: 800, color: C.amber, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1, whiteSpace: 'nowrap' }}>{noCall ? '—' : fmtUSD(call)}</div>
           </div>
-          <div style={{ textAlign: 'right' }}>
+          <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
             <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>{hasEstimate ? 'ESTIMATE' : 'CURRENT BID'}</div>
             <div style={{ fontFamily: mono, fontSize: hasEstimate ? 15 : 18, fontWeight: 700, color: C.text, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2, whiteSpace: 'nowrap' }}>{hasEstimate ? estimateText(car) : fmtUSD(car.currentBid)}</div>
             {!noCall && <div style={{ fontFamily: mono, fontSize: 11, color: overBid >= 0 ? C.pos : C.neg, marginTop: 3, whiteSpace: 'nowrap' }}>{overBid >= 0 ? '+' : ''}{fmtK(overBid)} vs {hasEstimate ? 'low est.' : 'now'}</div>}
@@ -1977,65 +2012,97 @@ function BonusCarCard({ isWide }) {
 
 function LandingScreen({ onGetStarted }) {
   const isWide = useIsWide(700)
-  const TICKER_ROWS = [
-    { t: 'NEW BID', n: '1991 BMW M5', v: '+$2,700', good: true },
-    { t: 'SELECTED', n: 'shop_rat → S2000', v: '$24.0k', good: null },
-    { t: 'SOLD', n: 'Land Cruiser', v: '$48,200', good: true },
-  ]
-  const MOCK_CARS = [
-    { id: 'c1', title: '1991 BMW M5 (E34)',        year: 1991, price: 38500, img: '#3a4a6b', trend: 7 },
-    { id: 'c2', title: '1995 Porsche 993 Carrera', year: 1995, price: 92000, img: '#6b3a3a', trend: 5 },
-    { id: 'c3', title: '1987 Toyota Land Cruiser', year: 1987, price: 42000, img: '#3a5a4a', trend: 6 },
-    { id: 'c4', title: '1972 Datsun 240Z',         year: 1972, price: 28500, img: '#5a4a3a', trend: 9 },
-  ]
-  // Pull a few real open auctions (with photos) so the grid shows live lots
-  // instead of color placeholders. Falls back to MOCK_CARS if the fetch is
-  // empty or fails, so the landing page always renders.
-  const [gridCars, setGridCars] = useState(null)
-  const [lotCount, setLotCount] = useState(null)
+  // Everything on this page is read from the game: which events are open, the
+  // event a visitor was invited to, and real lots from its pool. Nothing is
+  // shown that isn't true right now.
+  const invitedId = (() => { try { return sessionStorage.getItem(PENDING_LEAGUE_KEY) } catch { return null } })()
+  const [event, setEvent] = useState(null)         // the invite, else what is drafting, else what opens next
+  const [openCount, setOpenCount] = useState(null) // events with an open draft; null until loaded
+  const [pool, setPool] = useState({ cars: [], count: null })
   useEffect(() => {
     let active = true
     ;(async () => {
       try {
-        const nowSec = Math.floor(Date.now() / 1000)
-        const { data, error, count } = await supabase
-          .from('auctions')
-          .select('auction_id, title, make, year, current_bid, price_at_48h, image_url', { count: 'exact' })
-          .not('image_url', 'is', null)
-          .is('final_price', null)
-          .gte('timestamp_end', nowSec)
-          .order('timestamp_end', { ascending: true })
-          .limit(4)
+        const withCount = l => ({ ...l, playerCount: l.league_members?.[0]?.count || 0 })
+        const { data: rows, error } = await supabase.from('leagues').select('*, league_members(count)').eq('is_public', true)
         if (error) throw error
+        let all = (rows || []).map(withCount)
+        // An invite to a private event isn't in the public list.
+        if (invitedId && !all.some(l => l.id === invitedId)) {
+          const { data: one } = await supabase.from('leagues').select('*, league_members(count)').eq('id', invitedId).maybeSingle()
+          if (one) all = [...all, withCount(one)]
+        }
+        const statusOf = l => getDraftStatus(l).status
+        const open = all.filter(l => statusOf(l) === 'open')
+          .sort((a, b) => (parseDbTime(a.draft_ends_at) || 0) - (parseDbTime(b.draft_ends_at) || 0))
+        const upcoming = all.filter(l => statusOf(l) === 'upcoming')
+          .sort((a, b) => (parseDbTime(a.draft_starts_at) || 0) - (parseDbTime(b.draft_starts_at) || 0))
+        const featured = all.find(l => l.id === invitedId) || open[0] || upcoming[0] || null
         if (!active) return
-        const cars = (data || []).map((a) => {
-          const baseline = parseFloat(a.price_at_48h)
-          const current = parseFloat(a.current_bid) || baseline || 0
-          const trend = baseline ? Math.round(((current - baseline) / baseline) * 100) : 0
-          return {
-            id: a.auction_id,
-            title: a.title || `${a.year || ''} ${a.make || ''}`.trim(),
-            make: a.make,
-            year: a.year,
-            price: current,
-            imageUrl: a.image_url || getDefaultCarImage(a.make),
-            trend,
-          }
+        setOpenCount(open.length)
+        setEvent(featured)
+        if (!featured) return
+
+        const cols = 'auction_id, title, make, year, current_bid, price_at_48h, image_url, estimate_low, estimate_high, no_reserve'
+        const toCar = a => ({
+          id: a.auction_id,
+          title: a.title || `${a.year || ''} ${a.make || ''}`.trim(),
+          make: a.make,
+          year: a.year,
+          price: parseFloat(a.price_at_48h) || parseFloat(a.current_bid) || 0,
+          currentBid: parseFloat(a.current_bid) || 0,
+          imageUrl: a.image_url,
+          ...lotDetails(a),
         })
-        if (cars.length) setGridCars(cars)
-        if (typeof count === 'number') setLotCount(count)
+        let cars = [], count = null
+        if (featured.use_manual_auctions) {
+          const { data: la, error: e2 } = await supabase.from('league_auctions')
+            .select(`auctions!league_auctions_auction_id_fkey(${cols})`).eq('league_id', featured.id).limit(300)
+          if (e2) throw e2
+          const lots = (la || []).map(r => r.auctions).filter(Boolean).map(toCar)
+          count = lots.length
+          // The headline lots are the draw: show the four dearest that have a photo.
+          cars = lots.filter(c => c.imageUrl).sort((a, b) => b.price - a.price).slice(0, 4)
+        } else {
+          const nowSec = Math.floor(Date.now() / 1000)
+          const { data, error: e3, count: n } = await supabase.from('auctions')
+            .select(cols, { count: 'exact' })
+            .gte('timestamp_end', nowSec + 4 * 86400).lte('timestamp_end', nowSec + 5 * 86400)
+            .not('price_at_48h', 'is', null).is('final_price', null).not('image_url', 'is', null)
+            .order('timestamp_end', { ascending: true }).limit(4)
+          if (e3) throw e3
+          cars = (data || []).map(toCar)
+          count = typeof n === 'number' ? n : null
+        }
+        if (active) setPool({ cars, count })
       } catch (e) {
-        console.warn('Landing grid: falling back to mock cars', e)
+        console.warn('Landing: could not load events', e)
+        if (active) setOpenCount(prev => (prev == null ? 0 : prev))
       }
     })()
     return () => { active = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const status = event ? getDraftStatus(event).status : null
+  const invited = !!event && event.id === invitedId
+  // Joining from here carries the event through sign-up, like an invite link.
+  const joinEvent = () => {
+    try { if (event && status === 'open') sessionStorage.setItem(PENDING_LEAGUE_KEY, event.id) } catch { /* storage blocked */ }
+    onGetStarted()
+  }
+  const badge = openCount == null ? null
+    : openCount > 0 ? { text: `DRAFT OPEN · ${openCount} ${openCount === 1 ? 'EVENT' : 'EVENTS'}`, color: C.red, live: true }
+    : status === 'upcoming' ? { text: `NEXT EVENT OPENS ${parseDbTime(event.draft_starts_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}`, color: C.amber, live: false }
+    : { text: 'NO EVENT OPEN RIGHT NOW', color: C.muted, live: false }
+  const monoFont = 'ui-monospace,"JetBrains Mono",monospace'
+
   return (
     <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* App bar */}
       <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <CBrand />
-        <button onClick={onGetStarted} style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, letterSpacing: 0.5, background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button onClick={onGetStarted} style={{ fontFamily: monoFont, fontSize: 11, color: C.muted, letterSpacing: 0.5, background: 'none', border: 'none', cursor: 'pointer' }}>
           SIGN IN ▸
         </button>
       </div>
@@ -2043,79 +2110,108 @@ function LandingScreen({ onGetStarted }) {
 
       {/* Hero */}
       <div style={{ padding: '22px 18px 18px' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.red, letterSpacing: 1.6, fontWeight: 700, background: `${C.red}15`, padding: '5px 8px', border: `1px solid ${C.red}40`, marginBottom: 18 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.red, boxShadow: `0 0 10px ${C.red}`, display: 'inline-block' }} />
-          LIVE · 3 EVENTS DRAFTING
-        </div>
-        <h1 style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 'clamp(36px,10vw,52px)', fontWeight: 800, lineHeight: 0.95, letterSpacing: -2, margin: '0 0 16px', textTransform: 'uppercase' }}>
+        {badge && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: monoFont, fontSize: 11, color: badge.color, letterSpacing: 1.6, fontWeight: 700, background: `${badge.color}15`, padding: '5px 8px', border: `1px solid ${badge.color}40`, marginBottom: 18 }}>
+            {badge.live && <span style={{ width: 6, height: 6, borderRadius: '50%', background: badge.color, boxShadow: `0 0 10px ${badge.color}`, display: 'inline-block' }} />}
+            {badge.text}
+          </div>
+        )}
+        <h1 style={{ fontFamily: monoFont, fontSize: 'clamp(36px,10vw,52px)', fontWeight: 800, lineHeight: 0.95, letterSpacing: -2, margin: '0 0 16px', textTransform: 'uppercase' }}>
           RACE THE<br/>
           <span style={{ color: C.red }}>MARKET.</span>
         </h1>
-        <p style={{ fontSize: 14, lineHeight: 1.5, color: C.muted, margin: '0 0 22px', maxWidth: 320 }}>
-          Seven cars. $175k budget. One week of the BaT market. The leaderboard updates every minute.
+        <p style={{ fontSize: 14, lineHeight: 1.5, color: C.muted, margin: '0 0 22px', maxWidth: 340 }}>
+          Pick seven cars from a real auction and stay inside the budget. When the hammers fall, the best garage wins. Free to play.
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onGetStarted} style={{ flex: 1, height: 50, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontWeight: 800, fontSize: 13, fontFamily: 'ui-monospace,monospace', letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer' }}>
-            ENTER PIT LANE ▸
+          <button onClick={event && status === 'open' ? joinEvent : onGetStarted} style={{ flex: 1, height: 50, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontWeight: 800, fontSize: 13, fontFamily: monoFont, letterSpacing: 1.4, textTransform: 'uppercase', cursor: 'pointer' }}>
+            {event && status === 'open' ? 'JOIN THE DRAFT ▸' : 'ENTER PIT LANE ▸'}
           </button>
-          <button onClick={onGetStarted} style={{ width: 50, height: 50, borderRadius: 4, border: `1px solid ${C.borderHi}`, background: 'transparent', color: C.text, fontFamily: 'ui-monospace,monospace', fontSize: 16, cursor: 'pointer' }}>?</button>
+          <a href="#how-it-works" aria-label="How it works" style={{ width: 50, height: 50, borderRadius: 4, border: `1px solid ${C.borderHi}`, background: 'transparent', color: C.text, fontFamily: monoFont, fontSize: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>?</a>
         </div>
       </div>
 
-      {/* Live ticker */}
-      <div style={{ margin: '6px 0 22px', borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, padding: '12px 18px', background: C.surface }}>
-        <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 8 }}>{'//'} LIVE TICKER</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {TICKER_ROWS.map((r, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'ui-monospace,monospace', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: r.t === 'NEW BID' ? C.red : r.t === 'SOLD' ? C.pos : C.amber, width: 56 }}>{r.t}</span>
-              <span style={{ flex: 1, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.n}</span>
-              <span style={{ color: r.good === true ? C.pos : C.text, fontWeight: 700 }}>{r.v}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Featured grid */}
-      <div style={{ padding: '0 18px 24px' }}>
-        <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>{'//'} THIS WEEK&apos;S GRID — {lotCount ?? 72} LOTS</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {(gridCars || MOCK_CARS).map((c, i) => (
-            <div key={c.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10 }}>
-              {c.imageUrl
-                ? <CarImg car={c} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 320 : undefined} radius={2} />
-                : <CarPlaceholder tint={c.img} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 320 : undefined} radius={2} />}
-              <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 8 }}>LOT {String(i + 1).padStart(4,'0')} · {c.year}</div>
-              <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, height: 38, lineHeight: 1.3, overflow: 'hidden' }}>{c.title.replace(`${c.year} `,'')}</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 6 }}>
-                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>${(c.price/1000).toFixed(0)}k</div>
-                <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: c.trend >= 0 ? C.pos : C.red }}>{c.trend >= 0 ? '+' : ''}{c.trend}%</div>
+      {/* The event: an invite, what is drafting now, or what opens next */}
+      {event && (
+        <div style={{ margin: '6px 18px 22px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${status === 'open' ? C.red : C.amber}`, padding: '14px 16px' }}>
+          <div style={{ fontFamily: monoFont, fontSize: 11, letterSpacing: 1.6, color: status === 'open' ? C.red : C.amber, fontWeight: 700, marginBottom: 6 }}>
+            {'//'} {invited ? "YOU'RE INVITED" : status === 'open' ? 'DRAFTING NOW' : status === 'upcoming' ? 'OPENS NEXT' : status === 'closed' ? 'AUCTION UNDER WAY' : 'FINISHED'}
+          </div>
+          <div style={{ fontSize: 19, fontWeight: 700, lineHeight: 1.2, letterSpacing: -0.2 }}>{event.name}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 12 }}>
+            {[
+              { label: 'BUDGET', value: fmtK(event.spending_limit || 200000) },
+              { label: 'LOTS', value: pool.count != null ? String(pool.count) : '—' },
+              status === 'open' ? { label: 'DRAFT CLOSES', value: event.draft_ends_at ? calculateTimeLeft(parseDbTime(event.draft_ends_at)) : '—' }
+                : status === 'upcoming' ? { label: 'DRAFT OPENS', value: calculateTimeLeft(parseDbTime(event.draft_starts_at)) }
+                : { label: 'PLAYERS', value: String(event.playerCount || 0) },
+            ].map(s => (
+              <div key={s.label} style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: monoFont, fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>{s.label}</div>
+                <div style={{ fontFamily: monoFont, fontSize: 15, fontWeight: 700, marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          {status === 'open' && (
+            <button onClick={joinEvent} style={{ marginTop: 14, width: '100%', height: 44, borderRadius: 4, border: `1px solid ${C.red}66`, background: 'transparent', color: C.red, fontWeight: 800, fontSize: 12, fontFamily: monoFont, letterSpacing: 1.3, cursor: 'pointer' }}>
+              JOIN THIS EVENT ▸
+            </button>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* The Format */}
-      <div style={{ margin: '0 18px', padding: '20px', background: C.surface, border: `1px solid ${C.border}` }}>
-        <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 14 }}>{'//'} THE FORMAT</div>
+      {/* Real lots from that event's pool */}
+      {pool.cars.length > 0 && (
+        <div style={{ padding: '0 18px 24px' }}>
+          <div style={{ fontFamily: monoFont, fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 10 }}>
+            {'//'} IN THE POOL{pool.count != null ? ` — ${pool.count} LOTS` : ''}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8 }}>
+            {pool.cars.map(c => (
+              <div key={c.id} style={{ background: C.surface, border: `1px solid ${C.border}`, padding: 10 }}>
+                <CarImg car={c} height={isWide ? undefined : 118} aspect={isWide ? '16 / 9' : undefined} maxHeight={isWide ? 320 : undefined} radius={2} />
+                <div style={{ fontFamily: monoFont, fontSize: 11, color: C.muted, letterSpacing: 0.5, marginTop: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.year} · {(c.make || '').toUpperCase()}</div>
+                <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4, height: 38, lineHeight: 1.3, overflow: 'hidden' }}>{c.title.replace(`${c.year} `, '').replace(/^\s*no[- ]reserve:?\s*/i, '')}</div>
+                {/* A catalogue lot's price is its low estimate, so the estimate says both. */}
+                {c.estimateLow != null ? (
+                  <div style={{ fontFamily: monoFont, fontSize: 12.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginTop: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ color: C.faint, fontWeight: 600 }}>EST </span>{estimateText(c)}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, marginTop: 6 }}>
+                    <div style={{ fontFamily: monoFont, fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtK(c.price)}</div>
+                    <div style={{ fontFamily: monoFont, fontSize: 11, color: C.muted, whiteSpace: 'nowrap' }}>{c.currentBid ? `BID ${fmtK(c.currentBid)}` : ''}</div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* How it works */}
+      <div id="how-it-works" style={{ margin: '0 18px', padding: '20px', background: C.surface, border: `1px solid ${C.border}` }}>
+        <div style={{ fontFamily: monoFont, fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 14 }}>{'//'} HOW IT WORKS</div>
         {[
-          { n: '01', t: 'SELECT', d: 'Pick 7 live auctions. Price locks at the 48-hour mark.' },
-          { n: '02', t: 'BID',    d: 'Real bids roll in. Watch the market move in your favour.' },
-          { n: '03', t: 'WIN',    d: 'Hammer prices tally. Best auction picks take the podium.' },
+          { n: '01', t: 'PICK', d: 'Choose seven cars from a real auction. Each has a price, and your seven must fit the budget.' },
+          { n: '02', t: 'CALL', d: 'Call the hammer price of the bonus car. The closest call wins a prize.' },
+          { n: '03', t: 'WIN',  d: 'The auction decides. When the hammers fall, the garage that did best takes the podium.' },
         ].map((s, i) => (
           <div key={s.n} style={{ display: 'grid', gridTemplateColumns: '40px 1fr', gap: 12, padding: '12px 0', borderTop: i === 0 ? 'none' : `1px solid ${C.border}` }}>
-            <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 22, fontWeight: 800, color: C.red }}>{s.n}</div>
+            <div style={{ fontFamily: monoFont, fontSize: 22, fontWeight: 800, color: C.red }}>{s.n}</div>
             <div>
-              <div style={{ fontFamily: 'ui-monospace,monospace', fontWeight: 700, fontSize: 14, letterSpacing: 0.5 }}>{s.t}</div>
+              <div style={{ fontFamily: monoFont, fontWeight: 700, fontSize: 14, letterSpacing: 0.5 }}>{s.t}</div>
               <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3, lineHeight: 1.4 }}>{s.d}</div>
             </div>
           </div>
         ))}
+        <div style={{ fontSize: 12.5, color: C.faint, marginTop: 10, lineHeight: 1.5 }}>
+          No money changes hands. Budgets, scores and prizes are game points.
+        </div>
       </div>
 
       <div style={{ padding: 24 }}>
-        <button onClick={onGetStarted} style={{ width: '100%', height: 50, borderRadius: 4, background: 'transparent', color: C.text, fontWeight: 700, fontSize: 13, fontFamily: 'ui-monospace,monospace', letterSpacing: 1.4, border: `1px solid ${C.borderHi}`, textTransform: 'uppercase', cursor: 'pointer' }}>
+        <button onClick={onGetStarted} style={{ width: '100%', height: 50, borderRadius: 4, background: 'transparent', color: C.text, fontWeight: 700, fontSize: 13, fontFamily: monoFont, letterSpacing: 1.4, border: `1px solid ${C.borderHi}`, textTransform: 'uppercase', cursor: 'pointer' }}>
           CREATE FREE ACCOUNT ▸
         </button>
         <LegalLinks />
@@ -2181,7 +2277,7 @@ function LoginScreen() {
         {isSignUp ? 'CREATE ACCOUNT' : 'SIGN IN'}
       </div>
       <div style={{ fontSize: 13, color: C.muted, marginBottom: 28 }}>
-        {isSignUp ? 'Choose your callsign. First race is free.' : 'Welcome back to the grid.'}
+        {isSignUp ? 'Choose your callsign. Free to play.' : 'Welcome back to the grid.'}
       </div>
 
       <CheckerBar height={2} />
@@ -2936,8 +3032,11 @@ function GarageScreen({ onNavigate, currentScreen }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
           {[
             { label: 'ROSTER',   value: `${garage.length}/7`, color: garage.length === 7 ? C.pos : C.text },
-            { label: 'BUDGET',   value: fmtK(budget),         color: budget < 20000 ? C.amber : C.text },
-            { label: 'NET GAIN', value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
+            { label: canModify ? 'BUDGET LEFT' : 'UNSPENT', value: fmtK(budget), color: canModify && budget < 20000 ? C.amber : C.text },
+            // Nothing is scored while the draft is open, so show the spend, not a gain.
+            canModify
+              ? { label: 'SPENT', value: fmtCompact(totalDraftValue), color: C.text }
+              : { label: scoringOf(selectedLeague) === SCORING.PROFIT ? 'PROFIT' : 'NET GAIN', value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
           ].map(m => (
             <div key={m.label} style={{ textAlign: 'center' }}>
               <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>{m.label}</div>
@@ -2971,7 +3070,7 @@ function GarageScreen({ onNavigate, currentScreen }) {
             const gainPct = car.purchasePrice > 0 ? ((gain / car.purchasePrice) * 100).toFixed(1) : '0.0'
             const valueLabel = status === 'live' ? 'NOW' : status === 'sold' ? 'SOLD' : 'COUNTS'
             const valueNote = status === 'no_sale' ? `25% of the ${fmtK(car.currentBid)} high bid`
-              : status === 'pending' ? 'high bid until the result is in'
+              : status === 'pending' ? (car.estimateLow != null ? 'counts at its price until the result is in' : 'high bid until the result is in')
               : null
             const hasAuctionLink = car.auctionUrl && car.auctionUrl !== '#'
             const carTitle = car.title && car.title.replace(`${car.year} `, '')
@@ -3009,21 +3108,31 @@ function GarageScreen({ onNavigate, currentScreen }) {
                 </div>
                 <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
                   <div>
-                    <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>DRAFT</div>
+                    <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>PAID</div>
                     <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtK(car.purchasePrice)}</div>
                   </div>
-                  <div>
-                    <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>{valueLabel}</div>
-                    <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: gainColor(gain) }}>{fmtK(value)}</div>
+                  {canModify ? (
+                    // Drafting: nothing is scored yet, so show what the price is measured against.
+                    <div>
+                      <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>{car.estimateLow != null ? 'ESTIMATE' : 'BID NOW'}</div>
+                      <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: C.muted }}>{car.estimateLow != null ? estimateText(car) : fmtK(car.currentBid)}</div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1 }}>{valueLabel}</div>
+                      <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: gainColor(gain) }}>{fmtK(value)}</div>
+                    </div>
+                  )}
+                </div>
+                {!canModify && (
+                  <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: gainColor(gain), fontVariantNumeric: 'tabular-nums' }}>
+                      {gain >= 0 ? '+' : ''}{fmtCompact(gain)}
+                    </span>
+                    <span style={{ fontFamily: mono, fontSize: 11, color: gainColor(gain) }}>({gain >= 0 ? '+' : ''}{gainPct}%)</span>
                   </div>
-                </div>
-                <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: gainColor(gain), fontVariantNumeric: 'tabular-nums' }}>
-                    {gain >= 0 ? '+' : ''}{fmtCompact(gain)}
-                  </span>
-                  <span style={{ fontFamily: mono, fontSize: 11, color: gainColor(gain) }}>({gain >= 0 ? '+' : ''}{gainPct}%)</span>
-                </div>
-                {valueNote && (
+                )}
+                {!canModify && valueNote && (
                   <div style={{ marginTop: 4, fontFamily: mono, fontSize: 10.5, color: C.muted, lineHeight: 1.3 }}>{valueNote}</div>
                 )}
                 {canModify && (
@@ -3054,6 +3163,8 @@ function LeaderboardScreen({ onNavigate, currentScreen }) {
   const { isChatOpen, leagueLoading, marketTick, selectedLeague, setIsChatOpen, user } = useApp()
   const [standings, setStandings] = useState([])
   const [resultsToCome, setResultsToCome] = useState(0)
+  // While a draft is open, how many cars each player has picked (never which).
+  const [rosters, setRosters] = useState([])
   const [loading, setLoading] = useState(true)
   const [sortBy, setSortBy] = useState('total_value')
   const [showConfetti, setShowConfetti] = useState(false)
@@ -3063,6 +3174,12 @@ function LeaderboardScreen({ onNavigate, currentScreen }) {
   const sortByRef = useRef(sortBy)
   sortByRef.current = sortBy
   const isFinal = selectedLeague ? getDraftStatus(selectedLeague).status === 'ended' : false
+  // The event's own scoring rule (utils/eventScore.js): garage value, or profit.
+  const scoring = scoringOf(selectedLeague)
+  const profitMode = scoring === SCORING.PROFIT
+  // Before the draft closes nothing is scored, and rivals' picks are hidden by
+  // the database (supabase_migration_blind_draft.sql).
+  const draftPhase = selectedLeague ? ['open', 'upcoming'].includes(getDraftStatus(selectedLeague).status) : false
 
   // Fire the checkered-flag confetti once, when the final results first land.
   useEffect(() => {
@@ -3125,16 +3242,32 @@ if (!selectedLeague && !leagueLoading) {
         .select(`
             user_id,
             total_score,
-            users (username)
+            users (username, is_house)
           `)
         .eq('league_id', selectedLeague.id)
 
       if (membersError) throw membersError
 
       if (!members || members.length === 0) {
-        if (seq === fetchSeq.current) setStandings([])
+        if (seq === fetchSeq.current) { setStandings([]); setRosters([]) }
         return
       }
+
+      // Draft open: rivals' cars can't be read, so list roster counts only.
+      if (draftPhase) {
+        const { data: counts, error: countsError } = await supabase.rpc('league_roster_counts', { p_league_id: selectedLeague.id })
+        if (countsError) throw countsError
+        const byUser = new Map((counts || []).map(r => [r.user_id, r.car_count]))
+        const rows = members
+          .map(m => ({ userId: m.user_id, username: m.users?.username || 'Player', isHouse: !!m.users?.is_house, carsCount: byUser.get(m.user_id) || 0 }))
+          .sort((a, b) => b.carsCount - a.carsCount || a.username.localeCompare(b.username))
+        if (seq !== fetchSeq.current) return
+        setRosters(rows)
+        setStandings([])
+        setResultsToCome(0)
+        return
+      }
+      setRosters([])
 
       const bonus = await loadBonusOutcome(selectedLeague.id, members.map(m => m.user_id))
       const standingsPromises = members.map(async (member) => {
@@ -3142,6 +3275,7 @@ if (!selectedLeague && !leagueLoading) {
         return {
           userId: member.user_id,
           username: member.users?.username || 'Player',
+          isHouse: !!member.users?.is_house,
           ...score
         }
       })
@@ -3241,6 +3375,8 @@ if (!selectedLeague && !leagueLoading) {
 
       // Bonus car prize (see utils/bonusCar.js), once the bonus auction has a result
       const bonusPrizeWon = bonus && bonus.winners.includes(userId) ? bonus.share : 0
+      // The event's own rule decides the score: garage value, or profit (utils/eventScore.js).
+      const score = eventScore({ scoring, carsValue: totalFinalValue, spent: totalSpent, bonus: bonusPrizeWon })
       totalFinalValue += bonusPrizeWon
       totalDollarGain += bonusPrizeWon
 
@@ -3250,7 +3386,7 @@ if (!selectedLeague && !leagueLoading) {
       const isRosterComplete = carsCount >= 7
 
       return {
-        totalScore: parseFloat(totalFinalValue.toFixed(2)),
+        totalScore: parseFloat(score.toFixed(2)),
         totalFinalValue: parseFloat(totalFinalValue.toFixed(2)),
         percentGain: parseFloat(percentGain.toFixed(2)),
         totalDollarGain: parseFloat(totalDollarGain.toFixed(2)),
@@ -3321,11 +3457,18 @@ if (!selectedLeague && !leagueLoading) {
   const myRank = me ? rankedByValue.findIndex(p => p.userId === me.userId) + 1 : null
   const p1 = champion
   const gapToP1 = me && p1 ? me.totalScore - p1.totalScore : null
-  const sortTabs = [
+  // A profit event has one ranking, so it has no tabs. The older value events
+  // keep theirs: value decided the winner, and NET and % GAIN only reorder.
+  const sortTabs = profitMode ? [] : [
     { key: 'total_value', label: 'VALUE' },
     { key: 'total_dollar', label: 'NET' },
     { key: 'total_percent', label: '% GAIN' },
   ]
+  // A score in full and in short. Profit carries its sign; value never needed one.
+  const signed = n => (n > 0 ? '+' : n < 0 ? '-' : '')
+  const scoreFull = n => (profitMode ? signed(n) : '') + '$' + Math.abs(Math.round(n || 0)).toLocaleString()
+  const scoreShort = n => (profitMode && n > 0 ? '+' : '') + fmtCompact(n || 0)
+  const scoreColor = n => (!profitMode ? C.text : n > 0 ? C.pos : n < 0 ? C.neg : C.text)
 
   return (
     <div style={{ background: C.bg, color: C.text, minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -3367,13 +3510,17 @@ if (!selectedLeague && !leagueLoading) {
               {champion.username}{champion.userId === user?.id ? ' · YOU' : ''}
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 6, fontFamily: mono, fontVariantNumeric: 'tabular-nums' }}>
-              <span style={{ fontSize: 22, fontWeight: 800 }}>${Math.round(champion.totalScore || 0).toLocaleString()}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: champion.totalDollarGain >= 0 ? C.pos : C.neg }}>
-                {champion.totalDollarGain >= 0 ? '+' : ''}${Math.round(champion.totalDollarGain || 0).toLocaleString()} net
-              </span>
+              <span style={{ fontSize: 22, fontWeight: 800, color: scoreColor(champion.totalScore) }}>{scoreFull(champion.totalScore)}</span>
+              {profitMode ? (
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>profit</span>
+              ) : (
+                <span style={{ fontSize: 12, fontWeight: 700, color: champion.totalDollarGain >= 0 ? C.pos : C.neg }}>
+                  {champion.totalDollarGain >= 0 ? '+' : ''}${Math.round(champion.totalDollarGain || 0).toLocaleString()} net
+                </span>
+              )}
             </div>
           </div>
-          <PodiumFinish standings={rankedByValue} meId={user?.id} />
+          <PodiumFinish standings={rankedByValue} meId={user?.id} format={scoreShort} />
         </>
       )}
 
@@ -3386,8 +3533,41 @@ if (!selectedLeague && !leagueLoading) {
         </div>
       )}
 
+      {/* Draft open: who has picked how many, and when scoring starts */}
+      {!loading && draftPhase && (
+        <div style={{ margin: '8px 18px 160px' }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.amber}`, padding: '12px 14px', marginBottom: 14 }}>
+            <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, letterSpacing: 1.4, color: C.amber }}>
+              {getDraftStatus(selectedLeague).status === 'upcoming' ? 'DRAFT OPENS SOON' : 'DRAFT OPEN'}
+            </div>
+            <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5, marginTop: 6 }}>
+              Picks stay hidden until the draft closes
+              {selectedLeague.draft_ends_at ? ` on ${parseDbTime(selectedLeague.draft_ends_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}.
+              Scores start then.
+            </div>
+          </div>
+          {rosters.length === 0 ? (
+            <div style={{ fontFamily: mono, fontSize: 13, color: C.faint, textAlign: 'center', padding: '32px 0' }}>NO ONE HAS ENTERED YET</div>
+          ) : rosters.map(r => {
+            const isMe = r.userId === user?.id
+            return (
+              <div key={r.userId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 0', borderBottom: `1px solid ${C.border}`, background: isMe ? `${C.red}10` : 'transparent', marginLeft: isMe ? -10 : 0, marginRight: isMe ? -10 : 0, paddingLeft: isMe ? 10 : 0, paddingRight: isMe ? 10 : 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {r.username}
+                  {r.isHouse && <HouseTag />}
+                  {isMe && <span style={{ marginLeft: 6, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.red }}>· YOU</span>}
+                </div>
+                <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: r.carsCount >= 7 ? C.pos : C.muted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                  {r.carsCount}/7 PICKED
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {/* Empty state */}
-      {!loading && standings.length === 0 && (
+      {!loading && !draftPhase && standings.length === 0 && (
         <div style={{ padding: '48px 18px', textAlign: 'center', fontFamily: 'ui-monospace,monospace', fontSize: 14, color: C.faint }}>
           NO STANDINGS YET<br/>
           <span style={{ fontSize: 11, color: C.muted, marginTop: 8, display: 'block' }}>Draft your garage to appear here.</span>
@@ -3401,25 +3581,38 @@ if (!selectedLeague && !leagueLoading) {
             <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, letterSpacing: 1.4, color: C.muted }}>
               P{String(myRank).padStart(2,'0')} · {me.username?.toUpperCase()}
             </div>
-            {me.totalDollarGain !== undefined && (
+            {profitMode ? (
+              <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1.4 }}>PROFIT</div>
+            ) : me.totalDollarGain !== undefined && (
               <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: me.totalDollarGain >= 0 ? C.pos : C.neg, fontWeight: 700 }}>
-                {me.totalDollarGain >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(me.totalDollarGain / 1000)).toFixed(0)}k
+                {me.totalDollarGain >= 0 ? '▲' : '▼'} {fmtCompact(Math.abs(me.totalDollarGain))}
               </div>
             )}
           </div>
-          <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 46, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1.8, lineHeight: 1 }}>
-            ${Math.round(me.totalScore || 0).toLocaleString()}
+          <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 'clamp(30px, 11vw, 46px)', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1.8, lineHeight: 1, color: scoreColor(me.totalScore) }}>
+            {scoreFull(me.totalScore)}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
-            <div>
-              <div style={{ color: C.faint, fontSize: 11, letterSpacing: 1.2 }}>NET</div>
-              <div style={{ color: me.totalDollarGain >= 0 ? C.pos : C.neg, fontWeight: 700, marginTop: 2 }}>
-                {me.totalDollarGain >= 0 ? '+' : ''}${Math.round(me.totalDollarGain || 0).toLocaleString()}
+            {profitMode ? (
+              <div>
+                <div style={{ color: C.faint, fontSize: 11, letterSpacing: 1.2 }}>GARAGE</div>
+                <div style={{ fontWeight: 700, marginTop: 2 }}>{fmtCompact(me.totalFinalValue || 0)}</div>
               </div>
-            </div>
+            ) : (
+              <div>
+                <div style={{ color: C.faint, fontSize: 11, letterSpacing: 1.2 }}>NET</div>
+                <div style={{ color: me.totalDollarGain >= 0 ? C.pos : C.neg, fontWeight: 700, marginTop: 2 }}>
+                  {me.totalDollarGain >= 0 ? '+' : ''}${Math.round(me.totalDollarGain || 0).toLocaleString()}
+                </div>
+              </div>
+            )}
             <div>
-              <div style={{ color: C.faint, fontSize: 11, letterSpacing: 1.2 }}>GAP TO P1</div>
-              <div style={{ fontWeight: 700, marginTop: 2 }}>{gapToP1 !== null ? (gapToP1 >= 0 ? '+' : '') + '$' + Math.abs(Math.round(gapToP1)).toLocaleString() : '—'}</div>
+              <div style={{ color: C.faint, fontSize: 11, letterSpacing: 1.2 }}>{myRank === 1 ? 'LEAD' : 'BEHIND P1'}</div>
+              <div style={{ fontWeight: 700, marginTop: 2 }}>
+                {gapToP1 === null ? '—'
+                  : myRank === 1 ? (rankedByValue[1] ? fmtCompact(Math.abs(me.totalScore - rankedByValue[1].totalScore)) : '—')
+                  : fmtCompact(Math.abs(gapToP1))}
+              </div>
             </div>
             <div>
               <div style={{ color: C.faint, fontSize: 11, letterSpacing: 1.2 }}>ROSTER</div>
@@ -3433,7 +3626,7 @@ if (!selectedLeague && !leagueLoading) {
             </div>
           </div>
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${C.border}`, fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.faint, letterSpacing: 0.4, lineHeight: 1.5 }}>
-            {valueFootnote(isFinal)}
+            {valueFootnote(isFinal, scoring)}
           </div>
         </div>
       )}
@@ -3467,6 +3660,7 @@ if (!selectedLeague && !leagueLoading) {
                 <div>
                   <div style={{ fontSize: 13.5, fontWeight: 700 }}>
                     {player.username}
+                    {player.isHouse && <HouseTag />}
                     {isMe && <span style={{ marginLeft: 6, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.red }}>· YOU</span>}
                   </div>
                   <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, marginTop: 2, letterSpacing: 0.5 }}>
@@ -3475,12 +3669,18 @@ if (!selectedLeague && !leagueLoading) {
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                    ${(Math.round(player.totalScore || 0) / 1000).toFixed(1)}k
+                  <div style={{ fontFamily: 'ui-monospace,"JetBrains Mono",monospace', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: scoreColor(player.totalScore) }}>
+                    {scoreShort(player.totalScore)}
                   </div>
-                  <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: positive ? C.pos : C.neg, marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>
-                    {positive ? '+' : ''}{fmtCompact(player.totalDollarGain || 0)}
-                  </div>
+                  {profitMode ? (
+                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>
+                      {fmtCompact(player.totalSpent || 0)} spent
+                    </div>
+                  ) : (
+                    <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 700, color: positive ? C.pos : C.neg, marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>
+                      {positive ? '+' : ''}{fmtCompact(player.totalDollarGain || 0)}
+                    </div>
+                  )}
                 </div>
               </div>
             )
@@ -3507,9 +3707,6 @@ if (!selectedLeague && !leagueLoading) {
 function DashboardScreenC({ onNavigate }) {
   const { bonusCar, bonusPrizeWon, budget, garage, recentUpdates, selectedLeague, user } = useApp()
   const isWide = useIsWide(700)
-  const now = new Date()
-  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-  const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()
   const username = user?.user_metadata?.username || user?.email?.split('@')[0] || 'Driver'
 
   // Terminal state: once the event is over the dashboard switches from a live
@@ -3525,24 +3722,22 @@ function DashboardScreenC({ onNavigate }) {
     return d >= 1 && d <= 7 ? d : null
   })()
 
-  // Same rule as Ranks (utils/carValue.js) plus any bonus prize, so VALUE matches.
+  // Same rule as Ranks (utils/carValue.js) plus any bonus prize, so the score matches.
   const totalDraft   = garage.reduce((s, c) => s + (c.purchasePrice || 0), 0)
   const totalCurrent = garage.reduce((s, c) => s + valueOfCar(c).value, 0) + bonusPrizeWon
   const totalGain    = totalCurrent - totalDraft
-
-  // Value-since-draft series for the P-rank sparkline. We have no per-day history,
-  // so synthesize a smooth draft→current curve (production: sample real value history).
-  const valueSeries = (() => {
-    const n = 16
-    const out = []
-    for (let i = 0; i < n; i++) {
-      const t = i / (n - 1)
-      const ease = t * t * (3 - 2 * t)
-      const wiggle = (i === 0 || i === n - 1) ? 0 : Math.sin(t * Math.PI * 3) * totalGain * 0.06
-      out.push(totalDraft + (totalCurrent - totalDraft) * ease + wiggle)
-    }
-    return out
-  })()
+  // The event's own scoring rule (utils/eventScore.js): garage value, or profit.
+  const scoring = scoringOf(selectedLeague)
+  const profitMode = scoring === SCORING.PROFIT
+  const score = profitMode ? totalGain : totalCurrent
+  const scoreText = profitMode ? (score > 0 ? '+' : score < 0 ? '-' : '') + '$' + Math.abs(Math.round(score)).toLocaleString() : fmtUSD(score)
+  // While the draft is open nothing has been scored yet: show what has been spent.
+  const drafting = selectedLeague ? getDraftStatus(selectedLeague).status === 'open' : false
+  const budgetTotal = selectedLeague?.spending_limit || 200000
+  // The next of this player's cars to sell, for the live phase.
+  const nextUp = garage
+    .filter(c => valueOfCar(c).status === 'live' && c.timestampEnd && c.timestampEnd * 1000 > Date.now())
+    .sort((a, b) => a.timestampEnd - b.timestampEnd)[0] || null
   const gainOf = c => valueOfCar(c).value - (c.purchasePrice || 0)
   const bestCar = garage.length > 0 ? garage.reduce((best, c) => (gainOf(c) > gainOf(best) ? c : best)) : null
   const bestGain = bestCar ? gainOf(bestCar) : 0
@@ -3556,9 +3751,9 @@ function DashboardScreenC({ onNavigate }) {
       <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <CBrand size={18} />
         <TopNav screen="dashboard" onNavigate={onNavigate} />
-        {/* Time/date chip is the History entry point (HISTORY is not a bottom tab) */}
-        <button onClick={() => onNavigate('history')} style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.8, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          {timeStr} · {dateStr} <span style={{ color: C.red }}>▸</span>
+        {/* History is not a bottom tab; this is its entry point, and it says so. */}
+        <button onClick={() => onNavigate('history')} style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 1.2, background: 'none', border: `1px solid ${C.border}`, borderRadius: 3, cursor: 'pointer', padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          HISTORY <span style={{ color: C.red }}>▸</span>
         </button>
       </div>
       <CheckerBar height={3} />
@@ -3599,13 +3794,20 @@ function DashboardScreenC({ onNavigate }) {
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 24, marginBottom: 16 }}>
               <div>
-                <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>FINAL VALUE</div>
-                <div style={{ fontFamily: mono, fontSize: 32, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1 }}>{fmtUSD(totalCurrent)}</div>
+                <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>{profitMode ? 'FINAL PROFIT' : 'FINAL VALUE'}</div>
+                <div style={{ fontFamily: mono, fontSize: 'clamp(24px, 8vw, 32px)', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1, color: profitMode ? gainColor(score) : C.text }}>{scoreText}</div>
               </div>
-              <div>
-                <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>NET</div>
-                <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 800, color: gainColor(totalGain), fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{(totalGain >= 0 ? '+' : '') + fmtCompact(totalGain)}</div>
-              </div>
+              {profitMode ? (
+                <div>
+                  <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>GARAGE</div>
+                  <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 800, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmtCompact(totalCurrent)}</div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.3, marginBottom: 4 }}>NET</div>
+                  <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 800, color: gainColor(totalGain), fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{(totalGain >= 0 ? '+' : '') + fmtCompact(totalGain)}</div>
+                </div>
+              )}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <button onClick={() => onNavigate('leaderboard')} style={{ height: 50, borderRadius: 4, border: 'none', background: C.amber, color: '#000', fontFamily: mono, fontSize: 12.5, fontWeight: 800, letterSpacing: 1.2, cursor: 'pointer' }}>
@@ -3678,25 +3880,30 @@ function DashboardScreenC({ onNavigate }) {
 
       {/* Total-value card */}
       <div style={{ margin: '16px 22px', background: C.surface, border: `1px solid ${C.borderHi}`, padding: '16px 18px', borderLeft: `4px solid ${eventOver ? C.amber : C.red}` }}>
-        <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 8 }}>{eventOver ? 'FINAL VALUE' : 'TOTAL VALUE'}</div>
-        <div style={{ fontFamily: mono, fontSize: 46, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1.8, lineHeight: 1 }}>
-          {fmtUSD(totalCurrent)}
+        {/* While drafting: what has been spent. After the draft locks: the score. */}
+        <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 8 }}>
+          {drafting ? 'SPENT SO FAR' : profitMode ? (eventOver ? 'FINAL PROFIT' : 'PROFIT') : (eventOver ? 'FINAL VALUE' : 'TOTAL VALUE')}
         </div>
-        {/* Value-since-draft sparkline */}
-        {garage.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <Sparkline data={valueSeries} color={gainColor(totalGain)} />
-            <div style={{ fontFamily: mono, fontSize: 11, color: gainColor(totalGain), letterSpacing: 1, marginTop: 6 }}>
-              {totalGain >= 0 ? '▲ +' : '▼ '}{fmtCompact(Math.abs(totalGain))} SINCE DRAFT
-            </div>
+        <div style={{ fontFamily: mono, fontSize: 'clamp(30px, 11vw, 46px)', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1.8, lineHeight: 1, color: !drafting && profitMode ? gainColor(score) : C.text }}>
+          {drafting ? fmtUSD(totalDraft) : scoreText}
+        </div>
+        {drafting ? (
+          <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.6, marginTop: 8, lineHeight: 1.5 }}>
+            of {fmtUSD(budgetTotal)}. Scoring starts when the draft closes.
+          </div>
+        ) : !profitMode && garage.length > 0 && (
+          <div style={{ fontFamily: mono, fontSize: 11, color: gainColor(totalGain), letterSpacing: 1, marginTop: 8 }}>
+            {totalGain >= 0 ? '▲ +' : '▼ '}{fmtCompact(Math.abs(totalGain))} SINCE DRAFT
           </div>
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', marginTop: 14, gap: 0 }}>
           {[
-            { label: 'NET',    value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
+            drafting ? { label: 'LEFT', value: fmtK(budget), color: budget < 20000 ? C.amber : C.text }
+              : profitMode ? { label: 'GARAGE', value: fmtCompact(totalCurrent), color: C.text }
+              : { label: 'NET', value: (totalGain >= 0 ? '+' : '') + fmtCompact(totalGain), color: gainColor(totalGain) },
             { label: 'ROSTER', value: `${garage.length}/7`, color: garage.length === 7 ? C.pos : C.text },
-            { label: 'BUDGET', value: fmtK(budget), color: budget < 20000 ? C.amber : C.text },
-            { label: 'EVENT', value: selectedLeague ? (eventOver ? 'ENDED' : 'ACTIVE') : '—', color: selectedLeague ? (eventOver ? C.amber : C.pos) : C.faint },
+            drafting ? { label: 'BUDGET', value: fmtK(budgetTotal), color: C.text } : { label: 'PAID', value: fmtCompact(totalDraft), color: C.text },
+            { label: 'EVENT', value: selectedLeague ? (eventOver ? 'ENDED' : drafting ? 'DRAFTING' : 'LIVE') : '—', color: selectedLeague ? (eventOver ? C.amber : C.pos) : C.faint },
           ].map(s => (
             <div key={s.label}>
               <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 1.2 }}>{s.label}</div>
@@ -3706,9 +3913,22 @@ function DashboardScreenC({ onNavigate }) {
         </div>
         <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${C.border}`, fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 0.4, lineHeight: 1.5 }}>
           {bonusPrizeWon > 0 && <div style={{ color: C.amber, marginBottom: 4 }}>★ Includes your {fmtUSD(bonusPrizeWon)} bonus car prize.</div>}
-          {valueFootnote(eventOver)}
+          {valueFootnote(eventOver, scoring)}
         </div>
       </div>
+
+      {/* Live phase: the next of your cars to sell */}
+      {!drafting && !eventOver && nextUp && (
+        <div style={{ margin: '0 22px 16px', background: C.surface, border: `1px solid ${C.border}`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 1.4, marginBottom: 4 }}>NEXT TO SELL</div>
+            <div style={{ fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nextUp.title}</div>
+          </div>
+          <div style={{ fontFamily: mono, fontSize: 15, fontWeight: 800, color: C.amber, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+            {calculateTimeLeft(new Date(nextUp.timestampEnd * 1000))}
+          </div>
+        </div>
+      )}
 
       {/* Live ticker (suppressed once the event is over) */}
       {!eventOver && recentUpdates.length > 0 && (
@@ -3735,9 +3955,14 @@ function DashboardScreenC({ onNavigate }) {
           <button onClick={() => onNavigate('leagues')} style={{ height: 48, borderRadius: 3, background: C.red, border: 'none', color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1.1, cursor: 'pointer' }}>
             NEXT EVENT ▸
           </button>
+        ) : drafting || !selectedLeague ? (
+          <button onClick={() => onNavigate(selectedLeague ? 'cars' : 'leagues')} style={{ height: 48, borderRadius: 3, background: C.red, border: 'none', color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1.1, cursor: 'pointer' }}>
+            {selectedLeague ? 'PICK CARS ▸' : 'FIND AN EVENT ▸'}
+          </button>
         ) : (
-          <button onClick={() => onNavigate('cars')} style={{ height: 48, borderRadius: 3, background: C.red, border: 'none', color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1.1, cursor: 'pointer' }}>
-            PICK CARS ▸
+          // The draft has locked: picking is over, and everyone's picks are now open.
+          <button onClick={() => onNavigate('draft-results')} style={{ height: 48, borderRadius: 3, background: C.red, border: 'none', color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1.1, cursor: 'pointer' }}>
+            WHO PICKED WHAT ▸
           </button>
         )}
       </div>

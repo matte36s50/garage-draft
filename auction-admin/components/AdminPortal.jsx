@@ -1018,7 +1018,8 @@ const AdminPortal = () => {
 
           const { data: newUserData, error: ue } = await supabase
             .from('users')
-            .insert([{ username, email }])
+            // is_house: shown with a HOUSE tag and kept out of player counts.
+            .insert([{ username, email, is_house: true }])
             .select()
             .single();
           if (ue || !newUserData) { console.error('User insert failed:', ue); continue; }
@@ -1167,6 +1168,8 @@ const AdminPortal = () => {
         is_public: newLeague.is_public,
         use_manual_auctions: newLeague.use_manual_auctions,
         spending_limit: newLeague.spending_limit || 200000,
+        // How the event is scored (lib/eventScore.js). New events default to profit.
+        scoring: newLeague.scoring === 'value' ? 'value' : 'profit',
         status: 'draft',
         snapshot_created: false
       };
@@ -2580,6 +2583,22 @@ const AdminPortal = () => {
                     </p>
                     <p className="text-slate-400 text-xs mt-1">
                       Default: $200,000 · Range: $50K - $1M
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-800 border border-slate-600 rounded p-4">
+                    <label htmlFor="new-league-scoring" className="text-slate-200 font-semibold text-sm mb-2 block">Scoring</label>
+                    <select
+                      id="new-league-scoring"
+                      value={newLeague.scoring === 'value' ? 'value' : 'profit'}
+                      onChange={(e) => setNewLeague({...newLeague, scoring: e.target.value})}
+                      className="bg-slate-700 text-white p-2 rounded border border-slate-600 w-full"
+                    >
+                      <option value="profit">Profit: what the garage made over what it cost</option>
+                      <option value="value">Value: what the garage is worth (how events were scored before Nov 2026)</option>
+                    </select>
+                    <p className="text-slate-400 text-xs mt-2">
+                      Profit: unspent budget neither helps nor hurts. Value: unspent budget counts for nothing, so spending more scores more.
                     </p>
                   </div>
                 </div>

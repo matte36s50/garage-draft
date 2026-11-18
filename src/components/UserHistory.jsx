@@ -36,7 +36,8 @@ export default function UserHistory({ supabase, user }) {
             draft_starts_at,
             draft_ends_at,
             completed_at,
-            spending_limit
+            spending_limit,
+            scoring
           )
         `)
         .eq('user_id', user.id)
@@ -92,6 +93,14 @@ export default function UserHistory({ supabase, user }) {
   const describeScore = (result) => {
     const score = Number(result.final_score) || 0;
     const spent = Number(result.total_spent) || 0;
+    // A profit event stores the profit itself (utils/eventScore.js).
+    if (result.leagues?.scoring === 'profit') {
+      return {
+        main: `${score > 0 ? '+' : score < 0 ? '-' : ''}$${Math.abs(Math.round(score)).toLocaleString()}`,
+        mainColor: score > 0 ? C.pos : score < 0 ? C.neg : C.text,
+        sub: `PROFIT ON $${Math.round(spent).toLocaleString()}`, subColor: C.faint,
+      };
+    }
     if (spent > 0 && Math.abs(score) < spent * 0.1) {
       return {
         main: `${score >= 0 ? '+' : ''}${score.toFixed(1)}%`, mainColor: score >= 0 ? C.pos : C.neg,
