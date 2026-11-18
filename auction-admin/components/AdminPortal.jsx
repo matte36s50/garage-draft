@@ -1018,7 +1018,8 @@ const AdminPortal = () => {
 
           const { data: newUserData, error: ue } = await supabase
             .from('users')
-            .insert([{ username, email }])
+            // is_house: shown with a HOUSE tag and kept out of player counts.
+            .insert([{ username, email, is_house: true }])
             .select()
             .single();
           if (ue || !newUserData) { console.error('User insert failed:', ue); continue; }

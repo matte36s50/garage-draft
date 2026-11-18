@@ -821,6 +821,16 @@ function ReserveTag({ car }) {
   )
 }
 
+// Marks a player the admin seeded to fill a table (users.is_house), so nobody
+// takes one for a person.
+function HouseTag() {
+  return (
+    <span title="A house player, added to fill the table" style={{ marginLeft: 6, fontFamily: mono, fontSize: 9.5, fontWeight: 800, letterSpacing: 0.8, color: C.muted, border: `1px solid ${C.border}`, padding: '1px 4px', borderRadius: 2, verticalAlign: 'middle' }}>
+      HOUSE
+    </span>
+  )
+}
+
 // "$30k–$40k" when a lot has a catalogue estimate.
 function estimateText(car) {
   if (!car || car.estimateLow == null) return null
@@ -3232,7 +3242,7 @@ if (!selectedLeague && !leagueLoading) {
         .select(`
             user_id,
             total_score,
-            users (username)
+            users (username, is_house)
           `)
         .eq('league_id', selectedLeague.id)
 
@@ -3249,7 +3259,7 @@ if (!selectedLeague && !leagueLoading) {
         if (countsError) throw countsError
         const byUser = new Map((counts || []).map(r => [r.user_id, r.car_count]))
         const rows = members
-          .map(m => ({ userId: m.user_id, username: m.users?.username || 'Player', carsCount: byUser.get(m.user_id) || 0 }))
+          .map(m => ({ userId: m.user_id, username: m.users?.username || 'Player', isHouse: !!m.users?.is_house, carsCount: byUser.get(m.user_id) || 0 }))
           .sort((a, b) => b.carsCount - a.carsCount || a.username.localeCompare(b.username))
         if (seq !== fetchSeq.current) return
         setRosters(rows)
@@ -3265,6 +3275,7 @@ if (!selectedLeague && !leagueLoading) {
         return {
           userId: member.user_id,
           username: member.users?.username || 'Player',
+          isHouse: !!member.users?.is_house,
           ...score
         }
       })
@@ -3543,6 +3554,7 @@ if (!selectedLeague && !leagueLoading) {
               <div key={r.userId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 0', borderBottom: `1px solid ${C.border}`, background: isMe ? `${C.red}10` : 'transparent', marginLeft: isMe ? -10 : 0, marginRight: isMe ? -10 : 0, paddingLeft: isMe ? 10 : 0, paddingRight: isMe ? 10 : 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {r.username}
+                  {r.isHouse && <HouseTag />}
                   {isMe && <span style={{ marginLeft: 6, fontFamily: mono, fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.red }}>· YOU</span>}
                 </div>
                 <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: r.carsCount >= 7 ? C.pos : C.muted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
@@ -3648,6 +3660,7 @@ if (!selectedLeague && !leagueLoading) {
                 <div>
                   <div style={{ fontSize: 13.5, fontWeight: 700 }}>
                     {player.username}
+                    {player.isHouse && <HouseTag />}
                     {isMe && <span style={{ marginLeft: 6, fontFamily: 'ui-monospace,monospace', fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.red }}>· YOU</span>}
                   </div>
                   <div style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11, color: C.muted, marginTop: 2, letterSpacing: 0.5 }}>
