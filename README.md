@@ -50,6 +50,25 @@ An event closes and is written to History once every car, and the bonus car, has
 result. If a result is still missing 48 hours after its auction ended, the event closes anyway and
 that car keeps its high bid (`auction-admin/lib/eventCompletion.js`).
 
+### Call the hammer (daily game)
+
+A second game that needs no event. Each New York day has a round of five lots, and a player calls
+each lot's hammer price before it closes. Players can change a call until the lot closes, and
+nobody sees anyone else's call until then. Open it from the dashboard or events list, or share
+`https://garage-draft.vercel.app/?play=hammer`, which goes through sign‑in to the game.
+
+- **Points:** `max(0, round(100 − 200 × |call − result| / result))`. A perfect call scores 100,
+  10% off scores 80, 25% off 50, and 50% off scores nothing (`src/utils/hammer.js`, and
+  `hammer_points()` in the database, which does the scoring).
+- **Scored against:** the hammer price (`final_price`). An online lot that doesn't meet its reserve
+  is scored on its high bid. A withdrawn lot, or a catalogue lot that doesn't sell, is void.
+- **Rounds:** opening a day's round picks it if it doesn't exist yet: five Bring a Trailer lots closing
+  that day, one from each fifth of the price range. Opening today's round also sets tomorrow's, so a
+  round is normally chosen a day ahead. An admin can set a round by hand by inserting into
+  `hammer_rounds` and `hammer_lots`. The Rétromobile New York round (20 Nov 2026) was set that way.
+- **Schema and functions:** `supabase_migration_call_the_hammer.sql` (`hammer_round`,
+  `make_hammer_call`, `hammer_board`).
+
 ---
 
 ## Architecture

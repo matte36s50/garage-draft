@@ -9,6 +9,7 @@ import { carValue } from './utils/carValue'
 import { parseDbTime } from './utils/dbTime'
 import { eventScore, scoringOf, SCORING } from './utils/eventScore'
 import { garagePercentGain } from './utils/garageGain'
+import { callRange, dayLabel, hammerVerdict, nyDay, shiftDay } from './utils/hammer'
 import { initTracking, setTrackingContext, setTrackingSession, track, trackOnce } from './utils/track'
 
 const supabaseUrl = 'https://cjqycykfajaytbrqyncy.supabase.co'
@@ -53,18 +54,41 @@ function loadCurrentScreen() {
 
 // Magic link: capture ?league=<id> from URL on load and store for post-auth use
 const PENDING_LEAGUE_KEY = 'bidprix_pending_league'
+// ?play=hammer opens Call the hammer, through sign-in if need be. Kept in
+// localStorage (for a day) so it survives the email-confirmation tab.
+const AFTER_SIGN_IN_KEY = 'bidprix_after_sign_in'
+const AFTER_SIGN_IN_SCREENS = ['hammer']
 ;(function captureMagicLeagueParam() {
   try {
     const params = new URLSearchParams(window.location.search)
     const leagueId = params.get('league')
-    if (leagueId) {
-      sessionStorage.setItem(PENDING_LEAGUE_KEY, leagueId)
-      window.history.replaceState({}, '', window.location.pathname)
-    }
+    const play = params.get('play')
+    if (leagueId) sessionStorage.setItem(PENDING_LEAGUE_KEY, leagueId)
+    if (AFTER_SIGN_IN_SCREENS.includes(play)) localStorage.setItem(AFTER_SIGN_IN_KEY, JSON.stringify({ screen: play, at: Date.now() }))
+    if (leagueId || play) window.history.replaceState({}, '', window.location.pathname)
   } catch (e) {
     // ignore - browser might not support sessionStorage
   }
 })()
+
+/**
+ * The screen a ?play= link asked for, if it is still fresh. take: also forget
+ * it. Sign-in only reads it (it navigates twice, from the auth listener and
+ * the form); the screen itself takes it once it opens.
+ */
+function afterSignIn(take) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AFTER_SIGN_IN_KEY) || 'null')
+    if (take) localStorage.removeItem(AFTER_SIGN_IN_KEY)
+    if (!saved || !AFTER_SIGN_IN_SCREENS.includes(saved.screen) || Date.now() - saved.at > 86400000) return null
+    return saved.screen
+  } catch {
+    return null
+  }
+}
+function wantAfterSignIn(screen) {
+  try { localStorage.setItem(AFTER_SIGN_IN_KEY, JSON.stringify({ screen, at: Date.now() })) } catch { /* storage blocked */ }
+}
 
 function RecentUpdates({ updates }) {
   if (updates.length === 0) return null
@@ -1553,9 +1577,12 @@ export default function BidPrixApp() {
     const landSignedIn = (sessionUser, restoreSavedScreen) => {
       const go = () => {
         if (recoveryRef.current) return
+        const asked = afterSignIn()
+        if (asked) return updateCurrentScreen(asked)
         const savedLeague = loadSelectedLeague()
         const savedScreen = loadCurrentScreen()
-        if (restoreSavedScreen && savedLeague && savedScreen && savedScreen !== 'landing' && savedScreen !== 'login') {
+        // Call the hammer needs no event, so it is restored without one.
+        if (restoreSavedScreen && savedScreen && savedScreen !== 'landing' && savedScreen !== 'login' && (savedLeague || savedScreen === 'hammer')) {
           updateCurrentScreen(savedScreen)
         } else {
           updateCurrentScreen(savedLeague ? 'dashboard' : 'leagues')
@@ -1787,6 +1814,7 @@ export default function BidPrixApp() {
   else if (currentScreen === 'leaderboard') screen = <LeaderboardScreen onNavigate={updateCurrentScreen} currentScreen={currentScreen} />
   else if (currentScreen === 'history') screen = <HistoryScreenC onNavigate={updateCurrentScreen} />
   else if (currentScreen === 'draft-results') screen = <DraftResultsScreenC onNavigate={updateCurrentScreen} />
+  else if (currentScreen === 'hammer') screen = <HammerScreen onNavigate={updateCurrentScreen} />
 
   return <AppContext.Provider value={app}>{screen}</AppContext.Provider>
 }
@@ -1843,23 +1871,10 @@ function BonusCarCard({ isWide }) {
   const prize = bonusPrize(selectedLeague?.spending_limit || 200000)
   const closed = car.endTime ? car.endTime <= new Date() : !!car.auctionEnded
   // A catalogue lot has an estimate and no live bid; an online lot has a live bid.
-  const hasEstimate = car.estimateLow != null
-  const bid = Math.round(car.currentBid) || 0
+  // Quick-pick slider range and the lowest call allowed (utils/hammer.js), the
+  // same as Call the hammer's. Typed amounts stretch the track either way.
+  const { lo, hi, step, def, floor, hasEstimate } = callRange(car)
   const estLow = hasEstimate ? car.estimateLow : null
-  const estHigh = hasEstimate ? (car.estimateHigh || car.estimateLow) : null
-  // Quick-pick slider range. Online: current bid → 2× current bid (a sale can't
-  // finish under the bid already placed). Catalogue: half the low estimate →
-  // 1.5× the high estimate, because lots do sell under their estimate and a call
-  // must be free to say so. Typed amounts stretch the track either way.
-  const lo = hasEstimate ? Math.round(estLow * 0.5) : bid
-  const hi = hasEstimate ? Math.round(estHigh * 1.5) : Math.max(lo + 1000, Math.round((car.currentBid * 2) / 1000) * 1000)
-  const step = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000].find(s => s >= (hi - lo) / 250) || 500000
-  const snap = v => Math.round(v / step) * step
-  const def = hasEstimate
-    ? snap((estLow + estHigh) / 2)
-    : Math.min(hi, Math.max(lo, Math.round((car.currentBid * 1.2) / 500) * 500))
-  // An online call can't go under the current bid; a catalogue call only has to be positive.
-  const floor = hasEstimate ? 1 : lo
   const [editing, setEditing] = useState(false)
   const [pred, setPred] = useState(() =>
     Math.max(floor, Math.round(userPrediction != null ? userPrediction : def))
@@ -2086,6 +2101,10 @@ function LandingScreen({ onGetStarted }) {
 
   const status = event ? getDraftStatus(event).status : null
   const invited = !!event && event.id === invitedId
+  // A ?play=hammer visitor sees the daily game first; everyone else sees it under the event.
+  const cameForHammer = afterSignIn() === 'hammer'
+  const playHammer = () => { wantAfterSignIn('hammer'); onGetStarted() }
+  const hammerCard = <HammerTeaser onOpen={playHammer} style={{ margin: '6px 18px 22px' }} />
   // Joining from here carries the event through sign-up, like an invite link.
   const joinEvent = () => {
     try { if (event && status === 'open') sessionStorage.setItem(PENDING_LEAGUE_KEY, event.id) } catch { /* storage blocked */ }
@@ -2131,6 +2150,8 @@ function LandingScreen({ onGetStarted }) {
         </div>
       </div>
 
+      {cameForHammer && hammerCard}
+
       {/* The event: an invite, what is drafting now, or what opens next */}
       {event && (
         <div style={{ margin: '6px 18px 22px', background: C.surface, border: `1px solid ${C.border}`, borderLeft: `3px solid ${status === 'open' ? C.red : C.amber}`, padding: '14px 16px' }}>
@@ -2159,6 +2180,8 @@ function LandingScreen({ onGetStarted }) {
           )}
         </div>
       )}
+
+      {!cameForHammer && hammerCard}
 
       {/* Real lots from that event's pool */}
       {pool.cars.length > 0 && (
@@ -2248,7 +2271,7 @@ function LoginScreen() {
     if (error) return alert('Error signing up: '+error.message)
     if (data.session) {
       setUser(data.user)
-      updateCurrentScreen('leagues')
+      updateCurrentScreen(afterSignIn() || 'leagues')
     } else if (data.user && !data.session) {
       alert('Check your email for verification link!')
     }
@@ -2259,7 +2282,7 @@ function LoginScreen() {
     if (error) return alert('Error signing in: '+error.message)
     setUser(data.user)
     track('sign_in')
-    updateCurrentScreen('leagues')
+    updateCurrentScreen(afterSignIn() || 'leagues')
   }
 
   const inputStyle = {
@@ -2277,7 +2300,9 @@ function LoginScreen() {
         {isSignUp ? 'CREATE ACCOUNT' : 'SIGN IN'}
       </div>
       <div style={{ fontSize: 13, color: C.muted, marginBottom: 28 }}>
-        {isSignUp ? 'Choose your callsign. Free to play.' : 'Welcome back to the grid.'}
+        {afterSignIn() === 'hammer'
+          ? (isSignUp ? "Choose your callsign, then call today's hammer. Free to play." : "Sign in to call today's hammer.")
+          : isSignUp ? 'Choose your callsign. Free to play.' : 'Welcome back to the grid.'}
       </div>
 
       <CheckerBar height={2} />
@@ -2567,6 +2592,9 @@ function LeaguesScreen({ onNavigate, currentScreen }) {
           {leagues.filter(l => getDraftStatus(l).status === 'open').length} DRAFTING · {userLeagues.length} ENTERED
         </div>
       </div>
+
+      {/* The daily game needs no event: one tap from here. */}
+      <HammerTeaser variant="row" onOpen={() => onNavigate('hammer')} style={{ padding: '0 18px 14px' }} />
 
       {/* Filter chips */}
       <div style={{ padding: '4px 18px 18px', display: 'flex', gap: 6, overflowX: 'auto' }}>
@@ -3777,6 +3805,9 @@ function DashboardScreenC({ onNavigate }) {
         )}
       </div>
 
+      {/* Today's Call the hammer round */}
+      <HammerTeaser variant="row" onOpen={() => onNavigate('hammer')} style={{ margin: '16px 22px 0' }} />
+
       {/* RACE FINISHED — end-of-event recap banner (terminal state, replaces live UI cues) */}
       {eventOver && (
         <div style={{ margin: '16px 22px 0', background: C.surface, border: `1px solid ${C.amber}55`, borderTop: `3px solid ${C.amber}`, overflow: 'hidden' }}>
@@ -3968,6 +3999,489 @@ function DashboardScreenC({ onNavigate }) {
       </div>
 
       <BottomTabBar screen="dashboard" onNavigate={onNavigate} />
+    </div>
+  )
+}
+
+// ── Call the hammer ──────────────────────────────────────────────────────────
+// The daily game (supabase_migration_call_the_hammer.sql): five lots a day,
+// each called before it closes, up to 100 points a call (utils/hammer.js). It
+// needs no event, so any signed-in player can play.
+
+function toHammerLot(l) {
+  const num = v => (v == null || v === '' || isNaN(parseFloat(v)) ? null : parseFloat(v))
+  return {
+    id: l.auction_id,
+    position: l.position,
+    title: l.title || `${l.year || ''} ${l.make || ''}`.trim(),
+    make: l.make,
+    year: l.year,
+    url: l.url,
+    imageUrl: l.image_url,
+    currentBid: num(l.current_bid) || 0,
+    ...lotDetails(l),
+    endTime: l.timestamp_end ? new Date(l.timestamp_end * 1000) : null,
+    closed: !!l.closed,
+    result: num(l.result),
+    isVoid: !!l.void,
+    withdrawn: num(l.final_price) === 0,
+    reserveNotMet: !!l.reserve_not_met,
+    myCall: num(l.my_call),
+    myPoints: l.my_points == null ? null : Number(l.my_points),
+    calls: Number(l.calls) || 0,
+    crowdMedian: num(l.crowd_median),
+  }
+}
+
+const lotIsClosed = (lot, now) => lot.closed || (!!lot.endTime && lot.endTime <= now)
+
+function lotSource(url) {
+  if (/bringatrailer\.com/i.test(url || '')) return 'BRING A TRAILER'
+  if (/goodingco\.com/i.test(url || '')) return "GOODING CHRISTIE'S"
+  return null
+}
+
+const pointsColor = p => (p == null ? C.muted : p >= 70 ? C.pos : p >= 40 ? C.amber : C.neg)
+
+function HammerStat({ label, value, sub, color }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontFamily: mono, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontFamily: mono, fontSize: 17, fontWeight: 800, color: color || C.text, fontVariantNumeric: 'tabular-nums', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
+      {sub && <div style={{ fontFamily: mono, fontSize: 10.5, color: C.muted, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
+    </div>
+  )
+}
+
+function HammerLotCard({ lot, of, isWide, now, onCall }) {
+  const range = callRange(lot)
+  const closed = lotIsClosed(lot, now)
+  const settled = lot.result != null
+  const called = lot.myCall != null
+  const [editing, setEditing] = useState(false)
+  const [pred, setPred] = useState(() => Math.max(range.floor, Math.round(called ? lot.myCall : range.def)))
+  const [typing, setTyping] = useState(false)
+  const [typed, setTyped] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [problem, setProblem] = useState('')
+  // Typing a call past the quick-pick range stretches the track, and it stays stretched.
+  const [hiExt, setHiExt] = useState(() => Math.round(lot.myCall || 0))
+  const [loExt, setLoExt] = useState(() => (called ? Math.round(lot.myCall) : range.lo))
+  const picking = !closed && (!called || editing)
+  const hiSlider = Math.max(range.hi, hiExt, pred)
+  const loSlider = Math.max(0, Math.min(range.lo, loExt, pred))
+  const pct = hiSlider > loSlider ? Math.min(1, Math.max(0, (pred - loSlider) / (hiSlider - loSlider))) : 0
+  const model = lot.title && lot.year ? lot.title.replace(`${lot.year} `, '').replace(/^\s*no[- ]reserve:?\s*/i, '') : lot.title
+  const source = lotSource(lot.url)
+  const accent = settled ? pointsColor(lot.myPoints) : closed ? C.border : called ? C.pos : C.red
+
+  const setCall = v => {
+    setPred(v)
+    setHiExt(p => Math.max(p, v))
+    setLoExt(p => Math.min(p, v))
+  }
+  const applyTyped = () => {
+    const v = Math.round(parseFloat(typed.replace(/[^0-9.]/g, '')))
+    if (!isNaN(v) && v > 0) setCall(Math.max(range.floor, v))
+    setTyping(false)
+    setTyped('')
+  }
+  const submit = async () => {
+    setSaving(true)
+    setProblem('')
+    const err = await onCall(lot, Math.max(range.floor, pred))
+    setSaving(false)
+    if (err) setProblem(err)
+    else setEditing(false)
+  }
+  const edit = () => {
+    if (called) setCall(Math.max(range.floor, Math.round(lot.myCall)))
+    setEditing(true)
+  }
+  const offBy = settled && called ? Math.round((Math.abs(lot.myCall - lot.result) / lot.result) * 100) : null
+
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderTop: `3px solid ${accent}`, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div style={{ position: 'relative' }}>
+        <CarImg car={lot} height={isWide ? undefined : 150} aspect={isWide ? '16 / 9' : undefined} radius={0} objectPosition="center 50%" />
+        <span style={{ position: 'absolute', top: 8, left: 8, fontFamily: mono, fontSize: 10.5, fontWeight: 800, letterSpacing: 1, color: C.text, background: 'rgba(10,10,12,0.82)', padding: '3px 7px', borderRadius: 2 }}>
+          LOT {lot.position} OF {of}
+        </span>
+        <span style={{ position: 'absolute', top: 8, right: 8, fontFamily: mono, fontSize: 10.5, fontWeight: 800, letterSpacing: 1, color: closed ? C.muted : C.amber, background: 'rgba(10,10,12,0.82)', padding: '3px 7px', borderRadius: 2 }}>
+          {closed ? 'CLOSED' : `CLOSES ${calculateTimeLeft(lot.endTime).toUpperCase()}`}
+        </span>
+      </div>
+
+      <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: C.muted, letterSpacing: 0.8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {[lot.year, lot.make && lot.make.toUpperCase(), source].filter(Boolean).join(' · ')}
+          </div>
+          <a href={lot.url} target="_blank" rel="noopener noreferrer"
+            onClick={() => track('auction_open', { auction_id: lot.id, target: 'source', screen: 'hammer' })}
+            style={{ display: 'block', color: C.text, textDecoration: 'none', fontSize: 16, fontWeight: 700, lineHeight: 1.25, marginTop: 4 }}>
+            {model} <span style={{ color: C.faint, fontSize: 12 }}>↗</span>
+          </a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            <ReserveTag car={lot} />
+            <span style={{ fontFamily: mono, fontSize: 12, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>
+              {range.hasEstimate ? <>EST <span style={{ color: C.text, fontWeight: 700 }}>{estimateText(lot)}</span></> : <>BID <span style={{ color: C.text, fontWeight: 700 }}>{fmtUSD(lot.currentBid)}</span></>}
+            </span>
+          </div>
+        </div>
+
+        {settled ? (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+              <HammerStat label={lot.reserveNotMet ? 'HIGH BID' : 'HAMMER'} value={fmtK(lot.result)} sub={lot.reserveNotMet ? 'NO SALE' : 'SOLD'} />
+              <HammerStat label="YOUR CALL" value={called ? fmtK(lot.myCall) : '—'} sub={offBy != null ? `${offBy}% OFF` : called ? null : 'NO CALL'} />
+              <HammerStat label="POINTS" value={lot.myPoints != null ? lot.myPoints : '—'} sub={hammerVerdict(lot.myPoints)} color={pointsColor(lot.myPoints)} />
+            </div>
+            {lot.crowdMedian != null && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${C.border}`, fontFamily: mono, fontSize: 11.5, color: C.muted }}>
+                CROWD CALLED <span style={{ color: C.text, fontWeight: 700 }}>{fmtK(lot.crowdMedian)}</span> · {lot.calls} {lot.calls === 1 ? 'CALL' : 'CALLS'}
+              </div>
+            )}
+          </div>
+        ) : lot.isVoid ? (
+          <div style={{ padding: '11px 12px', background: C.surfaceHi, border: `1px solid ${C.border}`, borderRadius: 4 }}>
+            <div style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 800, color: C.muted, letterSpacing: 0.8 }}>{lot.withdrawn ? 'WITHDRAWN' : 'NOT SOLD'} · VOID</div>
+            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4, lineHeight: 1.45 }}>
+              This lot doesn't count{called ? `. Your call was ${fmtUSD(lot.myCall)}.` : '.'}
+            </div>
+          </div>
+        ) : closed ? (
+          <div style={{ padding: '11px 12px', background: C.surfaceHi, border: `1px solid ${C.border}`, borderRadius: 4 }}>
+            <div style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 800, color: C.text, letterSpacing: 0.8 }}>CALLS CLOSED · RESULT TO COME</div>
+            <div style={{ fontFamily: mono, fontSize: 12, color: C.muted, marginTop: 4 }}>
+              {called ? <>YOUR CALL <span style={{ color: C.amber, fontWeight: 700 }}>{fmtUSD(lot.myCall)}</span></> : 'NO CALL MADE'}
+            </div>
+          </div>
+        ) : !picking ? (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '11px 12px', background: `${C.pos}12`, border: `1px solid ${C.pos}44`, borderRadius: 4 }}>
+              <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 800, color: C.pos, letterSpacing: 0.6, whiteSpace: 'nowrap' }}>✓ CALLED {fmtUSD(lot.myCall)}</span>
+              <button onClick={edit} style={{ fontFamily: mono, fontSize: 11.5, fontWeight: 700, color: C.muted, background: 'none', border: `1px solid ${C.border}`, borderRadius: 3, padding: '6px 12px', letterSpacing: 0.8, cursor: 'pointer' }}>CHANGE</button>
+            </div>
+            <div style={{ fontSize: 12, color: C.faint, marginTop: 7, lineHeight: 1.45 }}>
+              {lot.calls > 1 ? `${lot.calls} calls in. ` : ''}Everyone's calls stay hidden until it closes.
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+              <div>
+                <div style={{ fontFamily: mono, fontSize: 10.5, color: C.amber, letterSpacing: 1.3, marginBottom: 4 }}>
+                  YOUR CALL{range.hasEstimate ? ' · HAMMER, BEFORE PREMIUM' : ''}
+                </div>
+                <div style={{ fontFamily: mono, fontSize: 'clamp(24px, 7.5vw, 30px)', fontWeight: 800, color: C.amber, fontVariantNumeric: 'tabular-nums', letterSpacing: -1, lineHeight: 1, whiteSpace: 'nowrap' }}>{fmtUSD(pred)}</div>
+              </div>
+              {lot.calls > 0 && <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, whiteSpace: 'nowrap' }}>{lot.calls} {lot.calls === 1 ? 'CALL' : 'CALLS'} IN</div>}
+            </div>
+            <input
+              type="range" className="bp-slider" aria-label={`Your call for ${lot.title}`}
+              min={loSlider} max={hiSlider} step={range.step} value={pred}
+              onChange={e => setPred(parseInt(e.target.value, 10))}
+              style={{ background: `linear-gradient(90deg, ${C.amber} 0%, ${C.amber} ${pct * 100}%, ${C.border} ${pct * 100}%, ${C.border} 100%)` }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+              <span style={{ fontFamily: mono, fontSize: 10.5, color: C.faint }}>{fmtK(loSlider)}</span>
+              <span style={{ fontFamily: mono, fontSize: 10.5, color: C.faint }}>{fmtK(hiSlider)}</span>
+            </div>
+            {typing ? (
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', background: C.surfaceHi, border: `1px solid ${C.amber}66`, borderRadius: 4, padding: '0 12px' }}>
+                  <span style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, color: C.amber, marginRight: 4 }}>$</span>
+                  <input
+                    type="text" inputMode="numeric" autoFocus value={typed}
+                    onChange={e => setTyped(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') applyTyped(); if (e.key === 'Escape') { setTyping(false); setTyped('') } }}
+                    placeholder={pred.toLocaleString()}
+                    style={{ flex: 1, minWidth: 0, height: 42, background: 'none', border: 'none', outline: 'none', color: C.text, fontFamily: mono, fontSize: 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
+                  />
+                </div>
+                <button onClick={applyTyped} style={{ height: 44, padding: '0 14px', borderRadius: 4, border: 'none', background: C.amber, color: '#000', fontFamily: mono, fontSize: 12, fontWeight: 800, letterSpacing: 1, cursor: 'pointer' }}>SET</button>
+              </div>
+            ) : (
+              <button onClick={() => setTyping(true)} style={{ marginTop: 8, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: mono, fontSize: 11.5, fontWeight: 700, color: C.muted, letterSpacing: 0.8, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                TYPE AN EXACT AMOUNT ▸
+              </button>
+            )}
+            {problem && <div style={{ fontSize: 12.5, color: C.neg, marginTop: 10, lineHeight: 1.4 }}>{problem}</div>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button onClick={submit} disabled={saving} style={{ flex: 1, height: 46, borderRadius: 4, border: 'none', background: C.red, color: C.text, fontFamily: mono, fontSize: 13, fontWeight: 800, letterSpacing: 1.4, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+                {saving ? 'SAVING…' : called ? 'UPDATE CALL ▸' : 'CALL IT ▸'}
+              </button>
+              {editing && (
+                <button onClick={() => { setEditing(false); setProblem('') }} style={{ height: 46, padding: '0 14px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'none', color: C.muted, fontFamily: mono, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>KEEP</button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function HammerBoard({ rows, meId, empty }) {
+  if (!rows) return null
+  if (rows.length === 0) {
+    return <div style={{ fontSize: 13, color: C.muted, padding: '14px 0 4px', lineHeight: 1.5 }}>{empty}</div>
+  }
+  const top = rows.slice(0, 10)
+  const mine = rows.findIndex(r => r.user_id === meId)
+  const shown = mine >= 10 ? [...top, rows[mine]] : top
+  return (
+    <div>
+      {shown.map(r => {
+        const rank = rows.indexOf(r) + 1
+        const isMe = r.user_id === meId
+        return (
+          <div key={r.user_id} style={{ display: 'grid', gridTemplateColumns: '30px minmax(0, 1fr) auto', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: `1px solid ${C.border}` }}>
+            <span style={{ fontFamily: mono, fontSize: 14, fontWeight: 800, color: rank <= 3 ? C.amber : C.faint }}>{rank}</span>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 14, fontWeight: isMe ? 800 : 600, color: isMe ? C.amber : C.text }}>
+              {r.username}{isMe ? ' · YOU' : ''}{r.is_house && <HouseTag />}
+              <span style={{ fontFamily: mono, fontSize: 11, color: C.faint, fontWeight: 600 }}> · {r.scored}/{r.calls} SCORED</span>
+            </span>
+            <span style={{ fontFamily: mono, fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{r.points}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function HammerScreen({ onNavigate }) {
+  const { user } = useApp()
+  const isWide = useIsWide(700)
+  const [now, setNow] = useState(() => new Date())
+  const today = nyDay(now)
+  const [day, setDay] = useState(today)
+  const [round, setRound] = useState(null)      // { day, title, lots }, null while loading
+  const [boards, setBoards] = useState({ day: null, week: null })
+  const [boardTab, setBoardTab] = useState('day')
+  const [loadError, setLoadError] = useState('')
+  const [reload, setReload] = useState(0)
+  const viewed = useRef(new Set())
+
+  // Arrived: a ?play=hammer link has done its job.
+  useEffect(() => { afterSignIn(true) }, [])
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      const [r, bd, bw] = await Promise.all([
+        supabase.rpc('hammer_round', { p_day: day }),
+        supabase.rpc('hammer_board', { p_from: day, p_to: day }),
+        supabase.rpc('hammer_board', { p_from: shiftDay(today, -6), p_to: today }),
+      ])
+      if (!active) return
+      if (r.error) {
+        console.error('Call the hammer: could not load the round', r.error)
+        setLoadError("Couldn't load this round. Check your connection and try again.")
+        return
+      }
+      setLoadError('')
+      const lots = (r.data?.lots || []).map(toHammerLot)
+      setRound({ day, title: r.data?.title || null, lots })
+      setBoards({ day: bd.data || [], week: bw.data || [] })
+      if (!viewed.current.has(day)) {
+        viewed.current.add(day)
+        track('hammer_view', { day, lots: lots.length, called: lots.filter(l => l.myCall != null).length })
+      }
+    })()
+    return () => { active = false }
+  }, [day, today, reload])
+
+  // Countdowns tick every 30s; an unsettled round re-reads every minute so
+  // closings and results show up without a refresh.
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30000)
+    return () => clearInterval(t)
+  }, [])
+  const unsettled = !!round && round.lots.some(l => l.result == null && !l.isVoid)
+  useEffect(() => {
+    if (!unsettled) return
+    const t = setInterval(() => setReload(n => n + 1), 60000)
+    return () => clearInterval(t)
+  }, [unsettled])
+
+  const goTo = d => { if (d !== day) { setRound(null); setDay(d) } }
+
+  const makeCall = async (lot, price) => {
+    const previous = lot.myCall
+    const { data, error } = await supabase.rpc('make_hammer_call', { p_day: day, p_auction_id: lot.id, p_price: price })
+    const ok = !error && data?.success === true
+    track('hammer_call', {
+      auction_id: lot.id, day, ok, predicted_price: price, previous,
+      reference: lot.estimateLow ?? lot.currentBid, position: lot.position,
+    })
+    if (!ok) {
+      if (error) console.error('Call the hammer: call not saved', error)
+      setReload(n => n + 1)
+      return data?.error || "That call didn't save. Try again."
+    }
+    const saved = Number(data.predicted_price)
+    setRound(r => r && ({
+      ...r,
+      lots: r.lots.map(l => (l.id === lot.id ? { ...l, myCall: saved, calls: l.calls + (previous == null ? 1 : 0) } : l)),
+    }))
+    return null
+  }
+
+  const lots = round?.lots || []
+  const open = lots.filter(l => !lotIsClosed(l, now))
+  const called = lots.filter(l => l.myCall != null).length
+  const scored = lots.filter(l => l.myPoints != null)
+  const points = scored.reduce((s, l) => s + l.myPoints, 0)
+  const settledCount = lots.filter(l => l.result != null || l.isVoid).length
+  const canGoForward = day < shiftDay(today, 1)
+  const label = dayLabel(day, today)
+  const dayChip = (text, onClick, disabled) => (
+    <button onClick={onClick} disabled={disabled} style={{ height: 36, padding: '0 10px', whiteSpace: 'nowrap', flexShrink: 0, borderRadius: 3, border: `1px solid ${C.border}`, background: 'none', color: disabled ? C.faint : C.text, fontFamily: mono, fontSize: 11, fontWeight: 700, letterSpacing: 0.8, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>{text}</button>
+  )
+
+  return (
+    <div style={{ background: C.bg, color: C.text, fontFamily: 'Inter,system-ui,sans-serif', minHeight: '100vh', paddingBottom: 96 }}>
+      <div style={{ padding: '12px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <CBrand size={16} />
+        <TopNav screen="hammer" onNavigate={onNavigate} />
+      </div>
+      <CheckerBar height={3} />
+
+      <div style={{ padding: '14px 18px 14px', borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ fontFamily: mono, fontSize: 11, color: C.red, letterSpacing: 1.6, marginBottom: 4 }}>
+          {'//'} DAILY GAME{round?.title ? ` · ${round.title.toUpperCase()}` : ''}
+        </div>
+        <div style={{ fontFamily: mono, fontSize: 'clamp(30px, 9vw, 40px)', fontWeight: 800, letterSpacing: -1.4, textTransform: 'uppercase', lineHeight: 1 }}>CALL THE HAMMER</div>
+        <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5, marginTop: 8, maxWidth: 560 }}>
+          Five lots a day. Call each one's hammer price before it closes. A perfect call scores 100.
+        </div>
+        {/* The days either side are named, so the arrows say where they go. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
+          {dayChip(`◂ ${dayLabel(shiftDay(day, -1), today)}`, () => goTo(shiftDay(day, -1)), false)}
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'center', fontFamily: mono, fontSize: 13, fontWeight: 800, letterSpacing: 1.4, color: C.amber, whiteSpace: 'nowrap' }}>{label}</div>
+          {canGoForward
+            ? dayChip(`${dayLabel(shiftDay(day, 1), today)} ▸`, () => goTo(shiftDay(day, 1)), false)
+            : <div style={{ width: 1 }} />}
+        </div>
+        {Math.abs((new Date(`${day}T12:00:00Z`) - new Date(`${today}T12:00:00Z`)) / 86400000) > 1 && (
+          <div style={{ textAlign: 'center', marginTop: 8 }}>{dayChip('BACK TO TODAY', () => goTo(today), false)}</div>
+        )}
+      </div>
+
+      {loadError ? (
+        <div style={{ padding: '40px 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: 14, color: C.muted, marginBottom: 14 }}>{loadError}</div>
+          <button onClick={() => setReload(n => n + 1)} style={{ height: 44, padding: '0 18px', borderRadius: 4, border: `1px solid ${C.borderHi}`, background: 'none', color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 700, letterSpacing: 1.2, cursor: 'pointer' }}>TRY AGAIN</button>
+        </div>
+      ) : !round ? (
+        <div style={{ padding: '40px 24px', textAlign: 'center', fontFamily: mono, fontSize: 12, color: C.muted, letterSpacing: 1.2 }}>LOADING THE ROUND…</div>
+      ) : lots.length === 0 ? (
+        <div style={{ padding: '40px 24px', textAlign: 'center', fontSize: 14, color: C.muted, lineHeight: 1.5 }}>
+          {day > today ? "That round isn't set yet." : 'No round was played that day.'}
+        </div>
+      ) : (
+        <>
+          <div style={{ margin: '16px 18px 0', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, background: C.surface, border: `1px solid ${C.border}`, borderLeft: `4px solid ${C.amber}`, padding: '14px 16px' }}>
+            <HammerStat label="YOUR POINTS" value={points} sub={scored.length > 0 ? `OF ${scored.length * 100} SO FAR` : 'NONE SCORED YET'} color={C.amber} />
+            <HammerStat label="CALLED" value={`${called}/${lots.length}`} sub={open.length > 0 ? `${open.length} STILL OPEN` : 'CALLS CLOSED'} />
+            <HammerStat label="SETTLED" value={`${settledCount}/${lots.length}`} sub={settledCount < lots.length ? 'AS THEY SELL' : 'ROUND DONE'} />
+          </div>
+
+          <div style={{ margin: '16px 18px 0', display: 'grid', gridTemplateColumns: isWide ? 'repeat(auto-fill, minmax(300px, 1fr))' : 'minmax(0, 1fr)', gap: 14 }}>
+            {lots.map(l => <HammerLotCard key={`${day}-${l.id}`} lot={l} of={lots.length} isWide={isWide} now={now} onCall={makeCall} />)}
+          </div>
+        </>
+      )}
+
+      <div style={{ margin: '18px 18px 0', background: C.surface, border: `1px solid ${C.border}`, padding: '14px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 4 }}>
+          <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1.6, color: C.muted }}>{'//'} TOP CALLERS</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[{ id: 'day', text: label }, { id: 'week', text: 'LAST 7 DAYS' }].map(t => (
+              <button key={t.id} onClick={() => setBoardTab(t.id)} style={{ height: 30, padding: '0 10px', borderRadius: 3, border: `1px solid ${boardTab === t.id ? C.red : C.border}`, background: boardTab === t.id ? `${C.red}1a` : 'none', color: boardTab === t.id ? C.text : C.muted, fontFamily: mono, fontSize: 11, fontWeight: 700, letterSpacing: 0.8, cursor: 'pointer' }}>{t.text}</button>
+            ))}
+          </div>
+        </div>
+        <HammerBoard rows={boardTab === 'day' ? boards.day : boards.week} meId={user?.id}
+          empty={boardTab === 'day' ? 'Nobody has scored yet. Points land as each lot sells.' : 'No calls scored in the last seven days yet.'} />
+      </div>
+
+      <div style={{ margin: '18px 18px 0', padding: '14px 16px', border: `1px solid ${C.border}`, fontSize: 13, color: C.muted, lineHeight: 1.55 }}>
+        <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1.6, color: C.muted, marginBottom: 8 }}>{'//'} HOW IT SCORES</div>
+        <div>100 points for a perfect call, and 2 fewer for every 1% you're off: 10% off scores 80, 25% off scores 50, and 50% off or more scores nothing.</div>
+        <div style={{ marginTop: 8 }}>Call the hammer price. At a catalogue sale that is before the buyer's premium. You can change a call until the lot closes, and nobody sees anyone's call until then.</div>
+        <div style={{ marginTop: 8 }}>An online lot that doesn't meet its reserve is scored on its high bid. A withdrawn lot, or a catalogue lot that doesn't sell, doesn't count.</div>
+        <div style={{ marginTop: 8, color: C.faint }}>Points are game points. No money changes hands.</div>
+      </div>
+
+      <BottomTabBar screen="hammer" onNavigate={onNavigate} />
+    </div>
+  )
+}
+
+// Today's round in brief, for the dashboard, the events list and the landing page.
+function HammerTeaser({ onOpen, variant = 'card', style }) {
+  const [round, setRound] = useState(null)
+  useEffect(() => {
+    let active = true
+    supabase.rpc('hammer_round', { p_day: nyDay() }).then(({ data, error }) => {
+      if (active && !error && data) setRound({ title: data.title, lots: (data.lots || []).map(toHammerLot) })
+    })
+    return () => { active = false }
+  }, [])
+  if (!round || round.lots.length === 0) return null
+  const now = new Date()
+  const lots = round.lots
+  const open = lots.filter(l => !lotIsClosed(l, now))
+  const called = lots.filter(l => l.myCall != null).length
+  const points = lots.reduce((s, l) => s + (l.myPoints || 0), 0)
+  const nextClose = open.map(l => l.endTime).filter(Boolean).sort((a, b) => a - b)[0]
+  const status = open.length > 0
+    ? `${open.length} OF ${lots.length} OPEN · NEXT CLOSES ${calculateTimeLeft(nextClose).toUpperCase()}`
+    : "TODAY'S CALLS ARE CLOSED · RESULTS COMING IN"
+  const title = round.title && round.title !== 'Bring a Trailer' ? round.title.toUpperCase() : null
+
+  if (variant === 'row') {
+    return (
+      <div style={style}>
+      <button onClick={onOpen} style={{ width: '100%', textAlign: 'left', background: C.surface, border: `1px solid ${C.amber}44`, borderLeft: `4px solid ${C.amber}`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, cursor: 'pointer', color: C.text }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: mono, fontSize: 11, color: C.amber, letterSpacing: 1.4, fontWeight: 800, marginBottom: 4 }}>CALL THE HAMMER · TODAY</div>
+          <div style={{ fontFamily: mono, fontSize: 12.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {called > 0 ? `${called}/${lots.length} CALLED · ${points} PTS` : status}
+          </div>
+        </div>
+        <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 800, color: C.amber, letterSpacing: 1, whiteSpace: 'nowrap' }}>{called === lots.length || open.length === 0 ? 'RESULTS ▸' : 'PLAY ▸'}</span>
+      </button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={style}>
+    <div style={{ background: C.surface, border: `1px solid ${C.amber}44`, borderTop: `3px solid ${C.amber}`, padding: '14px 16px' }}>
+      <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: 1.6, color: C.amber, fontWeight: 800, marginBottom: 6 }}>{'//'} DAILY GAME{title ? ` · ${title}` : ''}</div>
+      <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.1 }}>CALL THE HAMMER</div>
+      <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginTop: 6 }}>
+        Five lots a day. Call each one's hammer price before it sells. A perfect call scores 100.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${lots.length}, minmax(0, 1fr))`, gap: 6, marginTop: 12 }}>
+        {lots.map(l => (
+          <div key={l.id} style={{ minWidth: 0 }}>
+            <CarImg car={l} height={52} radius={2} objectPosition="center 50%" />
+            <div style={{ fontFamily: mono, fontSize: 10.5, color: C.muted, marginTop: 4, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontVariantNumeric: 'tabular-nums' }}>
+              {fmtK(l.estimateLow ?? l.currentBid)}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontFamily: mono, fontSize: 11, color: C.faint, letterSpacing: 0.8, marginTop: 10 }}>{status}</div>
+      <button onClick={onOpen} style={{ marginTop: 12, width: '100%', height: 46, borderRadius: 4, border: 'none', background: C.amber, color: '#000', fontFamily: mono, fontSize: 12.5, fontWeight: 800, letterSpacing: 1.3, cursor: 'pointer' }}>
+        PLAY TODAY'S ROUND ▸
+      </button>
+    </div>
     </div>
   )
 }
