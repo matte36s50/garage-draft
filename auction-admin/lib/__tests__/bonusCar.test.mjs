@@ -25,6 +25,15 @@ test('a sale pays the closest call the whole prize', () => {
   assert.equal(outcome.share, 10000);
 });
 
+test('a catalogue lot that does not sell pays nothing; one that sells pays the closest call', () => {
+  const unsold = decideBonus({ auction: { current_bid: 15000000, estimate_low: 15000000, final_price: null, reserve_not_met: true }, predictions: [{ user_id: 'a', predicted_price: 15000000 }], budget: 10000000 });
+  assert.equal(unsold.settled, true);
+  assert.deepEqual(unsold.winners, []);
+  const sold = decideBonus({ auction: { current_bid: 15000000, estimate_low: 15000000, final_price: 16500000 }, predictions: [{ user_id: 'a', predicted_price: 15000000 }, { user_id: 'b', predicted_price: 17000000 }], budget: 10000000 });
+  assert.deepEqual(sold.winners, ['b']);
+  assert.equal(sold.share, 500000);
+});
+
 test('a no-sale is judged on the high bid; a withdrawn lot pays nothing', () => {
   const noSale = decideBonus({ auction: { current_bid: 59000, final_price: null, reserve_not_met: true }, predictions: calls, budget: 200000 });
   assert.deepEqual(noSale.winners, ['a']);

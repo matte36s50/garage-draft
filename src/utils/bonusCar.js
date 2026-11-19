@@ -7,7 +7,10 @@
  *
  * The prize is only paid once the auction has a confirmed result: a sale
  * (final_price > 0) or a no-sale (reserve_not_met, judged on the high bid).
- * A withdrawn lot (final_price = 0) pays nothing. Tied calls split the prize.
+ * A withdrawn lot (final_price = 0) pays nothing. Nor does a catalogue lot
+ * (one with an estimate) that doesn't sell: the house doesn't publish its high
+ * bid, and the bid stored for it is only its low estimate, so there is no
+ * result to judge calls against. Tied calls split the prize.
  *
  * Keep in sync with auction-admin/lib/bonusCar.js, which the hourly score cron uses.
  */
@@ -26,6 +29,7 @@ export function bonusResult(auction) {
   if (finalPrice > 0) return { settled: true, price: finalPrice }
   if (finalPrice === 0) return { settled: true, price: null }
   if (auction.reserve_not_met) {
+    if (auction.estimate_low != null) return { settled: true, price: null }
     const highBid = Number(auction.current_bid)
     return { settled: true, price: highBid > 0 ? highBid : null }
   }

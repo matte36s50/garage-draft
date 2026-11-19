@@ -38,8 +38,12 @@ Under either rule each car counts at:
 | Still running | its current bid |
 | Sold | the hammer price (`final_price`) |
 | Reserve not met | 25% of the high bid |
-| Withdrawn (`final_price = 0`) | $0 |
+| Withdrawn (`final_price = 0`) | what was paid for it in a profit event, so it scores zero; $0 in an older value event |
 | Ended, result not recorded yet | the high bid, until the result is recorded |
+
+The bonus prize is paid only on a real result. A withdrawn bonus lot pays nothing. An online lot
+that doesn't sell is judged on its high bid. A catalogue lot that doesn't sell pays nothing, because
+the house doesn't publish its high bid (`src/utils/bonusCar.js`).
 
 Players with a full 7‑car garage rank above players with fewer cars, then by score. The NET and
 % GAIN leaderboard tabs only reorder the list; they never change who wins. % GAIN is the garage's

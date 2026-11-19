@@ -165,7 +165,7 @@ export async function GET(request) {
           const [{ data: bonusLot, error: bonusLotError }, { data: predictions, error: predictionsError }] = await Promise.all([
             supabase
               .from('auctions')
-              .select('current_bid, final_price, reserve_not_met, timestamp_end')
+              .select('current_bid, final_price, reserve_not_met, timestamp_end, estimate_low')
               .eq('auction_id', league.bonus_auction_id)
               .maybeSingle(),
             supabase
@@ -233,6 +233,7 @@ export async function GET(request) {
                   ended: auction.timestamp_end <= now,
                   currentBid: auction.current_bid,
                   purchasePrice,
+                  scoring: scoringOf(league),
                 });
 
                 totalFinalValue += finalValue;

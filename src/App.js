@@ -864,7 +864,8 @@ function estimateText(car) {
 }
 
 // A garage car's worth right now, by the shared rule in utils/carValue.js.
-function valueOfCar(car) {
+// scoring: the event's rule (scoringOf(league)); it decides what a withdrawn car counts for.
+function valueOfCar(car, scoring) {
   const end = car.timestampEnd ?? car.timestamp_end
   return carValue({
     finalPrice: car.finalPrice,
@@ -872,6 +873,7 @@ function valueOfCar(car) {
     ended: end ? end * 1000 <= Date.now() : !!car.auctionEnded,
     currentBid: car.currentBid,
     purchasePrice: car.purchasePrice,
+    scoring,
   })
 }
 
@@ -889,8 +891,8 @@ const CAR_STATUS = {
 function valueFootnote(eventOver, scoring) {
   if (scoring === SCORING.PROFIT) {
     return eventOver
-      ? "PROFIT = what your cars sold for, minus what you paid for them (no sale: 25% of the high bid, result not in yet: its price) + any bonus prize. Unspent budget neither helps nor hurts."
-      : "PROFIT = what your cars are worth now, minus what you paid for them (sold: hammer price, no sale: 25% of the high bid) + any bonus prize. Unspent budget neither helps nor hurts."
+      ? "PROFIT = what your cars sold for, minus what you paid for them (no sale: 25% of the high bid, withdrawn: what you paid, result not in yet: its price) + any bonus prize. Unspent budget neither helps nor hurts."
+      : "PROFIT = what your cars are worth now, minus what you paid for them (sold: hammer price, no sale: 25% of the high bid, withdrawn: what you paid) + any bonus prize. Unspent budget neither helps nor hurts."
   }
   return eventOver
     ? "VALUE = your cars at their final prices (no sale: 25% of the high bid, result not in yet: the high bid) + any bonus prize. Unspent budget doesn't count."
@@ -913,7 +915,7 @@ async function loadBonusOutcome(leagueId, memberIds = null) {
     const [{ data: auction }, { data: predictions }, { data: members }] = await Promise.all([
       supabase
         .from('auctions')
-        .select('current_bid, final_price, reserve_not_met')
+        .select('current_bid, final_price, reserve_not_met, estimate_low')
         .eq('auction_id', league.bonus_auction_id)
         .maybeSingle(),
       supabase
@@ -1775,6 +1777,7 @@ export default function BidPrixApp() {
   // so the Dashboard and Garage count it the same way Ranks does.
   const bonusSettled = !!bonusCar && bonusResult({
     final_price: bonusCar.finalPrice, reserve_not_met: bonusCar.reserveNotMet, current_bid: bonusCar.currentBid,
+    estimate_low: bonusCar.estimateLow,
   }).settled
   useEffect(() => {
     if (!selectedLeague || !user || !bonusSettled) { setBonusPrizeWon(0); return }
@@ -1950,7 +1953,7 @@ function BonusCarCard({ isWide }) {
       {/* Mechanic + prediction */}
       <div style={{ padding: 16 }}>
         <div style={{ fontSize: 13.5, color: C.muted, lineHeight: 1.5, marginBottom: 16 }}>
-          You don't own this lot — <strong style={{ color: C.text }}>call its final hammer price</strong>{hasEstimate ? ', before buyer\'s premium' : ''}. The closest call in your event wins <strong style={{ color: C.amber }}>{fmtUSD(prize)}</strong>, added to their score once the result is in.
+          You don't own this lot — <strong style={{ color: C.text }}>call its final hammer price</strong>{hasEstimate ? ', before buyer\'s premium' : ''}. The closest call in your event wins <strong style={{ color: C.amber }}>{fmtUSD(prize)}</strong>, added to their score once the result is in.{hasEstimate ? " If it doesn't sell, no prize is paid." : ''}
         </div>
 
         {/* Your call vs current bid */}
@@ -3025,8 +3028,9 @@ function GarageScreen({ onNavigate, currentScreen }) {
   const isWide = useIsWide(700)
   const draftStatus = selectedLeague ? getDraftStatus(selectedLeague) : { status: 'open', message: 'Draft Open' }
   const canModify = draftStatus.status === 'open'
+  const scoring = scoringOf(selectedLeague)
   // Values follow the scoring rule (utils/carValue.js), so NET GAIN matches Ranks.
-  const totalCurrentValue = garage.reduce((s, c) => s + valueOfCar(c).value, 0)
+  const totalCurrentValue = garage.reduce((s, c) => s + valueOfCar(c, scoring).value, 0)
   const totalDraftValue   = garage.reduce((s, c) => s + (c.purchasePrice || 0), 0)
   const totalGain         = totalCurrentValue - totalDraftValue + bonusPrizeWon
   const slots             = [...garage, ...Array(Math.max(0, 7 - garage.length)).fill(null)]
@@ -3035,7 +3039,7 @@ function GarageScreen({ onNavigate, currentScreen }) {
 
   // Per-lot auction state, so it's obvious at a glance whether a car has settled.
   function carStatus(car) {
-    const { status } = valueOfCar(car)
+    const { status } = valueOfCar(car, scoring)
     if (status === 'live') return { label: car.timeLeft && car.timeLeft !== 'N/A' && car.timeLeft !== 'Ended' ? `LIVE · ${car.timeLeft}` : 'LIVE', color: CAR_STATUS.live.color }
     return CAR_STATUS[status]
   }
@@ -3093,11 +3097,13 @@ function GarageScreen({ onNavigate, currentScreen }) {
                 </div>
               )
             }
-            const { status, value } = valueOfCar(car)
+            const { status, value } = valueOfCar(car, scoring)
             const gain = value - (car.purchasePrice || 0)
             const gainPct = car.purchasePrice > 0 ? ((gain / car.purchasePrice) * 100).toFixed(1) : '0.0'
             const valueLabel = status === 'live' ? 'NOW' : status === 'sold' ? 'SOLD' : 'COUNTS'
-            const valueNote = status === 'no_sale' ? `25% of the ${fmtK(car.currentBid)} high bid`
+            // A catalogue lot's stored bid is its low estimate (its price), not a real high bid.
+            const valueNote = status === 'no_sale' ? (car.estimateLow != null ? "25% of its price: it didn't sell" : `25% of the ${fmtK(car.currentBid)} high bid`)
+              : status === 'withdrawn' ? (scoring === SCORING.PROFIT ? 'withdrawn: counts at its price' : null)
               : status === 'pending' ? (car.estimateLow != null ? 'counts at its price until the result is in' : 'high bid until the result is in')
               : null
             const hasAuctionLink = car.auctionUrl && car.auctionUrl !== '#'
@@ -3388,6 +3394,7 @@ if (!selectedLeague && !leagueLoading) {
             ended: auction.timestamp_end < now,
             currentBid: auction.current_bid,
             purchasePrice,
+            scoring,
           })
 
           totalFinalValue += finalValue
@@ -3740,6 +3747,8 @@ function DashboardScreenC({ onNavigate }) {
   // Terminal state: once the event is over the dashboard switches from a live
   // pit-wall into a race-recap — checkered banner, final numbers, results CTA.
   const eventOver = selectedLeague ? getDraftStatus(selectedLeague).status === 'ended' : false
+  // The event's own scoring rule (utils/eventScore.js): garage value, or profit.
+  const scoring = scoringOf(selectedLeague)
 
   // Time-in-event reads "DAY X OF 7" (never "WK 3"), derived from the event's start.
   const eventDay = (() => {
@@ -3752,10 +3761,9 @@ function DashboardScreenC({ onNavigate }) {
 
   // Same rule as Ranks (utils/carValue.js) plus any bonus prize, so the score matches.
   const totalDraft   = garage.reduce((s, c) => s + (c.purchasePrice || 0), 0)
-  const totalCurrent = garage.reduce((s, c) => s + valueOfCar(c).value, 0) + bonusPrizeWon
+  const totalCurrent = garage.reduce((s, c) => s + valueOfCar(c, scoring).value, 0) + bonusPrizeWon
   const totalGain    = totalCurrent - totalDraft
-  // The event's own scoring rule (utils/eventScore.js): garage value, or profit.
-  const scoring = scoringOf(selectedLeague)
+  // A profit event scores the gain; an older value event, what the garage is worth.
   const profitMode = scoring === SCORING.PROFIT
   const score = profitMode ? totalGain : totalCurrent
   const scoreText = profitMode ? (score > 0 ? '+' : score < 0 ? '-' : '') + '$' + Math.abs(Math.round(score)).toLocaleString() : fmtUSD(score)
@@ -3764,12 +3772,12 @@ function DashboardScreenC({ onNavigate }) {
   const budgetTotal = selectedLeague?.spending_limit || 200000
   // The next of this player's cars to sell, for the live phase.
   const nextUp = garage
-    .filter(c => valueOfCar(c).status === 'live' && c.timestampEnd && c.timestampEnd * 1000 > Date.now())
+    .filter(c => valueOfCar(c, scoring).status === 'live' && c.timestampEnd && c.timestampEnd * 1000 > Date.now())
     .sort((a, b) => a.timestampEnd - b.timestampEnd)[0] || null
-  const gainOf = c => valueOfCar(c).value - (c.purchasePrice || 0)
+  const gainOf = c => valueOfCar(c, scoring).value - (c.purchasePrice || 0)
   const bestCar = garage.length > 0 ? garage.reduce((best, c) => (gainOf(c) > gainOf(best) ? c : best)) : null
   const bestGain = bestCar ? gainOf(bestCar) : 0
-  const bestStatus = bestCar ? valueOfCar(bestCar).status : null
+  const bestStatus = bestCar ? valueOfCar(bestCar, scoring).status : null
 
   function gainColor(n) { return n > 0 ? C.pos : n < 0 ? C.neg : C.muted }
 
@@ -3890,7 +3898,7 @@ function DashboardScreenC({ onNavigate }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', border: `1px solid ${C.border}`, borderTop: 'none' }}>
             {[
               { label: 'DRAFTED',  value: fmtK(bestCar.purchasePrice), color: C.text },
-              { label: bestStatus === 'live' ? 'NOW' : bestStatus === 'sold' ? 'SOLD' : 'COUNTS', value: fmtK(valueOfCar(bestCar).value), color: C.text },
+              { label: bestStatus === 'live' ? 'NOW' : bestStatus === 'sold' ? 'SOLD' : 'COUNTS', value: fmtK(valueOfCar(bestCar, scoring).value), color: C.text },
               { label: 'NET GAIN', value: (bestGain >= 0 ? '+' : '') + fmtCompact(bestGain), color: gainColor(bestGain) },
             ].map((s, i) => (
               <div key={s.label} style={{ padding: '12px 14px', borderLeft: i === 0 ? 'none' : `1px solid ${C.border}` }}>
