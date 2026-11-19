@@ -32,6 +32,23 @@ test('a no-sale is judged on the high bid', () => {
   expect(outcome.winners).toEqual(['a'])
 })
 
+test('a catalogue lot that does not sell pays nothing: its high bid is not published', () => {
+  // The stored bid is only the low estimate, so it is no result to judge calls against.
+  const unsold = { current_bid: 15000000, estimate_low: 15000000, final_price: null, reserve_not_met: true }
+  expect(bonusResult(unsold)).toEqual({ settled: true, price: null })
+  const outcome = decideBonus({ auction: unsold, predictions: [{ user_id: 'a', predicted_price: 15000000 }], budget: 10000000 })
+  expect(outcome.settled).toBe(true)
+  expect(outcome.winners).toEqual([])
+  expect(outcome.share).toBe(0)
+})
+
+test('a catalogue lot that sells pays the closest call', () => {
+  const sold = { current_bid: 15000000, estimate_low: 15000000, final_price: 16500000, reserve_not_met: false }
+  const outcome = decideBonus({ auction: sold, predictions: [{ user_id: 'a', predicted_price: 15000000 }, { user_id: 'b', predicted_price: 17000000 }], budget: 10000000 })
+  expect(outcome.winners).toEqual(['b'])
+  expect(outcome.share).toBe(500000)
+})
+
 test('a withdrawn lot pays nothing', () => {
   const withdrawn = { current_bid: 40000, final_price: 0, reserve_not_met: false }
   const outcome = decideBonus({ auction: withdrawn, predictions: calls, budget: 200000 })

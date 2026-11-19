@@ -23,6 +23,22 @@ test('an ended car with no recorded result counts its high bid until the result 
   assert.deepEqual(carValue({ finalPrice: null, reserveNotMet: false, currentBid: 38500, ended: true }), { status: 'pending', value: 38500 });
 });
 
-test('a withdrawn car is worth nothing', () => {
+test('in an older value event a withdrawn car is worth nothing', () => {
   assert.deepEqual(carValue({ finalPrice: 0, currentBid: 40000, ended: true }), { status: 'withdrawn', value: 0 });
+  assert.deepEqual(carValue({ finalPrice: 0, currentBid: 40000, purchasePrice: 35000, ended: true, scoring: 'value' }), { status: 'withdrawn', value: 0 });
+});
+
+test('in a profit event a withdrawn car counts at its price, so it scores zero', () => {
+  assert.deepEqual(carValue({ finalPrice: 0, currentBid: 400000, purchasePrice: 400000, ended: true, scoring: 'profit' }), { status: 'withdrawn', value: 400000 });
+});
+
+test('the scoring rule changes nothing but a withdrawn car', () => {
+  for (const car of [
+    { finalPrice: 12750, currentBid: 12000, ended: true },
+    { finalPrice: null, reserveNotMet: true, currentBid: 22000, ended: true },
+    { finalPrice: null, currentBid: 38500, ended: true },
+    { currentBid: 31500, purchasePrice: 24000 },
+  ]) {
+    assert.deepEqual(carValue({ ...car, scoring: 'profit' }), carValue({ ...car, scoring: 'value' }));
+  }
 });
