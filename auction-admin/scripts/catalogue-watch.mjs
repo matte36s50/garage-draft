@@ -582,8 +582,13 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
       };
       rows.push(row);
 
-      if (cat.error || !cat.lots.size) {
-        row.action = cat.error ? `unreadable: ${cat.error}` : 'no lots on the page';
+      // A sale announced before its lots are up (RM's lots page answers 404):
+      // whatever links the error page carries are not lots.
+      const notFound = !cat.error && (cat.status >= 400 || /^\s*404\b|page not found/i.test(cat.title || ''));
+      if (notFound) row.name = '(page not found)';
+      if (cat.error || notFound || !cat.lots.size) {
+        row.action = cat.error ? `unreadable: ${cat.error}`
+          : notFound ? `page not found${cat.status >= 400 ? ` (HTTP ${cat.status})` : ''}: lots not published yet` : 'no lots on the page';
         // An upcoming sale may not have published lots yet; a captured one
         // going empty means the reader broke.
         if (cat.error || entry.capturedAt) problems.push(`${house.name} · ${row.name}: ${row.action}`);
