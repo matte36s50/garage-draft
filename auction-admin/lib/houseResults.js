@@ -82,9 +82,13 @@ const text = (html) => String(html || '').replace(/<[^>]+>/g, ' ').replace(/&nbs
 
 /**
  * Read a Gooding lot page.
- *   { saleLabel, soldAllIn, notSold }
+ *   { saleLabel, soldAllIn, notSold, withdrawn }
  * soldAllIn: the published price (premium included) when the page says SOLD.
- * notSold:   true when the page says the lot did not sell.
+ * notSold:   true when the page says the lot did not sell. After a sale Gooding
+ *            shows an unsold lot as "Asking Price · Price Available Upon Request"
+ *            (offered privately); before the sale the same line is its estimate.
+ * withdrawn: true when the page says "this Lot has been withdrawn" (Rétromobile
+ *            New York 2026, lot 35: it never reached the saleroom).
  */
 export function parseGoodingLot(html) {
   const page = String(html || '').replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/g, ' ');
@@ -96,20 +100,28 @@ export function parseGoodingLot(html) {
   for (const spec of specs) {
     const sold = spec.match(/^SOLD\s+\$\s?([\d,]+)/i);
     if (sold) { soldAllIn = Number(sold[1].replace(/,/g, '')); break; }
-    if (/^(NOT SOLD|UNSOLD|BID TO|HIGH BID|NO SALE)\b/i.test(spec)) notSold = true;
+    if (/^(NOT SOLD|UNSOLD|BID TO|HIGH BID|NO SALE|ASKING PRICE)\b/i.test(spec)) notSold = true;
   }
-  return { saleLabel, soldAllIn: soldAllIn > 0 ? soldAllIn : null, notSold: soldAllIn ? false : notSold };
+  const withdrawn = !soldAllIn && /\bthis lot has been withdrawn\b/i.test(text(page));
+  return {
+    saleLabel,
+    soldAllIn: soldAllIn > 0 ? soldAllIn : null,
+    notSold: soldAllIn || withdrawn ? false : notSold,
+    withdrawn,
+  };
 }
 
 /**
  * What a fetched Gooding page means for one game lot:
- *   { outcome: 'sold', hammer, allIn } | { outcome: 'not_sold' } | { outcome: null, reason }
+ *   { outcome: 'sold', hammer, allIn } | { outcome: 'not_sold' } | { outcome: 'withdrawn' }
+ *   | { outcome: null, reason }
  */
 export function goodingResult(html, reference) {
-  const { saleLabel, soldAllIn, notSold } = parseGoodingLot(html);
+  const { saleLabel, soldAllIn, notSold, withdrawn } = parseGoodingLot(html);
   if (!saleLabel) return { outcome: null, reason: 'no sale label on the page' };
   if (!saleMatches(saleLabel, reference)) return { outcome: null, reason: `page shows another sale (${saleLabel})` };
   if (soldAllIn) return { outcome: 'sold', hammer: hammerFromAllIn(soldAllIn), allIn: soldAllIn };
+  if (withdrawn) return { outcome: 'withdrawn' };
   if (notSold) return { outcome: 'not_sold' };
   return { outcome: null, reason: 'no result on the page yet' };
 }
