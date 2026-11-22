@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   watchListingId, eventNameFromTitle, parseSaleDates, shouldCapture, resultsDue, resultsPosted, chooseSaleDates,
   estimatesOnly, buildIngestItems, lotsToSend, majorityCurrency, stableLotText, LOT_MARKER, HOUSES,
+  lotKey, markUnsold, UNSOLD_BASIS,
 } from '../catalogueWatch.js';
 
 test('a lot is keyed by the house\'s own lot id, the same before and after the sale', () => {
@@ -273,4 +274,69 @@ test('for results, a high bid is part of the lot; a countdown still is not', () 
   assert.notEqual(stableLotText('Lot 23 | Not sold | High bid €2,000,000', 'result'),
     stableLotText('Lot 23 | Sold after auction €2,400,000', 'result'));
   assert.equal(stableLotText('Lot 23 | Sold €2,400,000 | 0d 0h 4m 10s left', 'result'), stableLotText('Lot 23 | Sold €2,400,000 | 0d 0h 0m 0s left', 'result'));
+});
+
+test('RM: any link into a sale names its catalogue; press releases are followed but never date the sale', () => {
+  const rm = HOUSES.rm;
+  const canon = (u) => (rm.catalogue.test(u) ? rm.catalogueUrl(u) : null);
+  assert.equal(canon('https://rmsothebys.com/auctions/az27/lots/?Collection=The%20Groendyke%20Collection'), 'https://rmsothebys.com/auctions/az27/lots/');
+  assert.equal(canon('https://rmsothebys.com/auctions/pa27/lots/r0023-1970-mercedesbenz-c-111ii/'), 'https://rmsothebys.com/auctions/pa27/lots/');
+  assert.equal(canon('https://rmsothebys.com/auctions/BC27/'), 'https://rmsothebys.com/auctions/bc27/lots/');
+  assert.equal(canon('https://rmsothebys.com/auctions/mu26/lots/'), 'https://rmsothebys.com/auctions/mu26/lots/');
+  assert.equal(canon('https://rmsothebys.com/auctions/?utm_source=website'), null);
+  assert.equal(canon('https://sealed.rmsothebys.com/ps00/inventory/r6617-1957-bmw-507-roadster-series-ii/'), null);
+  assert.ok(rm.index.includes('https://rmsothebys.com/media-center/press-releases/'));
+  assert.ok(rm.follow.test('https://rmsothebys.com/media-center/press-releases/rm-sotheby-s-returns-to-munich-with-exceptional-offering-of-fine-cars/'));
+  assert.ok(!rm.follow.test('https://rmsothebys.com/media-center/press-releases/'));
+  assert.equal(rm.followIsSalePage, false);
+});
+
+test('lot keys match a card to its extracted lot whatever the slash, case or query', () => {
+  assert.equal(lotKey('https://www.goodingco.com/lot/1956-jaguar-d-type/'), lotKey('https://www.goodingco.com/lot/1956-Jaguar-D-Type?x=1'));
+  assert.notEqual(lotKey('https://www.goodingco.com/lot/1956-jaguar-d-type/'), lotKey('https://www.goodingco.com/lot/1956-jaguar-c-type/'));
+});
+
+test('results: a lot shown only as offered privately after the sale is a no-sale with no price', () => {
+  const dtype = 'https://www.goodingco.com/lot/1956-jaguar-d-type/';
+  const xj = 'https://www.goodingco.com/lot/1993-jaguar-xj220-rn26/';
+  const open = 'https://www.goodingco.com/lot/1975-yamaha-xs650/';
+  const cards = new Map([
+    [lotKey(dtype), `${LOT_MARKER}${dtype}]\nLOT 52 AVAILABLE Follow 2026 | Retromobile New York Auctions 1956 Jaguar D-Type Price Available Upon Request`],
+    [lotKey(xj), `${LOT_MARKER}${xj}]\nLOT 20 2026 | Retromobile New York Auctions 1993 Jaguar XJ220 SOLD $516,500`],
+    [lotKey(open), `${LOT_MARKER}${open}]\nLOT 9 1975 Yamaha XS650`],
+  ]);
+  const lots = [
+    { lot_url: dtype, make: 'Jaguar', model: 'D-Type', outcome: null, price: null, currency: 'USD' },
+    { lot_url: xj, make: 'Jaguar', model: 'XJ220', outcome: 'sold', price: 516500, currency: 'USD' },
+    { lot_url: open, make: 'Yamaha', model: 'XS650', outcome: null, price: null },
+  ];
+  const { lots: out, marked } = markUnsold(lots, cards, HOUSES.gooding.unsold);
+  assert.equal(marked, 1);
+  assert.equal(out[0].outcome, 'reserve_not_met');
+  assert.equal(out[0].price, null);
+  assert.equal(out[0].outcome_basis, UNSOLD_BASIS);
+  assert.equal(out[1], lots[1]); // a stated outcome stands
+  assert.equal(out[2].outcome, null); // no mark, no outcome
+
+  const event = { name: 'Rétromobile New York 2026', starts_on: '2026-11-20', ends_on: '2026-11-21' };
+  const { items, skipped } = buildIngestItems({ houseId: 'gooding', event, catalogueUrl: 'x', mode: 'result', lots: out, today: '2026-11-22' });
+  const d = items.find((i) => i.payload.model === 'D-Type').payload;
+  assert.equal(d.outcome, 'reserve_not_met');
+  assert.equal(d.current_bid, undefined);
+  assert.equal(d.price_all_in, undefined);
+  assert.equal(d.outcome_basis, UNSOLD_BASIS);
+  assert.deepEqual(skipped.map((s) => s.reason), ['no result on the page']);
+
+  // RM's post-sale card: an asking price, never recorded as a bid.
+  const csl = 'https://rmsothebys.com/auctions/mu26/lots/r0076-1971-bmw-30-csl-batmobile/';
+  const rm = markUnsold(
+    [{ lot_url: csl, make: 'BMW', model: "3.0 CSL 'Batmobile'", outcome: null, price: 320000, currency: 'EUR' }],
+    new Map([[lotKey(csl), "The Munich Auction 2026 1971 BMW 3.0 CSL 'Batmobile' Lot 147 | €320,000 EUR Asking"]]),
+    HOUSES.rm.unsold,
+  );
+  assert.equal(rm.lots[0].outcome, 'reserve_not_met');
+  assert.equal(rm.lots[0].price, null);
+  // Before the sale an RM card never says "asking"; a house without a mark is left alone.
+  assert.ok(!HOUSES.rm.unsold.test('Lot 147 | €380,000 - €480,000 EUR | Offered Without Reserve'));
+  assert.equal(markUnsold(lots, cards, undefined).marked, 0);
 });

@@ -25,6 +25,10 @@ on:
         description: 'Only these houses (space-separated: rm broadarrow gooding mecum); blank for all'
         required: false
         default: ''
+      recheck:
+        description: 'Finished sales to recheck now for lots shown as unsold (catalogue URLs, space-separated)'
+        required: false
+        default: ''
   push:
     branches: ['claude/**']
     paths:
@@ -73,6 +77,7 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           DRY_RUN: ${{ github.event_name == 'push' || github.event.inputs.dry_run == 'true' }}
           HOUSES: ${{ github.event.inputs.houses }}
+          CATALOGUE_WATCH_RECHECK: ${{ github.event.inputs.recheck }}
           CATALOGUE_WATCH_REPORT: watch-report.md
         run: node scripts/catalogue-watch.mjs $([ "$DRY_RUN" = true ] && echo --dry-run) $HOUSES
       - name: Save the watch's record
