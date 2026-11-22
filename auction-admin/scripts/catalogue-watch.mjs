@@ -47,7 +47,9 @@
  * --recheck runs a results pass on a finished sale now, whatever its record
  * says, sending only the lots whose card shows the house's post-sale unsold
  * mark (lib/catalogueWatch.js, HOUSES[...].unsold): for no-sales an earlier
- * pass left without an outcome.
+ * pass left without an outcome. A sale in the record whose results pass ran
+ * before its house had a mark gets this once by itself (unsoldCheckedAt), up
+ * to 30 days after the sale.
  */
 
 import { createHash } from 'node:crypto';
@@ -589,18 +591,22 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
         continue;
       }
 
-      const recheck = rechecks.has(url);
       const isNew = !state.sales[url] && !fromStore;
-      if (isNew && !recheck && dates?.ends_on && daysBetween(dates.ends_on, today) > STALE_DAYS) {
+      if (isNew && !rechecks.has(url) && dates?.ends_on && daysBetween(dates.ends_on, today) > STALE_DAYS) {
         row.action = `first seen ${daysBetween(dates.ends_on, today)} days after the sale: not read`;
         console.log(`   ${row.name}: ${row.action}`);
         continue;
       }
+      // A sale whose results pass ran before the house's unsold mark was
+      // known gets one recheck of the lots showing it (once; see unsoldCheckedAt).
+      const unsoldOpen = !!(house.unsold && entry.resultsAt && !entry.unsoldCheckedAt
+        && dates?.ends_on && today > dates.ends_on && daysBetween(dates.ends_on, today) <= 30);
+      const recheck = rechecks.has(url) || unsoldOpen;
 
       let res = resultsDue(entry, { hash, today, sale: dates });
       if (recheck) {
         res = dates?.ends_on && today > dates.ends_on
-          ? { due: true, reason: 'recheck requested' }
+          ? { due: true, reason: rechecks.has(url) ? 'recheck requested' : 'one-time check for lots shown as unsold' }
           : { due: false, reason: 'recheck requested, but the sale is not over' };
         if (!res.due) problems.push(`${house.name} · ${row.name}: ${res.reason}`);
       }
@@ -664,7 +670,12 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
         // Nothing new or changed: note the page as seen, so it is skipped
         // outright until it changes again.
         row.action = `${cap.reason}: ${reading}; nothing sent`;
-        if (live) state.sales[url] = { ...entry, lastSeen: today, ...(mode === 'result' ? { resultsHash: hash } : { hash }) };
+        if (live) {
+          state.sales[url] = {
+            ...entry, lastSeen: today, ...(mode === 'result' ? { resultsHash: hash } : { hash }),
+            ...(recheck && mode === 'result' ? { unsoldCheckedAt: today } : {}),
+          };
+        }
         continue;
       }
       if (!live) {
@@ -753,6 +764,8 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
           Object.assign(next, {
             resultsAt: today, resultsHash: hash,
             resultHashes: pick.partial ? { ...entry.resultHashes, ...readNow } : readNow,
+            // A whole-page pass and a recheck both read every lot showing the unsold mark.
+            ...(recheck || !pick.partial ? { unsoldCheckedAt: today } : {}),
           });
         } else {
           Object.assign(next, {
