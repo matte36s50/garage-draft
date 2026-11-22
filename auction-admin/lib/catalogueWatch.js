@@ -17,10 +17,18 @@
 /**
  * One entry per house the watch reads.
  *   index        pages that list the house's upcoming sales
- *   follow       links on the index to sale pages that in turn link to the catalogue
+ *   follow       links on the index to pages that in turn link to the catalogue
+ *                (the newest 8 are read)
+ *   followIsSalePage  false: those pages are not the sale's own (press
+ *                releases), so a date on them is never taken as the sale's
  *   catalogue    which links on those pages are sale catalogues (tested with the
  *                query string only when catalogueUrl is given, which also
  *                trims it to the parts that identify the sale)
+ *   unsold       what a lot card shows after the sale when the lot did not
+ *                sell and is offered privately instead ("Asking", "Price
+ *                Available Upon Request"). The extractor records only an
+ *                outcome the page states, so these come back without one;
+ *                such a lot is written as not sold, with no price.
  *   eventName    the sale's name from its catalogue URL, where the page title
  *                doesn't carry it
  *   lotLink      a lot's own page; the capture groups form its stable key
@@ -36,10 +44,19 @@
 export const HOUSES = {
   rm: {
     name: "RM Sotheby's",
-    index: ['https://rmsothebys.com/upcoming/'],
-    catalogue: /^https:\/\/rmsothebys\.com\/auctions\/[a-z0-9]+\/lots\/$/i,
+    // Since November 2026 the Upcoming page links most sales only through
+    // "Register to bid" (no sale code), so the newest press releases, which
+    // link every sale they announce, are read as well.
+    index: ['https://rmsothebys.com/upcoming/', 'https://rmsothebys.com/media-center/press-releases/'],
+    follow: /^https:\/\/rmsothebys\.com\/media-center\/press-releases\/[^/?#]+\/?$/i,
+    followIsSalePage: false,
+    // Any link into a sale (its page, its lots, one lot) names its catalogue.
+    catalogue: /^https:\/\/rmsothebys\.com\/auctions\/[a-z0-9]+\//i,
+    catalogueUrl: (u) => `https://rmsothebys.com/auctions/${new URL(u).pathname.split('/')[2].toLowerCase()}/lots/`,
     // r0037 cars; c0061, n2035 automobilia and memorabilia (the extractor skips those)
     lotLink: /\/auctions\/([a-z0-9]+)\/lots\/([a-z]\d{3,})(?=[-/]|$)/i,
+    // "Lot 147 | €320,000 EUR Asking"
+    unsold: /\basking\b/i,
     premium: true,
     maxPages: 10,
   },
@@ -71,6 +88,8 @@ export const HOUSES = {
       return [q.get('filtersInput[liveAuctionVenue][0]'), q.get('filtersInput[auctionYear][0]')].filter(Boolean).join(' ');
     },
     lotLink: /\/lot\/([a-z0-9-]+)\/?$/i,
+    // "LOT 13 AVAILABLE ... Price Available Upon Request"
+    unsold: /price available upon request/i,
     premium: true,
     maxPages: 10,
   },
@@ -363,6 +382,38 @@ export function resultsPosted(lots) {
   return (lots || []).some((l) => l?.outcome === 'sold');
 }
 
+/** A lot page's identity for matching an extracted lot to its card: origin and path, no trailing slash, any case. */
+export function lotKey(url) {
+  try {
+    const u = new URL(String(url));
+    return `${u.origin}${u.pathname}`.replace(/\/+$/, '').toLowerCase();
+  } catch {
+    return String(url || '').split(/[?#]/)[0].replace(/\/+$/, '').toLowerCase();
+  }
+}
+
+export const UNSOLD_BASIS = 'offered for private sale after the auction';
+
+/**
+ * Results: a lot the extractor gave no outcome whose card shows the house's
+ * post-sale "unsold" mark (HOUSES[...].unsold) did not sell. It becomes a
+ * no-sale with no price: an asking price is not a bid. `cards` maps lotKey ->
+ * the lot's card text. Lots with an outcome are left as they are.
+ * Returns { lots, marked }.
+ */
+export function markUnsold(lots, cards, unsold) {
+  if (!unsold) return { lots: lots || [], marked: 0 };
+  let marked = 0;
+  const out = (lots || []).map((l) => {
+    if (!l || OUTCOMES.has(l.outcome) || !l.lot_url) return l;
+    const card = cards.get(lotKey(l.lot_url));
+    if (!card || !unsold.test(card)) return l;
+    marked += 1;
+    return { ...l, outcome: 'reserve_not_met', price: null, outcome_basis: UNSOLD_BASIS };
+  });
+  return { lots: out, marked };
+}
+
 /**
  * The sale's dates for this run. The page is the authority whenever it states
  * them, so a closing date read wrongly before (an online sale's opening day)
@@ -442,6 +493,8 @@ export function buildIngestItems({ houseId, event, catalogueUrl, mode, lots, tod
       } else if (price > 0) {
         payload.current_bid = price; // a no-sale's high bid is never a price
       }
+      // How the outcome was read when the page doesn't state it in words (markUnsold).
+      if (lot.outcome_basis) payload.outcome_basis = String(lot.outcome_basis);
     }
 
     Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);

@@ -33,15 +33,23 @@
  *   CATALOGUE_WATCH_STATE    state file (default .catalogue-watch/state.json)
  *   CATALOGUE_WATCH_MAX_CAPTURES  extractions per run (default 15), a cost cap
  *   CATALOGUE_WATCH_REPORT   a file the run's summary is also written to
+ *   CATALOGUE_WATCH_RECHECK  catalogue URLs (space-separated) to recheck, as --recheck
  *
  * A dry run's summary also shows the first lots' text for each sale it would
  * read, to check what a house's lot cards carry.
  *
- *   node scripts/catalogue-watch.mjs [--dry-run] [house ...] [--only <catalogue url>]
+ *   node scripts/catalogue-watch.mjs [--dry-run] [house ...] [--only <catalogue url>] [--recheck <catalogue url> ...]
  *
  * --dry-run reads and reports everything but calls neither Claude nor the
  * store and leaves the state file alone. Without the app URL and secret the
  * run is a dry run.
+ *
+ * --recheck runs a results pass on a finished sale now, whatever its record
+ * says, sending only the lots whose card shows the house's post-sale unsold
+ * mark (lib/catalogueWatch.js, HOUSES[...].unsold): for no-sales an earlier
+ * pass left without an outcome. A sale in the record whose results pass ran
+ * before its house had a mark gets this once by itself (unsoldCheckedAt), up
+ * to 30 days after the sale.
  */
 
 import { createHash } from 'node:crypto';
@@ -50,8 +58,8 @@ import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import {
-  HOUSES, LOT_MARKER, chooseSaleDates, daysBetween, estimatesOnly, eventNameFromTitle, lotsToSend, majorityCurrency,
-  parseSaleDates, resultsDue, resultsPosted, shouldCapture, stableLotText,
+  HOUSES, LOT_MARKER, chooseSaleDates, daysBetween, estimatesOnly, eventNameFromTitle, lotKey, lotsToSend, majorityCurrency,
+  markUnsold, parseSaleDates, resultsDue, resultsPosted, shouldCapture, stableLotText,
 } from '../lib/catalogueWatch.js';
 import { CHROME_UA, isWall } from './probe-lib.mjs';
 
@@ -444,14 +452,31 @@ const fingerprint = (head, lots) => createHash('sha256')
   .digest('hex').slice(0, 16);
 
 function parseArgs(argv) {
-  const args = { dryRun: false, houses: [], only: null };
+  const args = { dryRun: false, houses: [], only: null, recheck: [] };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--dry-run') args.dryRun = true;
     else if (argv[i] === '--only') args.only = argv[++i];
+    else if (argv[i] === '--recheck') args.recheck.push(argv[++i]);
     else args.houses.push(argv[i].toLowerCase());
   }
+  args.recheck.push(...(process.env.CATALOGUE_WATCH_RECHECK || '').split(/\s+/).filter(Boolean));
   return args;
 }
+
+/** A catalogue URL as the house's record keys it, or null if it isn't one of the house's. */
+function canonicalCatalogue(house, u) {
+  try {
+    const plain = house.catalogueUrl ? u : u.split('?')[0];
+    if (!house.catalogue.test(plain)) return null;
+    return house.catalogueUrl ? house.catalogueUrl(plain) : plain;
+  } catch {
+    return null;
+  }
+}
+
+// A sale first seen this long after its last day is an old one coming back
+// through a press release or a lost record, not a sale the watch missed.
+const STALE_DAYS = 14;
 
 export async function main(argv = process.argv.slice(2), houses = HOUSES) {
   const args = parseArgs(argv);
@@ -487,10 +512,8 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
     const hops = [];
     const referrer = new Map(); // catalogue -> the sale page that links to it
     // Catalogue links on the current page, as their canonical URLs.
-    const catalogueLinks = async () => (await links(page))
-      .map((u) => (house.catalogueUrl ? u : u.split('?')[0]))
-      .filter((u) => house.catalogue.test(u))
-      .map((u) => (house.catalogueUrl ? house.catalogueUrl(u) : u));
+    const catalogueLinks = async () => [...new Set((await links(page)).map((u) => canonicalCatalogue(house, u)).filter(Boolean))];
+    const rechecks = new Set(args.recheck.map((u) => canonicalCatalogue(house, u)).filter(Boolean));
     for (const idx of house.index) {
       try {
         const o = await open(page, idx);
@@ -509,7 +532,7 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
         const hits = await catalogueLinks();
         for (const u of hits) {
           found.add(u);
-          if (!referrer.has(u)) referrer.set(u, hop);
+          if (house.followIsSalePage !== false && !referrer.has(u)) referrer.set(u, hop);
         }
         if (!live && !hits.length) {
           const near = (await links(page)).filter((u) => /bid\.|\/lots?\b|catalog/i.test(u)).slice(0, 8);
@@ -531,6 +554,7 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
     const urls = new Set(found);
     for (const [u, s] of Object.entries(state.sales)) if (s.house === houseId && !s.done) urls.add(u);
     for (const o of owed) if (o.house === houseId) urls.add(o.catalogue_url);
+    for (const u of rechecks) urls.add(u);
     if (args.only) for (const u of [...urls]) if (u !== args.only) urls.delete(u);
 
     const firstRow = rows.length;
@@ -558,8 +582,13 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
       };
       rows.push(row);
 
-      if (cat.error || !cat.lots.size) {
-        row.action = cat.error ? `unreadable: ${cat.error}` : 'no lots on the page';
+      // A sale announced before its lots are up (RM's lots page answers 404):
+      // whatever links the error page carries are not lots.
+      const notFound = !cat.error && (cat.status >= 400 || /^\s*404\b|page not found/i.test(cat.title || ''));
+      if (notFound) row.name = '(page not found)';
+      if (cat.error || notFound || !cat.lots.size) {
+        row.action = cat.error ? `unreadable: ${cat.error}`
+          : notFound ? `page not found${cat.status >= 400 ? ` (HTTP ${cat.status})` : ''}: lots not published yet` : 'no lots on the page';
         // An upcoming sale may not have published lots yet; a captured one
         // going empty means the reader broke.
         if (cat.error || entry.capturedAt) problems.push(`${house.name} · ${row.name}: ${row.action}`);
@@ -567,8 +596,27 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
         continue;
       }
 
-      const res = resultsDue(entry, { hash, today, sale: dates });
-      const cap = res.due ? { capture: true, reason: res.reason } : shouldCapture(entry, { hash, today, sale: dates });
+      const isNew = !state.sales[url] && !fromStore;
+      if (isNew && !rechecks.has(url) && dates?.ends_on && daysBetween(dates.ends_on, today) > STALE_DAYS) {
+        row.action = `first seen ${daysBetween(dates.ends_on, today)} days after the sale: not read`;
+        console.log(`   ${row.name}: ${row.action}`);
+        continue;
+      }
+      // A sale whose results pass ran before the house's unsold mark was
+      // known gets one recheck of the lots showing it (once; see unsoldCheckedAt).
+      const unsoldOpen = !!(house.unsold && entry.resultsAt && !entry.unsoldCheckedAt
+        && dates?.ends_on && today > dates.ends_on && daysBetween(dates.ends_on, today) <= 30);
+      const recheck = rechecks.has(url) || unsoldOpen;
+
+      let res = resultsDue(entry, { hash, today, sale: dates });
+      if (recheck) {
+        res = dates?.ends_on && today > dates.ends_on
+          ? { due: true, reason: rechecks.has(url) ? 'recheck requested' : 'one-time check for lots shown as unsold' }
+          : { due: false, reason: 'recheck requested, but the sale is not over' };
+        if (!res.due) problems.push(`${house.name} · ${row.name}: ${res.reason}`);
+      }
+      const cap = res.due ? { capture: true, reason: res.reason }
+        : recheck ? { capture: false, reason: res.reason } : shouldCapture(entry, { hash, today, sale: dates });
       const mode = res.due ? 'result' : 'estimate';
 
       // The lots this house lets a pass of each kind send.
@@ -606,7 +654,14 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
       }
 
       const { lots: eligibleLots, note } = eligible(mode);
-      const pick = lotsToSend({ entry, mode, sale: dates, today, candidates: [...eligibleLots.keys()], hashes: lotHashes[mode] });
+      const pick = recheck && mode === 'result'
+        ? (() => {
+          // Only the lots the house marks as unsold: the no-sales an earlier pass left open.
+          const all = [...eligibleLots.keys()];
+          const urls = house.unsold ? all.filter((u) => house.unsold.test(eligibleLots.get(u))) : [];
+          return { urls, partial: true, why: `${urls.length} of ${all.length} lots shown as unsold` };
+        })()
+        : lotsToSend({ entry, mode, sale: dates, today, candidates: [...eligibleLots.keys()], hashes: lotHashes[mode] });
       const sendSegs = pick.urls.map((u) => eligibleLots.get(u));
       const reading = `${pick.why}${note}`;
 
@@ -620,7 +675,12 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
         // Nothing new or changed: note the page as seen, so it is skipped
         // outright until it changes again.
         row.action = `${cap.reason}: ${reading}; nothing sent`;
-        if (live) state.sales[url] = { ...entry, lastSeen: today, ...(mode === 'result' ? { resultsHash: hash } : { hash }) };
+        if (live) {
+          state.sales[url] = {
+            ...entry, lastSeen: today, ...(mode === 'result' ? { resultsHash: hash } : { hash }),
+            ...(recheck && mode === 'result' ? { unsoldCheckedAt: today } : {}),
+          };
+        }
         continue;
       }
       if (!live) {
@@ -679,9 +739,13 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
         // page would (the store fills a lot's missing currency from the
         // majority of the lots written with it), so carry it from the record.
         const saleCurrency = majorityCurrency(got.lots) || entry.currency;
+        // No-sales the page shows only as offered privately (HOUSES[...].unsold).
+        const unsold = mode === 'result'
+          ? markUnsold(got.lots, new Map(pick.urls.map((u) => [lotKey(u), eligibleLots.get(u)])), house.unsold)
+          : { lots: got.lots, marked: 0 };
         const lots = pick.partial && saleCurrency
-          ? got.lots.map((l) => (l.currency ? l : { ...l, currency: saleCurrency }))
-          : got.lots;
+          ? unsold.lots.map((l) => (l.currency ? l : { ...l, currency: saleCurrency }))
+          : unsold.lots;
         const written = await api('/api/store/catalogue/ingest', {
           method: 'POST',
           body: { house: houseId, event, catalogue_url: url, mode, lots },
@@ -692,6 +756,7 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
         spent.output_tokens += got.usage.output_tokens;
         spent.cost += cost || 0;
         row.action = `${mode === 'result' ? 'results' : 'estimates'}: ${written.written} lots written`
+          + `${unsold.marked ? ` (${unsold.marked} as not sold, offered privately)` : ''}`
           + `${written.skipped?.length ? `, ${written.skipped.length} skipped` : ''}; ${reading} (${cap.reason})`;
         const next = {
           ...entry, house: houseId, name, location: event.location, ...dates, currency: saleCurrency,
@@ -704,6 +769,8 @@ export async function main(argv = process.argv.slice(2), houses = HOUSES) {
           Object.assign(next, {
             resultsAt: today, resultsHash: hash,
             resultHashes: pick.partial ? { ...entry.resultHashes, ...readNow } : readNow,
+            // A whole-page pass and a recheck both read every lot showing the unsold mark.
+            ...(recheck || !pick.partial ? { unsoldCheckedAt: today } : {}),
           });
         } else {
           Object.assign(next, {
