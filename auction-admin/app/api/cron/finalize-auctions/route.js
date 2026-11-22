@@ -525,7 +525,7 @@ const HOUSE_RESULT_WAIT_HOURS = 48;
 const HOUSE_USER_AGENT = 'BidPrix/1.0 (fantasy auction game; reads published results; +https://garage-draft.vercel.app)';
 
 async function finalizeHouseLots(supabase, { cutoff, now }) {
-  const summary = { checked: 0, sold: 0, notSold: 0, waiting: 0, failed: 0, results: [] };
+  const summary = { checked: 0, sold: 0, notSold: 0, withdrawn: 0, waiting: 0, failed: 0, results: [] };
   const { data: lots, error } = await supabase
     .from('auctions')
     .select('auction_id, title, url, auction_reference, timestamp_end, finalize_attempts')
@@ -576,6 +576,18 @@ async function finalizeHouseLots(supabase, { cutoff, now }) {
         continue;
       }
       result.reason = `write failed: ${e.message}`;
+    } else if (result.outcome === 'withdrawn') {
+      // final_price 0 is how a withdrawn lot is recorded (lib/carValue.js).
+      const { error: e } = await supabase.from('auctions')
+        .update({ final_price: 0, reserve_not_met: false })
+        .eq('auction_id', lot.auction_id);
+      if (!e) {
+        summary.withdrawn++;
+        summary.results.push({ id: lot.auction_id, outcome: 'withdrawn' });
+        console.log(`   🚫 ${lot.title}: withdrawn`);
+        continue;
+      }
+      result.reason = `write failed: ${e.message}`;
     }
 
     // Still selling (a later session of the same sale): wait without spending attempts.
@@ -614,7 +626,7 @@ async function runFinalizer({ minAgeMinutes = 120, forceUrls = [] } = {}) {
     let house;
     try {
       house = await finalizeHouseLots(supabase, { cutoff, now });
-      console.log(`🏛️ Catalogue lots: ${house.checked} checked · ${house.sold} sold · ${house.notSold} not sold · ${house.waiting} waiting · ${house.failed} unresolved`);
+      console.log(`🏛️ Catalogue lots: ${house.checked} checked · ${house.sold} sold · ${house.notSold} not sold · ${house.withdrawn ?? 0} withdrawn · ${house.waiting} waiting · ${house.failed} unresolved`);
     } catch (e) {
       house = { error: e.message };
       console.log(`⚠️ Catalogue lots skipped: ${e.message}`);
